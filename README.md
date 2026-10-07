@@ -71,13 +71,67 @@ deploy/           示例与探针
   ├── demo_panel.lua    角色面板
   └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            22 个测试套件
+tests/            24 个测试套件
 tools/            构建、验证、mock
 ```
 
 ---
 
 ## 快速开始
+
+### 写一个页面
+
+只需给 HTML / CSS，以及当 JS 用的 Lua 事件处理。剩下的
+（找根控件、渲染、绑事件、逐帧循环、等 Root 重试）都由库接管：
+
+```lua
+local webui = require('webui')
+
+-- ★ 注意写法：必须先 local 声明，再赋值。
+--   `local app = webui.mount{...}` 会让 on 表里的闭包看不到 app（恒为 nil），
+--   因为 Lua 的 local 在整条赋值语句执行完之前对内部闭包不可见。
+local app
+app = webui.mount{
+  root    = "Root",
+  prefabs = { container=1073741933, textbox=1073741934,
+              button=1073741935,    image=1073741938 },
+  html = [[<div class="card" id="c" onclick="tap">你好</div>]],
+  css  = [[
+    .card { width:260px; height:60px; background-color:#222; font-size:16px; }
+    .card:hover { background-color:#333; }
+  ]],
+  on = {
+    tap = function() app:setText("c", "被点了") end,
+  },
+}
+
+-- 引擎按固定名字找这几个函数，必须转接一次（3 行）
+function OnStart()    app:start()  end
+function OnUpdate(dt) app:update() end
+function OnDestroy()  app:stop()   end
+```
+
+完整可跑示例见 [`deploy/demo_min.lua`](deploy/demo_min.lua)（82 行，
+其中大半是 HTML/CSS）。**不写 mount 也可以** —— 用 `webui.new` 手动
+控制每一步，见 [`deploy/demo_feature.lua`](deploy/demo_feature.lua)。
+
+<details>
+<summary>mount 到底替你做了什么</summary>
+
+| 原来要手写 | 现在 |
+|---|---|
+| `game.FindClientUIRoot("Root")` | `root = "Root"` |
+| `webui.new{...}` + `ui:render()` | `html` / `css` 两个字段 |
+| `handlers` 表 | `on` 表 |
+| 写 `startLoop`（递归 `TweenSequence`） | `loop`（默认开） |
+| `OnStart` 里找 Root + `OnUpdate` 里重试 120 帧 | `app:start()` / `app:update()` |
+| `OnDestroy` 里 `Kill` 循环 | `app:stop()` |
+| 手写 `refreshCounter` 改文字 | `app:setText(id, text)` |
+
+`app:setText` / `app:setStyle` 内部走 **DOM**（`node:setText`）而不是
+直接写控件 —— 渲染器每帧都会用 DOM 文本覆盖控件，直接改 `control.text`
+会在下一帧被打回原值（真机踩过：日志在涨、界面恒为 0）。
+</details>
 
 ### 跑测试
 
@@ -87,7 +141,7 @@ lua tests/test_html.lua      # 单个
 for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 ```
 
-**20 个套件全部通过。** 路径自包含，任何目录都能跑。
+**24 个套件全部通过。** 路径自包含，任何目录都能跑。
 
 ### 打包
 

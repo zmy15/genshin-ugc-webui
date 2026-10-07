@@ -269,6 +269,227 @@ function Instance:stopLoop()
   return self
 end
 
+--=============================================================================
+-- 一步挂载（把样板代码全收进库里）
+--=============================================================================
+
+--[[ 一步完成「找根控件 + 渲染 + 挂事件 + 开逐帧循环」。
+
+     ⚠️ 存在的意义：
+       原来每个页面都要手写这一段样板 —— 找 Root、建实例、render、
+       bindImages、startLoop，还要处理"Root 还没准备好"时用 OnUpdate 重试。
+       这些与页面内容无关：写 300 行 CSS 和写 3 行 CSS 都一模一样。
+       mount 把它们收进库，开发者只需要给 HTML / CSS / 事件。
+
+     ★★ 关于生命周期（重要，决定了本函数为什么这样设计）：
+
+       引擎按【固定名称】在【入口脚本自己的环境】里查找
+       OnInit / OnStart / OnUpdate / OnDestroy —— 见
+       docs/client_control_api.md「运行时按固定名称查找并调用」。
+
+       而本文件是 require 进来的模块，真机上每个模块有【独立 _ENV】
+       （docs/webui_feasibility.md：模块不执行 OnInit/OnStart）。
+       所以在 init.lua 里写 _G.OnStart 是【无效的】——
+       引擎不会去模块的环境里找。
+
+       因此 mount 只返回一个句柄，由【入口脚本】用 3 行接上生命周期；
+       这 3 行是引擎的硬性约定，无法再省。
+
+     用法（入口脚本里）：
+       local webui = require('webui')
+
+       local app = webui.mount{
+         root    = "Root",
+         prefabs = { container=1073741933, textbox=1073741934,
+                     button=1073741935,    image=1073741938 },
+         html    = "<div class=\"card\">你好</div>",
+         css     = ".card { width:200px; height:60px; background-color:#333; }",
+         on      = {
+           onOk = function(e) ... end,   -- 对应 HTML 里 onclick="onOk"
+         },
+       }
+
+       function OnStart()    app:start()  end
+       function OnUpdate(dt) app:update() end
+       function OnDestroy()  app:stop()   end
+
+     ★ 为什么 prefabs 仍要求显式传：
+       控件模板索引只在编辑器里配置，库无从发现，猜错会静默失败
+       （控件建不出来但不报错）。宁可让开发者写一次，也不要埋这个坑。
+
+     ★ 事件模型（Lua 当 JS 用）：
+       HTML 里写 onclick="onOk"，on 表里写 on = { onOk = function(e) end }。
+       与原来 handlers 的语义一致，只是搬进了 mount 参数。
+==============================================================================]]
+function M.mount(opts)
+  opts = opts or {}
+
+  local App = {}
+  App.__index = App
+
+  local app = setmetatable({
+    ui       = nil,                       -- webui 实例
+    bound    = false,                     -- 是否已挂载成功
+    retry    = 0,                         -- 等待 Root 的重试次数
+    maxRetry = opts.maxRetry or 120,
+    rootName = opts.root or "Root",
+    handlers = opts.on or {},
+    logTag   = opts.logTag or "[webui]",
+  }, App)
+
+  --[[ 内部：尝试挂载。
+       返回 true = 已处理完（成功，或已放弃）；
+       返回 false = Root 还没准备好，请稍后再试。 ]]--
+  function App:_tryMount()
+    if app.bound then return true end
+
+    local root = nil
+    util.try(function()
+      if type(game) == "table" and type(game.FindClientUIRoot) == "function" then
+        root = game.FindClientUIRoot(app.rootName)
+      end
+    end)
+
+    if not root then return false end
+
+    local ui = M.new({
+      root     = root,
+      prefabs  = opts.prefabs,
+      handlers = app.handlers,
+    })
+    app.ui = ui
+
+    local ok, err = util.try(function()
+      ui:render(opts.html, opts.css)
+    end)
+    if not ok then
+      util.warn("mount: 渲染失败 " .. tostring(err))
+    end
+
+    -- 交给调用方的钩子：挂图片形状、拿 DOM 做动态内容等
+    if type(opts.onReady) == "function" then
+      util.try(function() opts.onReady(ui) end)
+    end
+
+    if opts.loop ~= false then
+      ui:startLoop(opts.fps)
+    end
+
+    app.bound = true
+    return true
+  end
+
+  -- 内部：开关 script 的逐帧更新（用于"等 Root"的重试）
+  local function setUpdate(on)
+    util.try(function()
+      if type(script) == "table" and type(script.EnableUpdate) == "function" then
+        script:EnableUpdate(on and true or false)
+      end
+    end)
+  end
+
+  --[[ 由入口脚本的 OnStart() 调用。
+
+       挂载成功即返回；若 Root 尚未创建，则打开逐帧更新，
+       交给 update() 继续重试（真机上 Root 常比脚本晚一帧就绪）。 ]]--
+  function App:start()
+    if self:_tryMount() then
+      if type(opts.onStart) == "function" then
+        util.try(function() opts.onStart(self.ui, self) end)
+      end
+      return self
+    end
+    setUpdate(true)
+    return self
+  end
+
+  --[[ 由入口脚本的 OnUpdate(dt) 调用。
+
+       ⚠️ 真机上 OnUpdate 【不被驱动】（docs/引擎能力与限制.md：
+          tick=-1，累计 0.00 秒），所以这里只做"等 Root"的兜底重试；
+          真正的逐帧渲染由 ui:startLoop 用递归 TweenSequence 完成。 ]]--
+  function App:update(dt)
+    if self.bound then return self end
+
+    if self:_tryMount() then
+      setUpdate(false)
+      if type(opts.onStart) == "function" then
+        util.try(function() opts.onStart(self.ui, self) end)
+      end
+      return self
+    end
+
+    self.retry = self.retry + 1
+    if self.retry >= self.maxRetry then
+      util.warn(string.format("mount: 等待 Root 超时（%d 帧）", self.maxRetry))
+      setUpdate(false)
+    end
+    return self
+  end
+
+  --[[ 由入口脚本的 OnDestroy() 调用 ]]--
+  function App:stop()
+    if self.ui then
+      util.try(function() self.ui:stopLoop() end)
+    end
+    if type(opts.onUnmount) == "function" then
+      util.try(function() opts.onUnmount(self.ui, self) end)
+    end
+    self.bound = false
+    return self
+  end
+
+  --[[ 便捷：换内容重新渲染（例如根据状态切换页面） ]]--
+  function App:render(html, css)
+    if not self.ui then return self end
+    util.try(function() self.ui:render(html, css) end)
+    return self
+  end
+
+  --[[ 便捷：运行时改某个元素的文字。
+
+       ★ 必须走 DOM（node:setText），不能写 control.text ——
+         渲染器每帧都会用 DOM 文本覆盖控件（render.lua 的 tset("text", ...)）。 ]]--
+  function App:setText(id, text)
+    if not self.ui or not self.ui.doc then return self end
+    local found = nil
+    dom.walk(self.ui.doc, function(n)
+      if not found and n:isElement() and n.attrs and n.attrs.id == id then
+        found = n
+      end
+    end)
+    if found and type(found.setText) == "function" then
+      util.try(function() found:setText(text) end)
+    else
+      util.warn("mount:setText 找不到元素 #" .. tostring(id))
+    end
+    return self
+  end
+
+  --[[ 便捷：运行时改某个元素的样式（内联样式优先级最高，:hover 改不动它） ]]--
+  function App:setStyle(id, prop, value)
+    if not self.ui or not self.ui.doc then return self end
+    local found = nil
+    dom.walk(self.ui.doc, function(n)
+      if not found and n:isElement() and n.attrs and n.attrs.id == id then
+        found = n
+      end
+    end)
+    if found and type(found.setStyle) == "function" then
+      util.try(function() found:setStyle(prop, value) end)
+    else
+      util.warn("mount:setStyle 找不到元素 #" .. tostring(id))
+    end
+    return self
+  end
+
+  --[[ ★ 若调用 mount 时 Root 已经就绪，这里直接挂上，
+       不必等 OnStart（例：脚本在 Root 建好之后才加载）。 ]]--
+  app:_tryMount()
+
+  return app
+end
+
 M.Instance = Instance
 
 return M
