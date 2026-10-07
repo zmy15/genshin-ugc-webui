@@ -6,7 +6,7 @@ package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
 --[[ 列表重建测试
-     
+
      ★ 这个测试是为了防止一个真实踩过的严重 bug 回归：
        _take() 从控件池取出控件后没有重新 SetActive(true)，
        导致【任何动态列表在多次更新后，所有控件都变成不可见】。

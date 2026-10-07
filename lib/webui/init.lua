@@ -89,7 +89,7 @@ function Instance:setHTML(src)
   self._domChanged = true
 
   --[[ 重置样式表。
-      
+
       ⚠️ 不能累加！每次 setHTML 都追加一份会导致样式表无限增长 ——
          实测踩过：动态页面操作 40 次后积累 40 份重复 CSS，
          样式计算量线性上升，界面越来越卡。

@@ -70,7 +70,7 @@ local function notify(node)
 end
 
 local PSEUDO_EVENTS = {
-  CursorEnter = function(node) 
+  CursorEnter = function(node)
     if node._hover then return false end
     node._hover = true
     return true
