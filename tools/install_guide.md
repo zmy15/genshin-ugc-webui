@@ -56,7 +56,9 @@ prefabs = {
 ```lua
 local webui = require('webui')
 
--- ★ app 要先声明，位置见文件里的注释（两个作用域的坑都写在里面）
+-- ★ app 要先声明，位置见文件里的注释（三个坑都写在里面）
+--   其中第三个是 onReady 的：它触发得比 mount 返回更早，
+--   所以 onReady 里必须用第二个参数，不能指望外层这个 app。
 local app
 app = webui.mount{
   root = "Root",

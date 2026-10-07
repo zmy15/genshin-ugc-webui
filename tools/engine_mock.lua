@@ -181,7 +181,23 @@ function EngineMock.new(prefabs)
     return proxy
   end
 
-  local game = {
+  --[[ ★★ game 必须是【宿主对象】而不是 Lua table（真机实测）。
+
+       ⚠️ 这是本 mock 曾经最严重的失真，代价是一次真机排查：
+
+         真机上 game 是宿主对象：
+           type(game)            -> "userdata"
+           game.FindClientUIRoot -> 可用（能索引、能调用）
+
+         而这里过去直接返回普通 table，于是 type(game)=="table" 恒为真。
+         库里有句 `if type(game) == "table" and ... then FindClientUIRoot ... end`，
+         真机上这个条件恒为 false → FindClientUIRoot 永不调用 → Root 永远找不到。
+         本地 28 个套件却全绿，因为 mock 的 game 恰好是 table。
+
+       现在用 trueProxy 造一个 type() 返回 "userdata" 的代理，
+       让本地也能拦住"用 type() 判断宿主对象"这类错误。
+  ]]--
+  local gameTable = {
     InstantiateClientUIControl = function(idx, parent)
       for k, v in pairs(prefabs) do
         if v == idx then return makeControl(k, parent) end
@@ -213,6 +229,26 @@ function EngineMock.new(prefabs)
       return out
     end,
   }
+
+  --[[ ★ 关于 game 的类型（实测结论，2026-10-07）：
+
+       probe 诊断模块在真机上读回：
+         type(game)   = table
+         typeof(game) = table
+         type(script) = table     （但 typeof(script) = Script）
+
+       => game 就是普通 table，所以这里【照实】返回普通 table，
+          不做任何 userdata 包装。
+
+       ⚠️ 曾经为了复现一个"type(game)=='table' 会短路"的假设，
+          把 game 用 debug.setmetatable 包成 userdata —— 后来真机实测
+          推翻了那个假设（见 docs/引擎能力与限制.md §7.1），
+          而且那种包装会污染 io.stdout 的元表，已撤销。
+
+       ★ 真正需要模拟的真机约束是【OnUpdate 不被驱动】：
+         见 tests/test_mount.lua 第 7 节，那里刻意一次都不调 update()。
+  ]]--
+  local game = gameTable
 
   return {
     game = game,

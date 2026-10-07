@@ -68,7 +68,17 @@ function C.imageSource()
   if probedSource then return cachedSource end
   probedSource = true
 
-  if type(Enum) ~= "table" then return nil end
+  --[[ ★ 不能写 `type(Enum) ~= "table"`（曾经就是这么写的，是真机上
+        圆形裁剪/染色全部失效的原因）。
+
+        官方 API 文档第 154 行把 Enum 的类型标为 `Enum`，不是 table；
+        真机 typeof(Enum) 给的是宿主类型名。所以这个判断会直接 return nil，
+        导致 imageSource() 恒为 nil → asClip 全部失败。
+
+        但 Enum 本身是可索引的（probe.lua 直接读写 Enum.Xxx 一切正常），
+        所以正确做法是【从 Enum 里取 ImageSource，再判断取到的东西】。
+  ]]--
+  if type(Enum) == "nil" then return nil end
 
   local tbl = rawget(Enum, "ImageSource")
   if type(tbl) ~= "table" then return nil end
@@ -170,7 +180,8 @@ function C.asClip(ctrl, opts)
   end
 
   -- ⑤ 可选染色
-  if opts.color and type(Color) == "table" and Color.FromRGBA then
+  -- ★ 别判 type(Color)=="table"：真机上 Color 也可能是宿主对象
+  if opts.color and type(Color) ~= "nil" and type(Color.FromRGBA) == "function" then
     local c = opts.color
     pcall(function()
       ctrl.imageColor = Color.FromRGBA(c.r or 255, c.g or 255, c.b or 255, c.a or 255)
@@ -197,7 +208,8 @@ end
 ]]--
 function C.tint(ctrl, r, g, b, a)
   if not ctrl then return false end
-  if type(Color) ~= "table" or type(Color.FromRGBA) ~= "function" then
+  -- ★ 同上：只判方法是否存在，不判 Color 本身的类型
+  if type(Color) == "nil" or type(Color.FromRGBA) ~= "function" then
     return false
   end
   local ok = pcall(function()

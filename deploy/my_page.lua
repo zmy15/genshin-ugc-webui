@@ -34,16 +34,25 @@
 
 local webui = require('webui')
 
---[[ ★★ app 必须在这里先声明，位置很讲究（两个坑都踩过）：
+--[[ ★★ app 必须在这里先声明（有 3 个坑，前两个是写法，第三个是库的时序）：
 
        ┌ ① 不能写成 `local app = webui.mount{...}`
        │    那样 mount 参数里 on 表的闭包看不到 app（恒为 nil）
        │    —— Lua 的 local 在整条赋值语句执行完之前，对闭包不可见。
        │
-       └ ② 声明必须在【所有用到 app 的函数之前】
-            若某个函数写在 `local app` 之前，它里面的 app 会被解析成
-            【全局变量】并永远是 nil（之后再赋局部值也救不回来），
-            表现为 setText 静默失败、界面不更新。
+       ├ ② 声明必须在【所有用到 app 的函数之前】
+       │     若某个函数写在 `local app` 之前，它里面的 app 会被解析成
+       │     【全局变量】并永远是 nil（之后再赋局部值也救不回来），
+       │     表现为 setText 静默失败、界面不更新。
+       │
+       └ ③ onReady 触发时，上面这个 app 【仍然还没被赋值】
+             —— 因为 onReady 是在 mount 内部跑的，mount 得先返回。
+             实测症状：抛 "attempt to index a nil value (upvalue 'app')"，
+             错误被库的 util.try 的 pcall 吞掉，于是
+             【界面一片空白，日志里什么也没有】，最难查。
+
+             解法：onReady = function(ui, app) ... end
+                   接住第二个参数（见本文件底部 onReady 处的说明）。
 
        正确顺序：这里 local app → 下面写各个函数 → 最后 app = webui.mount{...}
 ]]--
@@ -253,17 +262,24 @@ end
 -- 业务逻辑
 --=============================================================================
 
-local function refresh()
+--[[ 刷新界面。
+
+     ★ 参数 a：由 onReady 传进来（那时外层 `local app` 还没赋值）。
+       正常事件回调里不传，退回用外层的 app。 ]]--
+local function refresh(a)
+  a = a or app
+  if not a then return end   -- 极端情况：还没挂上，静默跳过比抛错好
+
   -- 预算
-  app:setText("budget", string.format("预算 %d / 4", #selectedOrder))
+  a:setText("budget", string.format("预算 %d / 4", #selectedOrder))
 
   -- 已选列表
   if #selectedOrder == 0 then
-    app:setText("picked", "（还没选人）")
+    a:setText("picked", "（还没选人）")
   else
     local names = {}
     for i, id in ipairs(selectedOrder) do names[i] = nameOf(id) end
-    app:setText("picked", table.concat(names, "  ·  "))
+    a:setText("picked", table.concat(names, "  ·  "))
   end
 
   -- 平均等级
@@ -274,20 +290,20 @@ local function refresh()
     end
   end
   if cnt == 0 then
-    app:setText("avgval", "Lv.--")
-    app:setStyle("avgfill", "width", "0px")
+    a:setText("avgval", "Lv.--")
+    a:setStyle("avgfill", "width", "0px")
   else
     local avg = math.floor(sum / cnt + 0.5)
-    app:setText("avgval", "Lv." .. avg)
-    app:setStyle("avgfill", "width", math.floor(avg / 100 * 520) .. "px")  -- 520px = Lv.100
+    a:setText("avgval", "Lv." .. avg)
+    a:setStyle("avgfill", "width", math.floor(avg / 100 * 520) .. "px")  -- 520px = Lv.100
   end
 
   -- 已选卡片高亮
   for _, c in ipairs(CHARS) do
     if isSelected(c.id) then
-      app:setStyle("card-" .. c.id, "background-color", "#2b3a2e")
+      a:setStyle("card-" .. c.id, "background-color", "#2b3a2e")
     else
-      app:setStyle("card-" .. c.id, "background-color", "#232838")
+      a:setStyle("card-" .. c.id, "background-color", "#232838")
     end
   end
 end
@@ -343,10 +359,19 @@ app = webui.mount{
   html = buildHTML(),
   css  = CSS,
 
-  -- 挂载完成后做一次性设置（图片形状），并刷一次初始状态
-  onReady = function(ui)
+  -- 挂载完成后做一次性设置（图片形状），并刷一次初始状态。
+  --
+  -- ★★ 注意第二个参数 app：
+  --    onReady 是在 mount【内部】触发的，此刻上面那个 `local app`
+  --    还没被赋值（mount 得先返回才轮得到它）。所以这里绝不能写
+  --    refresh() 里那种 app:setText(...) —— 会抛
+  --      attempt to index a nil value (upvalue 'app')
+  --    而这个错被库的 pcall 吞掉，症状是「界面不出来、日志还空空」。
+  --
+  --    要用 app 就接第二个参数，它一定可用（见 webui.lua 的 appRef）。
+  onReady = function(ui, app)
     bindAvatars(ui)
-    refresh()
+    refresh(app)
   end,
 
   on = {

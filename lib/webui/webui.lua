@@ -298,12 +298,16 @@ end
      用法（入口脚本里）：
        local webui = require('webui')
 
-       local app = webui.mount{
+       local app
+       app = webui.mount{
          root    = "Root",
          prefabs = { container=1073741933, textbox=1073741934,
                      button=1073741935,    image=1073741938 },
          html    = "<div class=\"card\">你好</div>",
          css     = ".card { width:200px; height:60px; background-color:#333; }",
+         -- ★ onReady 触发时上面的 `local app` 还没被赋值，
+         --   所以它必须用第二个参数，不能用外层闭包。
+         onReady = function(ui, app) app:setText("t", "就绪") end,
          on      = {
            onOk = function(e) ... end,   -- 对应 HTML 里 onclick="onOk"
          },
@@ -320,12 +324,35 @@ end
      ★ 事件模型（Lua 当 JS 用）：
        HTML 里写 onclick="onOk"，on 表里写 on = { onOk = function(e) end }。
        与原来 handlers 的语义一致，只是搬进了 mount 参数。
+
+     ★★ 三个钩子的触发时机（写错就是「界面不出来、还没日志」）：
+
+       onReady(ui, app)   —— 渲染完成、事件已绑，
+                            但【调用方的 app 此时还没被赋值】（mount 尚未返回）。
+                             所以这个回调里只能用第二个参数 app。
+       onStart(ui, app)   —— 由 App:start() 调用，app 一定已就绪。
+       onUnmount(ui, app) —— 由 App:stop() 调用。
+
+       规律：需要「用渲染好的 DOM 做事」用 onReady；
+             只想「初次刷一遍数据」用 onStart 最省心。
 ==============================================================================]]
 function M.mount(opts)
   opts = opts or {}
 
   local App = {}
   App.__index = App
+
+  --[[ ★ 自引用：让 _tryMount 内部的回调能拿到【尚未返回给调用方】的 app。
+
+       ⚠️ 为什么必须有它（真机踩过，症状是「没有任何日志」）：
+          mount 的返回值要等整个函数跑完才赋给调用方的 `app`，
+          但 onReady 是在 _tryMount 里就触发的 —— 此刻调用方的
+          `local app` 仍然是 nil。于是 onReady 里写 `app:setText(...)`
+          会抛 "attempt to index a nil value (upvalue 'app')"，
+          而这个错误被 util.try 的 pcall 吞掉，只留一行 warning，
+          表现为「界面不出来 + 日志空空」。
+     ]]--
+  local appRef = nil
 
   local app = setmetatable({
     ui       = nil,                       -- webui 实例
@@ -337,6 +364,9 @@ function M.mount(opts)
     logTag   = opts.logTag or "[webui]",
   }, App)
 
+  -- 建立自引用（此后 onReady 里可直接用第二个参数，见下）
+  appRef = app
+
   --[[ 内部：尝试挂载。
        返回 true = 已处理完（成功，或已放弃）；
        返回 false = Root 还没准备好，请稍后再试。 ]]--
@@ -345,7 +375,22 @@ function M.mount(opts)
 
     local root = nil
     util.try(function()
-      if type(game) == "table" and type(game.FindClientUIRoot) == "function" then
+      --[[ ★ 不要用 `type(game) == "table"` 来守门。
+
+           ★ 实测澄清（2026-10-07，probe 诊断模块读回）：
+             本机 type(game) 确实是 "table"，typeof(game) 也是 "table"。
+             所以【这一条不是】main.lua 空白的成因 —— 真正成因见
+             beginRetry 上面那段（OnUpdate 不被驱动 + 模块 _ENV 身份）。
+
+           但仍要保留现在的写法，理由是通用的：
+             官方 API 文档把 game 说明为宿主对象，typeof() 的用途就是
+             "识别宿主对象"；script 实测 typeof 为 "Script"（不是 table）。
+             这类全局对象的 type() 在不同实现/版本下并不可靠，
+             而【成员是否存在】才是真正决定能否调用的条件。
+
+           即：判断"能不能用"，就只判断成员；不要判断对象本身的类型。
+      ]]--
+      if type(game) ~= "nil" and type(game.FindClientUIRoot) == "function" then
         root = game.FindClientUIRoot(app.rootName)
       end
     end)
@@ -366,9 +411,13 @@ function M.mount(opts)
       util.warn("mount: 渲染失败 " .. tostring(err))
     end
 
-    -- 交给调用方的钩子：挂图片形状、拿 DOM 做动态内容等
+    -- 交给调用方的钩子：挂图片形状、拿 DOM 做动态内容等。
+    --
+    -- ★ 第二个参数是 app 本身：onReady 触发时调用方的
+    --   `local app` 还没被赋值（见 appRef 处的说明），
+    --   所以要给调用方一条能立刻用上的路。
     if type(opts.onReady) == "function" then
-      util.try(function() opts.onReady(ui) end)
+      util.try(function() opts.onReady(ui, appRef) end)
     end
 
     if opts.loop ~= false then
@@ -379,11 +428,102 @@ function M.mount(opts)
     return true
   end
 
-  -- 内部：开关 script 的逐帧更新（用于"等 Root"的重试）
+  -- 内部：开关 script 的逐帧更新。
+  -- ★ 注意：模块里的 script 是【模块自己的身份】，
+  --   打开它【不会】驱动入口脚本的 OnUpdate（见上面 beginRetry 的说明）。
+  --   这里保留只是为了兼容"调用方恰好在入口环境"的情况，不作依赖。
   local function setUpdate(on)
     util.try(function()
-      if type(script) == "table" and type(script.EnableUpdate) == "function" then
+      if type(script) ~= "nil" and type(script.EnableUpdate) == "function" then
         script:EnableUpdate(on and true or false)
+      end
+    end)
+  end
+
+  --[[ ★★★ 等 Root 就绪 —— 必须用【递归 TweenSequence】，不能用 OnUpdate。
+
+       ⚠️⚠️ 这里曾经是 main.lua "界面空白 + 几乎无日志"的【真正根因】，
+           排查花了好几轮。两个事实叠加造成：
+
+           ① 真机上 `OnUpdate` 【不被驱动】
+              （docs/引擎能力与限制.md §一：R9/R11 实测 tick=-1，累计 0.00 秒）
+
+           ② 库是 require 进来的模块，有【独立 _ENV】，
+              模块里的 `script` 是【模块自己的身份】，不是入口脚本的
+              （docs/webui_feasibility.md：每个模块独立 _ENV，script 是模块自己的身份）
+
+           于是 `script:EnableUpdate(true)` 打开的是【模块】的逐帧更新，
+           而引擎调用的是【入口脚本 main.lua】的 OnUpdate —— 两者不是一回事。
+
+           结果：Root 晚一帧就绪时（真机常态），
+                 App:update 永远不会被调用 → mount 永远挂不上，
+                 而且【什么都不打印】（只有 120 帧超时那条，也等不到）。
+
+           ⚠️ 对照：probe.lua 能跑，是因为它在【入口脚本自己的环境】里
+              调 script:EnableUpdate(true) —— 那才真的驱动了自己的 OnUpdate。
+
+       ★ 正确做法：用递归 TweenSequence 自己驱动重试（R13 实测 698 帧 0 错误）。
+         这条路径不依赖任何 _ENV 身份，与 ui:startLoop 用的是同一套机制。
+  ]]--
+  local retryTimer = nil
+
+  local function stopRetry()
+    if retryTimer then
+      util.try(function() if retryTimer.Kill then retryTimer:Kill() end end)
+      retryTimer = nil
+    end
+  end
+
+  local function beginRetry()
+    if retryTimer then return end          -- 已在重试中
+    if app.bound then return end
+
+    -- 同时也尝试打开引擎的逐帧更新：如果调用方【恰好】在入口脚本环境里
+    -- 触发了 start()，这条也能生效（多一条路，但【不能依赖】它 ——
+    -- 模块里的 script 是模块自己的身份，驱动的不是入口脚本的 OnUpdate）。
+    setUpdate(true)
+
+    local function tick()
+      retryTimer = nil
+      if app.bound then return end
+
+      if app:_tryMount() then
+        setUpdate(false)
+        if type(opts.onStart) == "function" then
+          util.try(function() opts.onStart(app.ui, app) end)
+        end
+        return
+      end
+
+      app.retry = app.retry + 1
+      if app.retry >= app.maxRetry then
+        util.warn(string.format("mount: 等待 Root 超时（%d 帧）", app.maxRetry))
+        setUpdate(false)
+        return
+      end
+
+      -- 续期：递归 TweenSequence（真机唯一可靠的逐帧手段）
+      util.try(function()
+        local seq = game.TweenSequence()
+        if seq then
+          seq:AppendInterval(1.0 / 50)
+          seq:AppendCallback(tick)
+          seq:Play()
+          retryTimer = seq
+        end
+      end)
+    end
+
+    -- 第一帧稍等，给 Root 创建留出时间
+    util.try(function()
+      local seq = game.TweenSequence()
+      if seq then
+        seq:AppendInterval(1.0 / 50)
+        seq:AppendCallback(tick)
+        seq:Play()
+        retryTimer = seq
+      else
+        tick()                            -- 没有 Tween 就立即试一次
       end
     end)
   end
@@ -399,15 +539,18 @@ function M.mount(opts)
       end
       return self
     end
-    setUpdate(true)
+    beginRetry()
     return self
   end
 
   --[[ 由入口脚本的 OnUpdate(dt) 调用。
 
        ⚠️ 真机上 OnUpdate 【不被驱动】（docs/引擎能力与限制.md：
-          tick=-1，累计 0.00 秒），所以这里只做"等 Root"的兜底重试；
-          真正的逐帧渲染由 ui:startLoop 用递归 TweenSequence 完成。 ]]--
+          tick=-1，累计 0.00 秒），所以【不能】依赖它来等 Root ——
+          重试已改由 beginRetry 的递归 TweenSequence 负责。
+
+       本方法保留只为兼容手册里的 3 行接线；若它恰好被驱动，
+       也只会让重试更快一点，不会有副作用。 ]]--
   function App:update(dt)
     if self.bound then return self end
 
@@ -419,11 +562,8 @@ function M.mount(opts)
       return self
     end
 
-    self.retry = self.retry + 1
-    if self.retry >= self.maxRetry then
-      util.warn(string.format("mount: 等待 Root 超时（%d 帧）", self.maxRetry))
-      setUpdate(false)
-    end
+    -- 兜底：确保 Tween 重试已启动（即便调用方漏了 start()）
+    beginRetry()
     return self
   end
 
@@ -432,6 +572,8 @@ function M.mount(opts)
     if self.ui then
       util.try(function() self.ui:stopLoop() end)
     end
+    -- ★ 停掉"等 Root"的重试链，避免销毁后还在跑
+    stopRetry()
     if type(opts.onUnmount) == "function" then
       util.try(function() opts.onUnmount(self.ui, self) end)
     end
@@ -484,8 +626,17 @@ function M.mount(opts)
   end
 
   --[[ ★ 若调用 mount 时 Root 已经就绪，这里直接挂上，
-       不必等 OnStart（例：脚本在 Root 建好之后才加载）。 ]]--
-  app:_tryMount()
+       不必等 OnStart（例：脚本在 Root 建好之后才加载）。
+
+        ★★ 若还没就绪，【必须顺手启动 Tween 重试】：
+           真机上 Root 常比脚本晚一帧就绪，而 OnUpdate 不被驱动，
+           所以这里不启动的话，就只能等调用方调 start() ——
+           一旦调用方漏了或时序不对，页面就永远挂不上，
+           而且什么都不打印（这正是 main.lua 之前的表现）。
+    ]]--
+  if not app:_tryMount() then
+    beginRetry()
+  end
 
   return app
 end

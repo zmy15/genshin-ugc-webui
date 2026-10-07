@@ -11,6 +11,9 @@
     "text"    文字渲染定位        —— 交错对照：字号 / 布局 / 控件数量
     "mask"    遮罩与裁剪          —— enableMask 形状 / SetImage / 矩形裁剪
     "glyph"   几何字符            —— 字符可用性 / 无缝方案
+    "clip"    裁剪容器诊断        —— 逐控件真机状态读回
+    "mount"   ★ mount 诊断        —— main.lua 跑不起来时用这个
+                                    读 typeof(game) / Root / prefabs / bound
     "all"     依次跑上面全部      —— 注意会串在一起显示，仅用于快速排查
 
   ══════════════════════════════════════════════════════════════════════════
@@ -656,10 +659,157 @@ local function collect(ui, classSet)
 end
 
 --=============================================================================
+-- 模块 5：mount 诊断 —— 为什么 main.lua 跑不起来？
+--
+--   ★ 目的：直接测出 mount 失败的真实原因，不靠猜。
+--
+--   main.lua 用 webui.mount，probe 用 webui.new 裸调 —— 两者环境相同，
+--   差异只在代码路径。本模块把那条路径上的每一个环节都读出来。
+--
+--   判读：
+--     · typeof(game) / type(game)  —— 验证"宿主对象"假设是否成立
+--     · FindClientUIRoot 能否找到 Root
+--     · 每个 prefab 索引能否真的建出控件
+--     · 直接跑一次 mount，看 bound 是否为 true
+--=============================================================================
+
+M.mount = {}
+
+M.mount.CSS = [[
+<style>
+  #root { width: 1000px; height: 400px; background-color: #101018; }
+  .t { width: 900px; height: 40px; font-size: 20px; color: #7fd1ff; }
+</style>
+<div id="root">
+  <div class="t" id="t1">mount 诊断</div>
+</div>
+]]
+
+function M.mount.build()
+  return [[
+<div id="root">
+  <div class="t" id="t1">mount 诊断</div>
+</div>]]
+end
+
+--[[ ★ 核心诊断：把 mount 依赖的每个前提逐个读出来 ]]--
+function M.mount.after(ui, items)
+  log("")
+  log("============================================================")
+  log("  mount 诊断：逐个前提检查")
+  log("============================================================")
+
+  -- ① game 到底是什么（这是先前一直靠猜的地方）
+  log("")
+  log("[1] game 对象")
+  log(string.format("    type(game)   = %s", tostring(type(game))))
+  local tn = safeCall(function() return typeof(game) end)
+  log(string.format("    typeof(game) = %s", tostring(tn)))
+  log(string.format("    type(game.FindClientUIRoot) = %s",
+      tostring(type(safeCall(function() return game.FindClientUIRoot end)))))
+  log(string.format("    ★ 关键: type(game)=='table' ? %s   （若为 false，"
+      .. "旧代码的 type(game)=='table' 判断会短路）",
+      tostring(type(game) == "table")))
+
+  -- ② script 对象
+  log("")
+  log("[2] script 对象")
+  log(string.format("    type(script) = %s", tostring(type(script))))
+  log(string.format("    typeof(script) = %s", tostring(safeCall(function() return typeof(script) end))))
+  log(string.format("    script.EnableUpdate = %s",
+      tostring(type(safeCall(function() return script.EnableUpdate end)))))
+
+  -- ③ Enum / Color
+  log("")
+  log("[3] Enum / Color 对象")
+  log(string.format("    type(Enum)  = %s   type(Color) = %s",
+      tostring(type(Enum)), tostring(type(Color))))
+  local isTbl = safeCall(function() return rawget(Enum, "ImageSource") end)
+  log(string.format("    rawget(Enum,'ImageSource') = %s", tostring(isTbl)))
+  log(string.format("    Enum.ImageSource.StaticReference = %s",
+      tostring(safeCall(function() return Enum.ImageSource.StaticReference end))))
+
+  -- ④ Root
+  log("")
+  log("[4] 找 Root 控件")
+  local r = safeCall(function() return game.FindClientUIRoot(ROOT_NAME) end)
+  log(string.format("    FindClientUIRoot(%q) = %s", ROOT_NAME, tostring(r)))
+  local roots = safeCall(function() return game.GetClientUIRoots() end)
+  if type(roots) == "table" then
+    log(string.format("    GetClientUIRoots() 共 %d 个:", #roots))
+    for i = 1, #roots do
+      local nm = safeCall(function() return roots[i].name end)
+      log(string.format("      [%d] name=%s", i, tostring(nm)))
+    end
+  else
+    log(string.format("    GetClientUIRoots() = %s", tostring(roots)))
+  end
+
+  -- ⑤ prefabs 索引是否真能建出控件
+  log("")
+  log("[5] prefabs 模板索引实测（用 Root 当父）")
+  if r then
+    for _, kind in ipairs({ "container", "textbox", "button", "image" }) do
+      local idx = PREFABS[kind]
+      local c = safeCall(function() return game.InstantiateClientUIControl(idx, r) end)
+      log(string.format("    %-10s idx=%-12s -> %s", kind, tostring(idx),
+          c ~= nil and "OK 建出控件" or "★ nil（索引不存在？）"))
+    end
+  else
+    log("    (Root 未找到，跳过)")
+  end
+
+  -- ⑥ 真正跑一次 mount，看 bound
+  log("")
+  log("[6] 实跑一次 webui.mount")
+  local webui = safeCall(function() return require('webui') end)
+  if not webui then
+    log("    ★ require('webui') 失败")
+  else
+    -- 先清掉探针自己建的控件，避免干扰
+    local ok, app = pcall(function()
+      return webui.mount{
+        root    = ROOT_NAME,
+        prefabs = PREFABS,
+        html    = [[<div id="root"><div class="t">mount 测试</div></div>]],
+        css     = [[#root { width:600px; height:100px; background-color:#1a1a28; }
+                    .t { width:560px; height:40px; font-size:20px; color:#ffffff; }]],
+        loop    = false,
+        on      = {},
+      }
+    end)
+    if not ok then
+      log("    ★ mount 抛错: " .. tostring(app))
+    else
+      log(string.format("    mount 返回 = %s", tostring(app)))
+      log(string.format("    app.bound    = %s   ★ 必须是 true", tostring(app.bound)))
+      log(string.format("    app.ui       = %s", tostring(app.ui)))
+      if app.ui then
+        log(string.format("    app.ui.doc   = %s", tostring(app.ui.doc)))
+      end
+      if app.ui and app.ui.rendered then
+        log(string.format("    rendered     = %s", tostring(safeCall(function()
+          return app.ui.rendered:statsText() end))))
+      end
+      if not app.bound then
+        log("")
+        log("    ★★ bound=false 说明 mount 没挂上。结合上面 [1] 的")
+        log("       type(game)=='table' 判读：若为 false 且代码里用了")
+        log("       那个判断，就是它短路了。")
+      end
+    end
+  end
+
+  log("")
+  log("============================================================")
+end
+
+--=============================================================================
 -- 主流程
 --=============================================================================
 
-local MODULES = { text = M.text, mask = M.mask, glyph = M.glyph, clip = M.clip }
+local MODULES = { text = M.text, mask = M.mask, glyph = M.glyph,
+                  clip = M.clip, mount = M.mount }
 
 local root, ui, bound, retryCount = nil, nil, false, 0
 

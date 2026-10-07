@@ -69,6 +69,9 @@ local webui = require('webui')
 -- ★ 注意写法：必须先 local 声明，再赋值。
 --   `local app = webui.mount{...}` 会让 on 表里的闭包看不到 app（恒为 nil），
 --   因为 Lua 的 local 在整条赋值语句执行完之前对内部闭包不可见。
+--
+--   ★ onReady 里也一样看不到（它比 mount 返回更早触发），
+--     要用它的第二个参数：onReady = function(ui, app) ... end
 local app
 app = webui.mount{
   root    = "Root",
