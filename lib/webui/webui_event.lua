@@ -247,4 +247,172 @@ function E.enableCursor(rootControl)
   return ok
 end
 
+--=============================================================================
+-- 按键事件（★ R20 真机验证，2026-10-08）
+--
+--   真机实测结论（探针模块 key，docs/引擎能力与限制.md §5.2）：
+--     · AddKeyEventListener 在【文本框 / 根控件】上都可用
+--     · Enum.KeyEventType 存在，pairs() 可遍历 164 项
+--     · KeyboardJumpKeyDown/Up 可捕获，Down/Up 能成对判定
+--     · ★★ 同一事件会被【每个绑定它的控件】各收一遍
+--          -> 所以只绑【一个】挂载点，默认 root
+--     · ★ 回调【绝不能 return true】—— 会吞掉同容器内其他按键
+--          （client_control_api.md 第 1317 行）
+--     · ⚠️ 回调的 data.type 读回为空 —— 按键回调的 data 结构与
+--          光标事件不同，不要试图从 data 取键码；
+--          「绑的是哪个枚举」本身就确定了是哪个键。
+--=============================================================================
+
+--[[ 按键名（Enum.KeyEventType 的成员名）-> 语义别名。
+
+     用途：让页面用中文键名或简短别名绑键，而不是记长枚举名。 ]]--
+E.KEY_ALIASES = {
+  -- 跳跃（小恐龙等平台游戏默认用这个）
+  jump        = "KeyboardJumpKeyDown",
+  jumpDown    = "KeyboardJumpKeyDown",
+  jumpUp      = "KeyboardJumpKeyUp",
+  -- 移动
+  left        = "KeyboardMoveLeftKeyDown",
+  leftDown    = "KeyboardMoveLeftKeyDown",
+  leftUp      = "KeyboardMoveLeftKeyUp",
+  right       = "KeyboardMoveRightKeyDown",
+  rightDown   = "KeyboardMoveRightKeyDown",
+  rightUp     = "KeyboardMoveRightKeyUp",
+  forward     = "KeyboardMoveForwardKeyDown",
+  forwardUp   = "KeyboardMoveForwardKeyUp",
+  backward    = "KeyboardMoveBackwardKeyDown",
+  backwardUp  = "KeyboardMoveBackwardKeyUp",
+  -- 奇匠按键（UGC 自定义键位）
+  key1        = "KeyboardCraftspersonKey1Down",
+  key1Up      = "KeyboardCraftspersonKey1Up",
+  key2        = "KeyboardCraftspersonKey2Down",
+  key2Up      = "KeyboardCraftspersonKey2Up",
+  key3        = "KeyboardCraftspersonKey3Down",
+  key3Up      = "KeyboardCraftspersonKey3Up",
+  key4        = "KeyboardCraftspersonKey4Down",
+  key4Up      = "KeyboardCraftspersonKey4Up",
+  -- 手柄（同样实测存在于那 164 项里）
+  padJump     = "ControllerJumpKeyDown",
+  padJumpUp   = "ControllerJumpKeyUp",
+}
+
+--[[ 把键名解析成引擎枚举值。
+
+     ★ 禁止照文档猜枚举名（R16 教训）—— 这里用 pcall 显式取，
+       取不到就返回 nil，由调用方决定降级策略。
+
+     参数 key 可以是：
+        · 语义别名（"jump" / "left" / "key1"）—— 见 E.KEY_ALIASES
+        · 完整枚举名（"KeyboardJumpKeyDown"）
+     返回：枚举值 或 nil ]]--
+function E.resolveKey(key)
+  if key == nil then return nil end
+  if type(Enum) == "nil" then return nil end
+  local ket = Enum.KeyEventType
+  if ket == nil then return nil end
+
+  local name = E.KEY_ALIASES[key] or key
+  return (pcall(function() return ket[name] end)) and ket[name] or nil
+end
+
+--[[ 在一个控件上绑定一个按键。
+
+    ★★ 一个按键只绑【一个】挂载点 —— 真机实测同一个事件会被
+       每个绑定它的控件各收一遍（3 个控件 = 按一次收 3 次）。
+       所以本函数【不做】多控件尝试，由调用方明确指定挂载点。
+
+    ⚠️ 回调一律 `return false`，避免吞掉同容器内其他按键。
+
+   参数：
+     control   挂载控件（推荐 root；必须真的有 AddKeyEventListener）
+     key       键名（别名或完整枚举名）
+     fn        回调 fn(info)，info = { event=, key=, control=, raw= }
+     opts      { once = 只触发一次后自动解绑 }
+
+   返回：成功的绑定数（0 或 1） ]]--
+function E.bindKey(control, key, fn, opts)
+  opts = opts or {}
+  if not control or type(fn) ~= "function" then return 0 end
+  if type(control.AddKeyEventListener) ~= "function" then return 0 end
+
+  local ev = E.resolveKey(key)
+  if ev == nil then
+    util.warn(string.format("绑定按键失败: 无法解析键名 '%s'", tostring(key)))
+    return 0
+  end
+
+  -- ★ 保留回调引用，供解绑使用（文档第 763 行：移除时需同一引用）
+  local cb
+  cb = function(data)
+    local info = {
+      event   = "KeyDown",
+      key     = key,
+      control = control,
+      raw     = data,
+    }
+    if opts.once then
+      -- 只触发一次：先解绑再回调，避免回调里再按键导致重入
+      pcall(function()
+        if type(control.RemoveKeyEventListener) == "function" then
+          control:RemoveKeyEventListener(ev, cb)
+        end
+      end)
+    end
+    local ok, err = pcall(fn, info)
+    if not ok then
+      util.warn("按键处理器出错 [" .. tostring(key) .. "]: " .. tostring(err))
+    end
+    -- ★★ 绝不返回 true（否则吞掉同容器内其他按键）
+    return false
+  end
+
+  local ok = pcall(function() control:AddKeyEventListener(ev, cb) end)
+  if not ok then
+    util.warn(string.format("绑定按键失败: %s（控件 %s）",
+        tostring(key), tostring(control.name)))
+    return 0
+  end
+
+  -- 记下引用，供 E.unbindKeys 统一清理
+  if not E._keyBindings then E._keyBindings = {} end
+  E._keyBindings[#E._keyBindings + 1] = { control = control, ev = ev, cb = cb }
+  return 1
+end
+
+--[[ 批量绑定：keys = { jump = fn1, left = fn2, ... } ]]--
+function E.bindKeys(control, keys, opts)
+  local n = 0
+  if type(keys) ~= "table" then return 0 end
+  -- ★ pairs 顺序未定义，但这里每项互相独立，顺序无关
+  for key, fn in pairs(keys) do
+    if type(fn) == "function" then
+      n = n + E.bindKey(control, key, fn, opts)
+    end
+  end
+  return n
+end
+
+--[[ 解绑全部由 E.bindKey 建立的按键监听（销毁时调用，防泄漏）。
+
+     ⚠️ 必须用【同一个回调引用】移除（文档第 763 行）。 ]]--
+function E.unbindKeys()
+  local list = E._keyBindings
+  if not list then return 0 end
+  local n = 0
+  for i = 1, #list do
+    local b = list[i]
+    pcall(function()
+      if type(b.control.RemoveKeyEventListener) == "function" then
+        b.control:RemoveKeyEventListener(b.ev, b.cb)
+        n = n + 1
+      elseif type(b.control.RemoveAllKeyEventListeners) == "function" then
+        b.control:RemoveAllKeyEventListeners()
+        n = n + 1
+      end
+    end)
+  end
+  E._keyBindings = {}
+  return n
+end
+
 return E

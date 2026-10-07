@@ -78,7 +78,26 @@ function EngineMock.new(prefabs)
       fields = { active = true, visible = true },
       children = {},
       listeners = {},
+      keyListeners = {},        -- ★ 按键监听（AddKeyEventListener）
     }
+
+    --[[ ★★★ 文本框有【引擎默认背景色】（R21 真机实证，2026-10-08）
+
+         CSS 里不写 background-color 时，真机的文本框【不是透明的】，
+         而是画一层默认深色底（截图量得约 #535353）。
+         若字色也是深色 -> 字与底同色 -> **文字完全看不见**。
+
+         ⚠️ 这正是 R21 在真机上踩的坑（对比度只有 3）。
+            如果 mock 让 bgColor 停在 nil，本地就【永远测不出】
+            "忘了写背景色"这个 bug —— 属于「测试替身必须忠实」
+            那条方法学（见 docs/引擎能力与限制.md §七）。
+
+         ★ 真机量到的近似值：(83,83,83) 的字段值 / 截图上呈现为 (49,48,48)
+           （截图受渲染与抗锯齿影响，这里取声明侧的 #535353）。
+    ]]--
+    if kind == "textbox" then
+      data.fields.bgColor = { r = 83, g = 83, b = 83, a = 255 }
+    end
 
     local allowed = {}
     for k in pairs(COMMON) do allowed[k] = true end
@@ -118,6 +137,37 @@ function EngineMock.new(prefabs)
       end,
       RemoveAllCursorEventListeners = function()
         data.listeners = {}
+      end,
+
+      --[[ ★ 按键事件（client_control_api.md 第 762 行）
+
+           AddKeyEventListener(eventType, callback)
+
+           ⚠️ 真机行为（文档第 1317 行）：
+              按键事件被 Lua 回调【标记为已处理】后，同容器内其他按键
+              不再响应本次事件。所以这里照实模拟：
+              回调返回 true 之外的【任何值】都算"未处理"。
+              返回 true 才吞掉事件 —— 探针必须一律 return false。
+
+           ★ 注意：真机上这个方法只在【容器节点】上有，mock 不做限制，
+             以免把"探针忘了判断控件类型"这类问题掩盖掉。
+      ]]--
+      AddKeyEventListener = function(_, ev, cb)
+        data.keyListeners[#data.keyListeners+1] = { ev=ev, cb=cb }
+      end,
+      RemoveKeyEventListener = function(_, ev, cb)
+        for i = #data.keyListeners, 1, -1 do
+          local L = data.keyListeners[i]
+          if L.ev == ev and L.cb == cb then table.remove(data.keyListeners, i) end
+        end
+      end,
+      RemoveKeyEventListeners = function(_, ev)
+        for i = #data.keyListeners, 1, -1 do
+          if data.keyListeners[i].ev == ev then table.remove(data.keyListeners, i) end
+        end
+      end,
+      RemoveAllKeyEventListeners = function()
+        data.keyListeners = {}
       end,
 
       --[[ ★ 图片控件方法（R16 真机实测）
@@ -269,6 +319,31 @@ function EngineMock.new(prefabs)
     createdCount = function() return created end,
     makeControl = makeControl,
     dataOf = function(c) return dataMap[c] end,
+
+    --[[ ★ 模拟按下某个按键：把所有绑定了该 eventType 的回调叫一遍。
+
+         真机行为（文档第 1317 行）：某个回调返回 true = 标记已处理
+         -> 同容器内其他按键不再响应本次事件。
+         这里照实实现，好让"回调误返回 true 会吞掉事件"这个坑
+         在本地就能被测出来。
+
+         用法：E.fireKey(e, Enum.KeyEventType.KeyboardJumpKeyDown, data)
+    ]]--
+    fireKey = function(ctrl, ev, payload)
+      local d = dataMap[ctrl]
+      if not d then return false end
+      for _, L in ipairs(d.keyListeners) do
+        if L.ev == ev then
+          local handled = L.cb(payload)
+          if handled == true then return true end   -- 已处理，不再往下发
+        end
+      end
+      return false
+    end,
+    keyListenerCount = function(ctrl)
+      local d = dataMap[ctrl]
+      return d and #d.keyListeners or 0
+    end,
     -- 工具：统计沿父链可见的控件数
     visibleCount = function()
       local n = 0

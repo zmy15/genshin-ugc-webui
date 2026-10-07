@@ -3,7 +3,7 @@
 在《原神》千星奇域 UGC 环境中，用 Lua 渲染 HTML/CSS 风格的界面。
 
 ```
-3,500+ 行 Lua / 12 个模块 / 零外部依赖 / 19 个测试套件
+3,500+ 行 Lua / 12 个模块 / 零外部依赖 / 32 个测试套件
 ```
 
 ---
@@ -200,6 +200,64 @@ local ui = webui.new({
 | `onclick` / `onmousedown` / `onmouseup` | ✅ |
 | `onmouseenter` / `onmouseleave` | ✅ |
 | `ondragstart` / `ondrag` / `ondragend` | ✅ |
+| **键盘 `keys`（★ R20 真机验证）** | ✅ |
+
+#### 键盘事件（做游戏必用）
+
+```lua
+app = webui.mount{
+  keys = {
+    jump = function() ... end,   -- KeyboardJumpKeyDown
+    left = function() ... end,   -- KeyboardMoveLeftKeyDown
+  },
+}
+```
+
+**可用别名**（`webui.event.KEY_ALIASES`）：
+
+| 别名 | 引擎枚举 |
+|---|---|
+| `jump` / `jumpUp` | `KeyboardJumpKeyDown/Up` |
+| `left` / `right` / `forward` / `backward` | `KeyboardMove*KeyDown` |
+| `key1` ~ `key4`（+ `key1Up`…） | `KeyboardCraftspersonKey*` |
+| `padJump` / `padJumpUp` | `ControllerJumpKeyDown/Up` |
+
+也可直接传完整枚举名。**键名禁止硬编码猜** —— 库用 `pcall` 显式解析，
+解析不到会 `warn` 并返回 0（不会静默失败）。
+
+**⚠️ 两条真机铁律（R20 实测）：**
+
+1. **一个按键只绑一个挂载点。** 同一个事件会被**每个绑定它的控件**
+   各收一遍 —— 同时绑 root 和子控件，按一次会跳 3 次。
+   库固定只绑 `root`。
+2. **回调一律返回 `false`。** 返回 `true` 会吞掉同容器内其他按键
+   （官方文档第 1317 行）。库已代劳，业务回调不用操心。
+
+**低层 API**（不走 mount 时）：
+
+```lua
+webui.event.bindKey(root, "jump", fn)      -- 单个
+webui.event.bindKeys(root, { jump = fn })  -- 批量
+webui.event.unbindKeys()                   -- 清理（stop 时自动调用）
+webui.event.resolveKey("jump")             -- 别名 -> 枚举值
+```
+
+#### 游戏循环钩子 `onTick(dt)`
+
+```lua
+app = webui.mount{
+  fps    = 50,
+  onTick = function(dt)
+    -- 更新游戏状态（重力、碰撞、障碍移动）
+  end,
+}
+```
+
+**顺序保证：每帧先跑 `onTick(dt)`，再 `flush()` 渲染。**
+`dt` 是**固定步长** `1/fps`（不是真实帧间隔）—— 做物理反而更好，结果可复现。
+
+不用 mount 时：`ui:startLoop(fps, onTick)` 或 `ui:setTick(fn)`。
+不传 `onTick` 时行为与从前完全一致（只 `flush`）。
 
 回调收到：
 
@@ -322,6 +380,8 @@ ui:render(html)
 | `imageId` 只读，但可换图 | 字段只读，**用 `img:SetImage(Enum.ImageSource.StaticReference, id)`**（R16 实证可用） |
 | `fontSize` 必须整数 | 浮点会报错 |
 | **★ 文字框高 ≥ 字号 × 1.9** | ★ R19 实证：框太矮时引擎的**字号自适应会把字压没** —— 症状是"文字凭空消失"，而日志全对 |
+| **★ 文本框必须显式 `background-color`** | ★ R21 实证：不写时引擎给**默认深色底**，字色若也是深色 → **文字看不见**（实测底 48 / 字 45，对比度 3） |
+| **★ 居中必须写 `text-align`** | ★ R21 实证：默认 `left`，文字贴框左边（实测左右边距差 470px）。**框居中 ≠ 文字居中** |
 | **★ 裁剪容器不设 `background-color`** | 它的填充不受自身遮罩约束，会溢出到裁剪区外 |
 | **★ 容器高度要装得下内容** | 元素无 `overflow:hidden` 时，溢出内容**仍可见但失去父背景** → 表现为"某块背景颜色不同" |
 

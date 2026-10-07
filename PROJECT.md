@@ -34,6 +34,7 @@
 | 文件 | 说明 |
 |---|---|
 | **`probe.lua`** | ★ **统一真机探针**（改 `ACTIVE` 选模块，见 §五） |
+| **`demo_dino.lua`** | ★ **小恐龙跳跃游戏** —— 演示 `keys` 键盘 + `onTick` 游戏循环 |
 | `demo_panel.lua` | **角色面板** —— 综合验证圆形/矩形裁剪、`SetImage` 换形状、文字渲染 |
 | `demo_shop.lua` | 装备商店 —— 10 卡片、页签、筛选、购物车、结算、transition |
 
@@ -99,7 +100,7 @@ lua verify_external.lua "<external_lua_file 路径>"
 
 ---
 
-## 四、测试（28 个套件）
+## 四、测试（32 个套件）
 
 ```bash
 lua test_xxx.lua
@@ -127,8 +128,12 @@ lua test_xxx.lua
 | `test_real_prefabs` | 真实模板索引 |
 | **`test_clip`** | ★ **裁剪 / 换图**（遮罩容器、矩形裁剪、透明处理） |
 | `test_demo_panel` | 角色面板 demo 自检 |
+| **`test_input`** | ★ **按键绑定 + onTick 游戏循环钩子**（含"不能返回 true"断言） |
+| **`test_demo_dino`** | ★ 小恐龙：跳跃物理 / 碰撞 / 速度上限（独立复刻状态机验数值） |
+| **`test_demo_dino_run`** | ★ 小恐龙端到端：真跑 700+ 帧，验证开始/碰撞/重开/无泄漏 |
+| **`test_demo_dino_style`** | ★ 文字视觉：所有文字框必须有显式背景 + 居中（守住 R21 两个坑） |
 | `test_demo_feature` | 功能展示页 demo 自检（形状 / 裁剪数 / 文字硬约束） |
-| `test_probe` | 统一探针自检（四个模块都能跑通） |
+| `test_probe` | 统一探针自检（`key` 模块含真实按键回调断言） |
 
 **★ 标记的是关键回归测试**，各自对应真机上踩过的严重 bug。
 
@@ -141,21 +146,25 @@ lua test_xxx.lua
 ### 用法：改一行切换模块
 
 ```lua
-local ACTIVE = "clip"     -- 改这里
+local ACTIVE = "key"     -- 改这里（★ 当前只有 key 一个模块）
 ```
 
 | 模块 | 内容 |
 |---|---|
-| **`text`** | 文字渲染定位（框高/字号对照，交错设计） |
-| **`clip`** | 裁剪容器（imageColor 对照：不设 / 透明 / 红色） |
-| **`mask`** | 遮罩形状 / `SetImage` 换图 / 矩形裁剪 |
-| **`glyph`** | 几何字符 + 无缝方案 |
-| `all` | 依次跑全部（快速排查） |
+| **`key`** | ★ 键盘事件（`AddKeyEventListener` 能否用 —— 做跳跃类游戏的前提） |
+
+> ⚠️ **已移除的模块**：`text` / `mask` / `glyph` / `clip` / `mount`
+> （2026-10-07 精简）。它们的**结论、设计意图与重建要点**归档在
+> `docs/探针模块归档.md`。
+>
+> 要复验 R15~R19 的历史结论（矩形裁剪 / 字形有缝 / 框高阈值…）时，
+> **按该文档重建模块**，不要凭记忆重写。
+> 若 `main.lua` 又出现"界面空白且无日志"，**优先重建 `mount`**。
 
 探针头部固化了**历史结论索引**（R15~R19）和**硬性约束清单**，
 写新验证前先读一遍，避免重复踩坑。
 
-**本地试跑**：`lua test_probe.lua`（用 mock 验证四个模块都能跑通）
+**本地试跑**：`lua test_probe.lua`（用 mock 验证探针模块能跑通）
 
 ---
 

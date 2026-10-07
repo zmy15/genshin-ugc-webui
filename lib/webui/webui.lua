@@ -232,10 +232,30 @@ end
 
 --[[ 启动逐帧循环
      OnUpdate 在真机上不被驱动（R9/R11 实测），
-     所以用 TweenSequence 递归实现。 ]]--
-function Instance:startLoop(fps)
+     所以用 TweenSequence 递归实现。
+
+     ★ onTick(dt) —— 游戏逻辑钩子（2026-10-08 新增）。
+
+       原来这个循环【只做 flush()】，没有任何地方能挂游戏逻辑
+       （重力、跳跃、障碍移动、碰撞检测）。做小恐龙这类玩法时
+       只能自己再起一条 TweenSequence，两条循环各跑各的，
+       时序对不齐。
+
+       现在把逻辑钩子接进同一条循环，保证：
+         onTick(dt) 先跑（更新状态）-> 再 flush()（渲染）
+
+       这正是「先改数据再渲染」的正确顺序。
+
+     ⚠️ dt 是【固定步长】（1/fps），不是真实帧间隔 ——
+        因为 TweenSequence 的 AppendInterval 是固定值。
+        用固定步长做物理反而更好（结果可复现、不受掉帧影响）。 ]]--
+function Instance:startLoop(fps, onTick)
   if self.ticking then return self end
   self.ticking = true
+
+  if type(onTick) == "function" then
+    self.onTick = onTick
+  end
 
   local interval = 1.0 / (fps or 50)
   local self_ = self
@@ -243,7 +263,12 @@ function Instance:startLoop(fps)
   local function tick()
     if not self_.ticking then return end
 
-    -- 逐帧逻辑：目前是重新布局（后续可加动画/状态更新）
+    -- ① 先跑游戏逻辑（更新 DOM 上的状态）
+    if type(self_.onTick) == "function" then
+      util.try(function() self_.onTick(interval) end)
+    end
+
+    -- ② 再渲染（重新布局 + diff 写入）
     util.try(function()
       self_:flush()
     end)
@@ -260,6 +285,12 @@ function Instance:startLoop(fps)
   end
 
   util.try(tick)
+  return self
+end
+
+--[[ 设置/替换逐帧逻辑钩子（循环已在跑时也能换） ]]--
+function Instance:setTick(fn)
+  self.onTick = fn
   return self
 end
 
@@ -311,11 +342,31 @@ end
          on      = {
            onOk = function(e) ... end,   -- 对应 HTML 里 onclick="onOk"
          },
+         -- ★ 键盘（R20 真机验证，2026-10-08）：做游戏必用
+         keys = {
+           jump = function() ... end,    -- KeyboardJumpKeyDown
+           left = function() ... end,    -- KeyboardMoveLeftKeyDown
+         },
+         -- ★ 游戏逻辑钩子：每帧【先跑 onTick(dt) 再渲染】
+         onTick = function(dt) ... end,
        }
 
        function OnStart()    app:start()  end
        function OnUpdate(dt) app:update() end
        function OnDestroy()  app:stop()   end
+
+     ★ 关于 keys（真机实测要点，详见 docs/引擎能力与限制.md §5.2）：
+        · 只绑在【root 一个挂载点】上 —— 同一个事件会被每个绑定它的
+          控件各收一遍，绑多处会导致"按一次跳 3 次"
+        · 键名可用语义别名（jump / left / right / key1~4 / padJump）
+          或完整枚举名（KeyboardJumpKeyDown）
+        · 回调一律返回 false，不会吞掉同容器内其他按键
+
+     ★ 关于 onTick(dt)：
+        · dt 是【固定步长】(1/fps)，不是真实帧间隔 —— 做物理反而更好
+          （结果可复现，不受掉帧影响）
+        · 顺序保证：onTick 先更新状态 -> 再 flush() 渲染
+        · 不传 onTick 时，循环行为与从前完全一致（只 flush）
 
      ★ 为什么 prefabs 仍要求显式传：
        控件模板索引只在编辑器里配置，库无从发现，猜错会静默失败
@@ -404,11 +455,29 @@ function M.mount(opts)
     })
     app.ui = ui
 
+    -- ★ 游戏逻辑钩子（在 startLoop 之前设定，首帧就能跑）
+    if type(opts.onTick) == "function" then
+      ui.onTick = opts.onTick
+    end
+
     local ok, err = util.try(function()
       ui:render(opts.html, opts.css)
     end)
     if not ok then
       util.warn("mount: 渲染失败 " .. tostring(err))
+    end
+
+    -- ★★ 绑定按键（R20 真机验证可用，2026-10-08）
+    --
+    --   ★ 只绑【一个】挂载点（root）—— 真机实测同一个事件会被
+    --     每个绑定它的控件各收一遍：若同时绑 root 和子控件，
+    --     按一次跳跃会跳 3 次。
+    if type(opts.keys) == "table" then
+      local n = event.bindKeys(root, opts.keys)
+      app.keyCount = n
+      if n == 0 then
+        util.warn("mount: 按键绑定 0 个（键名无法解析，或控件不支持）")
+      end
     end
 
     -- 交给调用方的钩子：挂图片形状、拿 DOM 做动态内容等。
@@ -421,7 +490,7 @@ function M.mount(opts)
     end
 
     if opts.loop ~= false then
-      ui:startLoop(opts.fps)
+      ui:startLoop(opts.fps, opts.onTick)
     end
 
     app.bound = true
@@ -572,6 +641,8 @@ function M.mount(opts)
     if self.ui then
       util.try(function() self.ui:stopLoop() end)
     end
+    -- ★ 解绑按键监听（用同一回调引用移除，防泄漏）
+    util.try(function() event.unbindKeys() end)
     -- ★ 停掉"等 Root"的重试链，避免销毁后还在跑
     stopRetry()
     if type(opts.onUnmount) == "function" then

@@ -365,6 +365,69 @@ if plCtrl then
             tostring(col.b)) or tostring(col)))
 end
 
+--=============================================================================
+print()
+print("=== 9. ★ 裁剪容器的文字子控件要继承背景色（R21 实证）===")
+--=============================================================================
+--[[ 背景（2026-10-08 真机截图逐像素量得）：
+
+     裁剪容器是 image 类型，自身【没有 text 字段】，
+     所以库会额外挂一个 textbox 子控件承载文字（见 render.lua）。
+
+     ⚠️ 这个子控件是【新建控件】-> 吃到引擎的【默认深色底】
+        （实测 #535353），而不是 CSS 里声明的背景色。
+
+     真机症状：卡片上明明写了 background-color:#204020，
+       实际渲染出来的文字底却是默认深灰 —— 看起来"背景颜色不对"。
+
+     ★ 修复：渲染时把父的背景色刷给文字子控件（render.lua）。
+       父没有背景色时（overflow:hidden 容器不该设背景）什么也不做。 ]]
+
+local clipHTML = [[
+<style>
+  .cbox { width: 200px; height: 100px; overflow: hidden;
+          color: #ffffff; font-size: 15px; background-color: #204020; }
+</style>
+<div class="cbox" id="cbox">卡片文字</div>
+]]
+
+E2 = EngineMock.new(PREFABS)
+game2 = E2.game
+-- 复用同一套全局（Enum/Color 已在上面注入）
+game = E2.game
+local root2 = E2.makeControl("container", nil)
+root2.name = "Root2"
+E2.setRoots({ root2 })
+
+local ui2 = webui.new({ root = root2, prefabs = PREFABS, handlers = {} })
+ui2:render(clipHTML)
+
+local textChild = nil
+for node, entry in pairs(ui2.rendered.live or {}) do
+  if node.id == "cbox" and entry.textChild then textChild = entry.textChild end
+end
+check("裁剪容器挂出了文字子控件", textChild ~= nil)
+
+if textChild then
+  local d = E2.dataOf(textChild)
+  local bg = d and d.fields.bgColor
+  local got = "nil"
+  if type(bg) == "table" then
+    got = string.format("%d,%d,%d", bg.r or -1, bg.g or -1, bg.b or -1)
+  end
+  -- #204020 = (32,64,32)；引擎默认深色底是 (83,83,83)
+  check("★ 文字子控件背景 = 声明值 #204020（不是默认深色底）",
+      got == "32,64,32",
+      "bg=" .. got .. "（引擎默认深色底是 83,83,83）")
+
+  local fg = d and d.fields.fontColor
+  if type(fg) == "table" and type(bg) == "table" then
+    local ct = math.abs((fg.r+fg.g+fg.b)/3 - (bg.r+bg.g+bg.b)/3)
+    check("★ 文字/背景对比度 > 100（白字 on #204020）", ct > 100,
+        string.format("对比度 %.0f", ct))
+  end
+end
+
 print()
 print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
 if fail > 0 then os.exit(1) end

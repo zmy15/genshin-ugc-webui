@@ -45,7 +45,8 @@
 | **布局** | 盒模型、`flex`（含 `wrap` / `grow` / `shrink` / `column` 对齐）、绝对定位、百分比 / `px` / `em` |
 | **样式** | CSS 选择器、层叠、继承、特指度、`:hover` / `:active` |
 | **视觉** | 纯色块、文字、**圆形裁剪**、**矩形裁剪**、**任意形状裁剪**、`transform`、`transition`、`z-index` |
-| **交互** | `onclick` / `onmouseenter` / `ondrag` 等 8 种光标事件 |
+| **交互** | `onclick` / `onmouseenter` / `ondrag` 等 8 种光标事件、**键盘事件**（`keys`） |
+| **游戏** | **`onTick(dt)` 逐帧逻辑钩子** —— 每帧先跑逻辑再渲染（物理 / 碰撞） |
 | **图片** | 运行时 `SetImage` 换图、`imageColor` 染色 |
 
 ### 引擎做不到的
@@ -79,6 +80,22 @@
 ## 开发
 
 
+### 示例：小恐龙跳跃游戏
+
+`deploy/demo_dino.lua` —— 用 `keys` 键盘绑定 + `onTick` 游戏循环做的
+Chrome 离线小恐龙（跳跃 / 碰撞 / 重开 / 速度递增）。
+
+```lua
+app = webui.mount{
+  html = HTML, css = CSS,
+  keys = {
+    jump   = onJump,      -- KeyboardJumpKeyDown
+    jumpUp = onJumpUp,    -- KeyboardJumpKeyUp
+  },
+  onTick = function(dt) ... end,   -- 每帧先跑逻辑，再渲染
+}
+```
+
 ### 测试
 
 ```bash
@@ -87,7 +104,7 @@ lua tests/test_html.lua      # 单个
 for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 ```
 
-**28 个套件全部通过。** 路径自包含，任何目录都能跑。
+**32 个套件全部通过**（全部位于 `tests/`）。路径自包含，任何目录都能跑。
 
 
 ### 真机验证
@@ -95,15 +112,17 @@ for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 `deploy/probe.lua` 是**统一探针**，改一行切换测试模块：
 
 ```lua
-local ACTIVE = "clip"   -- text / clip / mask / glyph / all
+local ACTIVE = "key"   -- ★ 当前只有 key 一个模块
 ```
 
 | 模块 | 内容 |
 |---|---|
-| `text` | 文字渲染定位（框高/字号对照） |
-| `clip` | 裁剪容器（imageColor 对照） |
-| `mask` | 遮罩形状 / 换图 / 矩形裁剪 |
-| `glyph` | 几何字符 / 无缝方案 |
+| `key` | ★ 键盘事件（`AddKeyEventListener` 能否用 —— 做跳跃类游戏的前提） |
+
+> 历史上还有 `text` / `clip` / `mask` / `glyph` / `mount` 五个模块，
+> 2026-10-07 精简时移除。它们的**结论、设计意图与重建要点**归档在
+> [`docs/探针模块归档.md`](docs/探针模块归档.md) ——
+> 要复验 R15~R19 的历史结论时按那里重建。
 
 探针头部固化了**历史结论**和**硬性约束清单**，写新验证前先读。
 
@@ -116,6 +135,8 @@ local ACTIVE = "clip"   -- text / clip / mask / glyph / all
 | 约束 | 说明 |
 |---|---|
 | **文字框高 ≥ 字号 × 1.9** | 框太矮时引擎的**字号自适应会把字压没**，症状是"文字凭空消失"，而日志全对 |
+| **文本框必须显式写 `background-color`** | 不写时引擎给**默认深色底**；字色若也是深色 → **文字看不见**（真机实测对比度仅 3） |
+| **要居中必须写 `text-align`** | 默认 `left` → 文字贴框左边（实测左右边距差 470px）；框居中 ≠ 文字居中 |
 | **裁剪容器不设 `background-color`** | 它的填充不受自身遮罩约束，会溢出到裁剪区外 |
 | **容器高度要装得下内容** | 溢出内容**仍可见但失去父背景** → 看起来"某块背景颜色不同" |
 | **新控件 `active` 默认 `false`** | 不调 `SetActive(true)` 则完全不可见，但字段写入照常成功 |
@@ -167,7 +188,7 @@ deploy/           示例与探针
   ├── demo_panel.lua    角色面板
   └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            28 个测试套件
+tests/            32 个测试套件
 tools/            构建、验证、mock
   ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
   └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）

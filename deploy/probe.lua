@@ -8,16 +8,25 @@
 
   模块清单：
 
-    "text"    文字渲染定位        —— 交错对照：字号 / 布局 / 控件数量
-    "mask"    遮罩与裁剪          —— enableMask 形状 / SetImage / 矩形裁剪
-    "glyph"   几何字符            —— 字符可用性 / 无缝方案
-    "clip"    裁剪容器诊断        —— 逐控件真机状态读回
-    "mount"   ★ mount 诊断        —— main.lua 跑不起来时用这个
-                                    读 typeof(game) / Root / prefabs / bound
-    "all"     依次跑上面全部      —— 注意会串在一起显示，仅用于快速排查
+    "key"     ★ 键盘事件          —— 跳跃键能否捕获（做小恐龙游戏的前提）
+                                    Down/Up 成对？哪个控件能收到？
 
   ══════════════════════════════════════════════════════════════════════════
-  历史结论索引（真机实测，详见 ugc_out/引擎能力与限制.md）
+  ⚠️ 已移除的模块（text / mask / glyph / clip / mount）
+  ══════════════════════════════════════════════════════════════════════════
+
+    这 5 个模块曾用于产出 R15~R19 的真机结论，2026-10-07 精简时移除。
+    它们的**结论、设计意图与重建要点**已归档到：
+
+        docs/探针模块归档.md
+
+    ★ 需要复验某条历史结论（如"矩形裁剪可行"、"字形有缝 1.59em"、
+      "框高 ≥ 字号 × 1.8"）时，按该文档「重建要点」一节重建模块。
+    ★ 若 main.lua 又出现"界面空白且无日志"，**优先重建 `mount` 模块**
+      （它是唯一排障型模块，只读回环境事实，不做实验）。
+
+  ══════════════════════════════════════════════════════════════════════════
+  历史结论索引（真机实测，详见 docs/引擎能力与限制.md）
   ══════════════════════════════════════════════════════════════════════════
 
     R15  30 个几何字符全部渲染正常；■ 连排有 10px 缝（advance 1.59em）
@@ -30,6 +39,18 @@
          遮罩等比适配，圆形图在 2:1 父里仍是正圆
     R18  裁剪容器能装文字（11/11）
          图片控件自身无 text 字段，但子控件可以有
+    R20  ★ 键盘事件可用（2026-10-08，模块 key）
+         Enum.KeyEventType 存在且 pairs() 可遍历 164 项
+         （★ 与 R16 的 Enum.ImageSource 相反 —— 同为 Enum 行为却不同）
+         18 个候选枚举名全部命中（文档这次是对的）
+         AddKeyEventListener 在 textbox/root 上都有，绑定 54/54 成功
+         KeyboardJumpKeyDown/Up 均收到，Down/Up 可成对判定
+         ★★ 同一事件会被【每个绑定它的控件】各收一遍
+            -> 一个按键只能绑一个挂载点，否则按一次跳 3 次
+         ⚠️ 按键回调的 data.type 读回为空（取值方式与光标事件不同）
+
+    ⚠️ R15~R18 的复现模块已移除，见上面「已移除的模块」。
+       结论本身仍有效（来自真机实测），只是当前无现成复现手段。
 
   ══════════════════════════════════════════════════════════════════════════
   硬性约束（真机实测，写探针时必须遵守）
@@ -48,7 +69,7 @@
 -- ★★ 选择要跑的模块（改这里）
 --=============================================================================
 
-local ACTIVE = "clip"
+local ACTIVE = "key"
 
 --=============================================================================
 -- 通用配置
@@ -64,6 +85,13 @@ local PREFABS = {
 local ROOT_NAME = "Root"
 local TAG = "[PROBE]"
 
+--[[ 形状图 ID（编辑器里配好的预置资源）。
+
+     ⚠️ 当前 key 模块用不到它 —— 保留是因为重建 mask/glyph 模块
+        或写新页面时需要（见 docs/探针模块归档.md）。
+        参考：100001 方 / 100002 圆 / 100003 三角
+              100004 四角星 / 100005 五角星 / 100006 圆环
+  ]]--
 local SHAPES = {
   SQUARE   = 100001,
   CIRCLE   = 100002,
@@ -98,526 +126,14 @@ local function safeCall(fn)
   return ok and v or nil
 end
 
---=============================================================================
--- 模块 1：文字渲染定位（交错对照）
---
---   目的：定位"部分文字不渲染"的真正原因。
---
---   设计：每行放 3 个控件，且行间有色带锚点：
---          #编号(20px)   小字号(14px)   大字号(30px)
---
---   判读：
---     每行 小有/大无      -> 字号阈值
---     前面的行有/后面无    -> 控件数量或顺序
---     每行两个都无        -> 整行不渲染
---     全部都有            -> 库正常
---=============================================================================
-
+-- ★ 所有探针模块挂在这个表上（M.key / 将来 M.xxx）
 local M = {}
 
-M.text = {}
+--[[ 收集当前页面上【指定 class】的控件状态，供各模块的 report() 使用。
 
-M.text.CSS = [[
-<style>
-  #root {
-    width: 1000px; height: 880px;
-    background-color: #101218;
-    display: flex; flex-direction: column;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-  .row { display: flex; align-items: center; width: 100%; height: 76px; }
-  .idx { color: #ffd050; font-size: 14px; width: 60px; height: 26px; }
-  .sm  { color: #7ce0a0; font-size: 14px; width: 240px; height: 26px; }
-  .lg  { color: #7cc0ff; font-size: 30px; width: 240px; height: 42px; }
-  .sep { width: 500px; height: 3px; background-color: #3a4a6a; }
-
-  /* ── 本轮新增：验证「框高 / 字号 >= 1.8」假设 ── */
-
-  /* 同一字号 15px，框高不同 */
-  .h22 { color: #ff9090; font-size: 15px; width: 220px; height: 22px; }  /* 比 1.47 -> 预期不显示 */
-  .h28 { color: #90ff90; font-size: 15px; width: 220px; height: 28px; }  /* 比 1.87 -> 预期显示 */
-
-  /* 同一框高 42，字号不同 */
-  .s20 { color: #ffd090; font-size: 20px; width: 220px; height: 42px; }  /* 比 2.10 -> 显示? */
-  .s30 { color: #9090ff; font-size: 30px; width: 220px; height: 42px; }  /* 比 1.40 -> 不显示 */
-</style>
-]]
-
-function M.text.build()
-  --[[ ★ 两组实验：
-
-       第 1 组（行1~6）：字号不变(15px)，框高不同
-          h22 = 15px/22高 (比 1.47)  预期不显示
-          h28 = 15px/28高 (比 1.87)  预期显示
-
-       第 2 组（行7~8）：框高不变(42px)，字号不同
-          s20 = 20px/42高 (比 2.10)  预期显示
-          s30 = 30px/42高 (比 1.40)  预期不显示
-
-       若第1组 h28 显示、h22 不显示 -> 证实【框高决定】
-       若第2组 s20 显示、s30 不显示 -> 证实【比值决定，而非字号绝对值】
+     用途：探针必须【读回实际值】（真机坐标 / 字段），
+           而不是打印"我打算设什么" —— 后者误导过好几轮。
   ]]--
-  local out = { M.text.CSS, '<div id="root">\n' }
-
-  out[#out + 1] = [[
-  <div class="row" id="g1">
-    <div class="idx">1a</div>
-    <div class="h22">15px/22高 比值1.47</div>
-    <div class="h28">15px/28高 比值1.87</div>
-  </div>
-  <div class="row" id="g2">
-    <div class="idx">1b</div>
-    <div class="h22">15px/22高 再来</div>
-    <div class="h28">15px/28高 再来</div>
-  </div>
-  <div class="row" id="g3">
-    <div class="idx">1c</div>
-    <div class="h22">15px/22高 三次</div>
-    <div class="h28">15px/28高 三次</div>
-  </div>
-  <div class="row" id="g4">
-    <div class="idx">2a</div>
-    <div class="s20">20px/42高 比值2.10</div>
-    <div class="s30">30px/42高 比值1.40</div>
-  </div>
-  <div class="row" id="g5">
-    <div class="idx">2b</div>
-    <div class="s20">20px/42高 再来</div>
-    <div class="s30">30px/42高 再来</div>
-  </div>
-  <div class="row" id="g6">
-    <div class="idx">3a</div>
-    <div class="sm">14px/26高 基准</div>
-    <div class="lg">30px/42高 基准</div>
-  </div>
-]]
-  out[#out + 1] = '</div>\n'
-  return table.concat(out)
-end
-
-M.text.classes = { idx = true, sm = true, lg = true, sep = true,
-                   h22 = true, h28 = true, s20 = true, s30 = true }
-
-M.text.report = function(ui, items)
-  hr("【文字定位】逐控件状态（画布坐标 + 框高比）")
-  log(string.format("  %-5s %-6s %-24s %-6s %-20s %-8s %s",
-      "行", "类型", "文字", "字号", "box(x,y,w,h)", "框高/字号", "kind"))
-  for _, it in ipairs(items) do
-    local ratio = "-"
-    if it.fs and it.fs > 0 and it.bh and it.bh > 0 then
-      ratio = string.format("%.2f", it.bh / it.fs)
-    end
-    log(string.format("  %-5s %-6s %-24s %-6s (%4.0f,%4.0f,%3.0f,%3.0f) %-8s %s",
-        it.pid, it.cls,
-        it.text and ("'" .. tostring(it.text) .. "'") or "nil",
-        tostring(it.fs), it.bx, it.by, it.bw, it.bh,
-        ratio, tostring(it.kind)))
-  end
-  log(string.format("  共 %d 个控件", #items))
-
-  --[[ ★ 读 adaptiveFontSize / minimumFontSize
-       这两个字段是「字号自适应」相关，怀疑是文字消失的原因。
-       只读，不改 —— 先看引擎给的值是什么。
-  ]]--
-  hr("【字号自适应字段】")
-  local seen = 0
-  for _, e in pairs(ui.rendered.live) do
-    local c = e.control
-    local af = safeCall(function() return c.adaptiveFontSize end)
-    local mf = safeCall(function() return c.minimumFontSize end)
-    if af ~= nil or mf ~= nil then
-      log(string.format("  adaptiveFontSize=%-6s minimumFontSize=%-6s  name=%s",
-          tostring(af), tostring(mf),
-          tostring(safeCall(function() return c.name end))))
-      seen = seen + 1
-      if seen >= 8 then break end
-    end
-  end
-  if seen == 0 then
-    log("  (文本控件上读不到这两个字段，或都为 nil)")
-  end
-
-  hr("【判读表】")
-  log("  第1组 g1~g3：字号都是 15px，只是框高不同")
-  log("      h22 = 15px/22高 (比值1.47)  <- 预期不显示")
-  log("      h28 = 15px/28高 (比值1.87)  <- 预期显示")
-  log("      ★ 若 h28 有、h22 无 -> 证实【框高决定显示】")
-  log("")
-  log("  第2组 g4~g5：框高都是 42px，只是字号不同")
-  log("      s20 = 20px (比值2.10)  <- 预期显示")
-  log("      s30 = 30px (比值1.40)  <- 预期不显示")
-  log("      ★ 若 s20 有、s30 无 -> 证实【比值决定，非字号绝对值】")
-  log("")
-  log("  第3组 g6：基准对照 14px/26高 与 30px/42高")
-  log("")
-  log("  屏幕换算：截图y = 720 - 画布y × 1.6")
-end
-
---=============================================================================
--- 模块 2：遮罩与裁剪
---
---   目的：验证 enableMask 形状、SetImage 换图、矩形裁剪。
---=============================================================================
-
-M.mask = {}
-
-M.mask.CSS = [[
-<style>
-  #root {
-    width: 1000px; height: 880px;
-    background-color: #101214;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-  .box {
-    width: 200px; height: 100px;
-    background-color: #2a3a58;
-    margin-bottom: 12px;
-  }
-  .rowc { display: flex; align-items: center; width: 100%; height: 60px; }
-  .lbl { color: #ffffff; font-size: 15px; width: 120px; height: 26px; }
-  .sq  { width: 160px; height: 160px; background-color: #4a3a6a; }
-</style>
-]]
-
-function M.mask.build()
-  -- 裁剪窗口：父 200x100，子 400x200 故意溢出
-  return M.mask.CSS .. [[
-<div id="root">
-
-  <div class="rowc"><div class="lbl">裁剪窗口</div></div>
-  <div class="box" id="clip1">
-    <div style="width:400px;height:200px;background-color:#ffdd00"></div>
-  </div>
-
-  <div class="rowc"><div class="lbl">圆形裁剪</div></div>
-  <div class="sq" id="round1"
-       style="border-radius:50%">
-    <div style="width:160px;height:160px;background-color:#5ad0a0"></div>
-  </div>
-
-  <div class="rowc"><div class="lbl">形状图</div></div>
-  <div class="rowc">
-    <div class="sq" id="shape1" data-image="1" style="width:80px;height:80px;margin-right:12px"></div>
-    <div class="sq" id="shape2" data-image="1" style="width:80px;height:80px;margin-right:12px"></div>
-    <div class="sq" id="shape3" data-image="1" style="width:80px;height:80px"></div>
-  </div>
-
-</div>
-]]
-end
-
-M.mask.classes = { lbl = true, sq = true, box = true }
-
--- 渲染后绑定形状图
-M.mask.after = function(ui)
-  local clip = safeCall(function() return require('webui_clip') end)
-             or safeCall(function() return require('webui_clip') end)
-  if not clip then
-    warn("webui_clip 加载失败，形状图无法设置")
-    return
-  end
-
-  local dom = require('webui').dom
-  local function byId(id)
-    local f = nil
-    pcall(function()
-      dom.walk(ui.doc, function(n)
-        if not f and n:isElement() and n.id == id then f = n end
-      end)
-    end)
-    return f
-  end
-
-  local PLAN = {
-    { "shape1", SHAPES.RING,     "#8fb8e0" },
-    { "shape2", SHAPES.TRIANGLE, "#5ad0a0" },
-    { "shape3", SHAPES.CIRCLE,   "#e0a85a" },
-  }
-  local n = 0
-  for _, p in ipairs(PLAN) do
-    local node = byId(p[1])
-    local e = node and ui.rendered.live[node]
-    if e then
-      local ok, err = clip.setImage(e.control, p[2])
-      if ok then
-        n = n + 1
-        if p[3] then
-          local r = tonumber(p[3]:sub(2,3), 16)
-          local g = tonumber(p[3]:sub(4,5), 16)
-          local b = tonumber(p[3]:sub(6,7), 16)
-          clip.tint(e.control, r, g, b, 255)
-        end
-      else
-        warn("setImage(" .. p[1] .. ") 失败: " .. tostring(err))
-      end
-    end
-  end
-  log(TAG .. " 形状图已设置 " .. n .. " 个")
-end
-
-M.mask.report = function(ui, items)
-  hr("【遮罩与裁剪】状态")
-  local masked = 0
-  if ui.rendered and ui.rendered.live then
-    for _, e in pairs(ui.rendered.live) do
-      if e.clipShape then masked = masked + 1 end
-    end
-  end
-  log("  启用裁剪的控件: " .. masked)
-  hr("【判读表】")
-  log("  裁剪窗口：黄色子块应被【切成 200x100 矩形】（不是溢出 400x200）")
-  log("  圆形裁剪：绿色子块应裁成【正圆】")
-  log("  形状图：  应显示 圆环 / 三角 / 圆形，且带颜色")
-end
-
---=============================================================================
--- 模块 3：几何字符
---
---   目的：字符可用性 + 无缝方案对照。
---=============================================================================
-
-M.glyph = {}
-
-M.glyph.CSS = [[
-<style>
-  #root {
-    width: 1000px; height: 880px;
-    background-color: #101214;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-  .line { width: 100%; height: 44px; color: #ffffff; font-size: 26px; }
-  .lbl  { width: 100%; height: 30px; color: #9aa8c0; font-size: 15px; }
-  .solid { width: 460px; height: 20px; background-color: #ffffff; }
-  .band  { width: 400px; height: 60px; background-color: #7ac050; }
-  .card  { width: 260px; height: 60px; overflow: hidden; }
-</style>
-]]
-
-function M.glyph.build()
-  return M.glyph.CSS .. [[
-<div id="root">
-
-  <div class="lbl">几何字符（应全部显示为图形）</div>
-  <div class="line">●○■□◆◇▲△▼▽★☆</div>
-  <div class="line">✓✕→←↑↓│─┌┐└┘├┤┬┴┼</div>
-
-  <div class="lbl">方块连排（有缝=比例字体）</div>
-  <div class="line">■■■■■■■■</div>
-
-  <div class="lbl">纯色块（应完全无缝）</div>
-  <div class="solid"></div>
-
-  <div class="lbl">矩形裁剪（绿条应被切成 260 宽）</div>
-  <div class="card"><div class="band"></div></div>
-
-</div>
-]]
-end
-
-M.glyph.classes = { line = true, lbl = true, solid = true, band = true, card = true }
-
-M.glyph.report = function(ui, items)
-  hr("【几何字符】状态")
-  hr("【判读表】")
-  log("  1. 第一行 12 个字符应全部显示为图形（无豆腐块）")
-  log("  2. 第二行 16 个框线/符号同理")
-  log("  3. ■■■■■■■■ 若有缝 = 比例字体（已知有 10px 缝）")
-  log("  4. 纯色块应为【一整条无缝】")
-  log("  5. 绿条应被卡片切到 260 宽（矩形裁剪）")
-end
-
---=============================================================================
--- 模块 4：裁剪容器诊断
---
---   目的：复现并定位真机上的两个异常
---     ① 头像被拉伸（声明 130x130，实测宽高比 1.55）
---     ② 矩形裁剪的色带溢出卡片边界
---
---   设计：结构完全照抄 demo_panel，并打印每个控件的
---         sizeDelta / anchoredPosition / enableMask / imageId
---=============================================================================
-
-M.clip = {}
-
-M.clip.CSS = [[
-<style>
-  #root {
-    width: 1000px; height: 880px;
-    background-color: #101214;
-    display: flex; flex-direction: column;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-
-  /* 头像：圆形裁剪（照抄 demo） */
-  .av    { width: 130px; height: 130px; border-radius: 50%; margin-bottom: 16px; }
-  .av-in { width: 130px; height: 130px; background-color: #4a6fa8; }
-
-  /* 卡片：矩形裁剪 + 内层底色容器（照抄 demo 修复后） */
-  .relic     { width: 260px; height: 168px; overflow: hidden; margin-bottom: 16px; }
-  .relic-card{ width: 260px; height: 168px; background-color: #1c2030; }
-  .relic-band{ width: 400px; height: 60px; background-color: #7ac050; }
-  .relic-txt { width: 200px; height: 29px; color: #ffffff; font-size: 15px; }
-
-  /* 对照组：矩形裁剪，但【不用内层容器】直接放溢出色带 */
-  .plain     { width: 260px; height: 80px; overflow: hidden; margin-bottom: 16px; }
-  .plain-band{ width: 400px; height: 60px; background-color: #e06040; }
-</style>
-]]
-
-function M.clip.build()
-  return M.clip.CSS .. [[
-<div id="root">
-
-  <div class="lbl">A 遮罩容器：不设 imageColor（当前库行为）</div>
-  <div class="av" id="av1"><div class="av-in" id="avin1"></div></div>
-
-  <div class="lbl">B 遮罩容器：imageColor 全透明</div>
-  <div class="av" id="av2"><div class="av-in" id="avin2"></div></div>
-
-  <div class="lbl">C 遮罩容器：imageColor 红色（测是否影响遮罩）</div>
-  <div class="av" id="av3"><div class="av-in" id="avin3"></div></div>
-
-  <div class="lbl">D 矩形裁剪 + 透明</div>
-  <div class="relic" id="rl4">
-    <div class="relic-card" id="rlc4">
-      <div class="relic-band" id="rlb4"></div>
-    </div>
-  </div>
-
-</div>
-]]
-end
-
-M.clip.classes = { av = true, ["av-in"] = true, relic = true,
-                   ["relic-card"] = true, ["relic-band"] = true,
-                   ["relic-txt"] = true, plain = true, ["plain-band"] = true,
-                   lbl = true }
-
---[[ ★ 关键实验：A/B/C 三组只差 imageColor 的设置
-
-      目的：确定"裁剪容器的白边"是否来自遮罩图自身可见。
-
-      A  不设 imageColor       -> 遮罩图（白色圆形）可能可见 -> 白边
-      B  imageColor 全透明     -> 若白边消失且裁剪仍在 -> 这就是修法
-      C  imageColor 红色       -> 若变红边 -> 证明 imageColor 影响显示但不影响遮罩
-
-      D  矩形裁剪 + 透明       -> 验证矩形场景同样适用
-]]--
-M.clip.after = function(ui)
-  local dom = require('webui').dom
-  local function byId(id)
-    local f = nil
-    pcall(function()
-      dom.walk(ui.doc, function(n)
-        if not f and n:isElement() and n.id == id then f = n end
-      end)
-    end)
-    return f
-  end
-
-  local function ctrl(id)
-    local nd = byId(id)
-    local e = nd and ui.rendered.live[nd]
-    return e and e.control or nil
-  end
-
-  -- B: 全透明
-  local c2 = ctrl("av2")
-  if c2 then
-    local ok = pcall(function()
-      c2.imageColor = Color.FromRGBA(0, 0, 0, 0)
-    end)
-    log("[PROBE] B 组 imageColor = 全透明  " .. (ok and "OK" or "失败"))
-  end
-
-  -- C: 红色
-  local c3 = ctrl("av3")
-  if c3 then
-    local ok = pcall(function()
-      c3.imageColor = Color.FromRGBA(255, 0, 0, 255)
-    end)
-    log("[PROBE] C 组 imageColor = 红色    " .. (ok and "OK" or "失败"))
-  end
-
-  -- D: 矩形裁剪容器透明
-  local c4 = ctrl("rl4")
-  if c4 then
-    pcall(function() c4.imageColor = Color.FromRGBA(0, 0, 0, 0) end)
-    log("[PROBE] D 组 imageColor = 全透明  OK")
-  end
-end
-
-M.clip.report = function(ui, items)
-  hr("【裁剪容器诊断】逐控件真机状态")
-  log(string.format("  %-10s %-9s %-16s %-16s %-9s %s",
-      "id", "kind", "box(w,h)", "sizeDelta", "clip", "mask/imageId"))
-  log(string.format("  %s", string.rep("-", 74)))
-
-  local dom = require('webui').dom
-  local rows = {}
-  if dom and ui.doc then
-    pcall(function()
-      dom.walk(ui.doc, function(n)
-        if not n:isElement() then return end
-        local e = ui.rendered.live[n]
-        if not e then return end
-        local b = n.box
-        local c = e.control
-        rows[#rows + 1] = {
-          id = n.id or (n.attrs and n.attrs.class) or "?",
-          kind = e.kind,
-          bw = b and b.w, bh = b and b.h,
-          sw = safeCall(function() return c.sizeDeltaX end),
-          sh = safeCall(function() return c.sizeDeltaY end),
-          px = safeCall(function() return c.anchoredPositionX end),
-          py = safeCall(function() return c.anchoredPositionY end),
-          clip = e.clipShape,
-          mask = safeCall(function() return c.enableMask end),
-          iid = safeCall(function() return c.imageId end),
-          ic = safeCall(function() return c.imageColor end),
-        }
-      end)
-    end)
-  end
-  table.sort(rows, function(a, b) return tostring(a.id) < tostring(b.id) end)
-
-  for _, r in ipairs(rows) do
-    local ic = "-"
-    if type(r.ic) == "table" then
-      ic = string.format("a=%s", tostring(r.ic.a))
-    end
-    log(string.format("  %-10s %-9s %-16s %-16s %-9s mask=%-5s id=%-7s icol=%s",
-        tostring(r.id), tostring(r.kind),
-        r.bw and string.format("%.0fx%.0f", r.bw, r.bh) or "?",
-        (r.sw and r.sh) and string.format("%.0fx%.0f", r.sw, r.sh) or "?",
-        tostring(r.clip or "-"),
-        tostring(r.mask), tostring(r.iid), ic))
-  end
-  log(string.format("  坐标: %s",
-      (function()
-        local t = {}
-        for _, r in ipairs(rows) do
-          t[#t+1] = string.format("%s=(%.0f,%.0f)", tostring(r.id),
-              r.px or 0, r.py or 0)
-        end
-        return table.concat(t, " ")
-      end)()))
-
-  hr("【判读】")
-  log("  av1   应为 130x130, clip=100002, mask=true")
-  log("  avin1 应为 130x130")
-  log("  rl1   应为 260x168, clip=100001, mask=true")
-  log("  rlc1  应为 260x168")
-  log("  rlb1  应为 400x60（宽 400 > 父 260，应被裁到 260）")
-  log("  pl1   应为 260x80, clip=100001 —— 对照：无内层容器")
-  log("")
-  log("  ★ 屏幕换算：截图y = 720 - 画布y × 1.6，画布x × 1.6 = 截图x")
-end
-
 local function collect(ui, classSet)
   local dom = require('webui').dom
   local items = {}
@@ -659,157 +175,381 @@ local function collect(ui, classSet)
 end
 
 --=============================================================================
--- 模块 5：mount 诊断 —— 为什么 main.lua 跑不起来？
+-- 模块：键盘事件（★ 做「小恐龙跳跃」类游戏的前提）
 --
---   ★ 目的：直接测出 mount 失败的真实原因，不靠猜。
+--   ══════════════════════════════════════════════════════════════════════
+--   为什么必须专门验一次：
 --
---   main.lua 用 webui.mount，probe 用 webui.new 裸调 —— 两者环境相同，
---   差异只在代码路径。本模块把那条路径上的每一个环节都读出来。
+--     库的 webui_event.lua 只映射了 8 种【光标】事件，全库 grep
+--     AddKeyEventListener = 0 次 —— 键盘能力【从未被本项目的代码验证过】。
+--     docs/引擎能力与限制.md §5.2 只留了一句"容器节点上可用，实测
+--     45~54 次捕获"，没有实现、没有测试。
 --
---   判读：
---     · typeof(game) / type(game)  —— 验证"宿主对象"假设是否成立
---     · FindClientUIRoot 能否找到 Root
---     · 每个 prefab 索引能否真的建出控件
---     · 直接跑一次 mount，看 bound 是否为 true
+--     而官方文档 docs/client_control_api.md 第 762 行写着
+--     AddKeyEventListener(eventType, callback)，Enum.KeyEventType 共 164 项，
+--     含 KeyboardJumpKeyDown/Up。按本项目铁律：
+--       「下'做不到'的结论前，先确认真的试过」
+--     所以先探针，再谈实现。
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   ★ 本模块不需要做任何动作 —— 它是【纯监听】的。
+--
+--     屏幕上会出现 3 个色块 + 一段提示，然后请你【按键】：
+--        空格 / ↑ / ↓ / F 等，随便按几下，每个键按 3 次以上。
+--     探针把每次捕获打印到日志，并做 3 组对照统计。
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   3 组对照（一次把关键问题全问完）：
+--
+--     A. 跳跃专用键    KeyboardJumpKeyDown/Up   —— 语义键，游戏最该用的
+--     B. 移动键        MoveLeft/Right/Fwd/Back —— 备用方案
+--     C. 奇匠按键 1~4  CraftspersonKey1~4Down   —— 通用槽位，最可能拿到
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   判读（看日志末尾的【判读表】）：
+--
+--     某组 Down 有数、Up 也有数   -> ✅ 该键可用，且能做成对判定
+--     只有 Down 有数、Up 为 0     -> ⚠️ 只能用 Down 触发一次性跳跃
+--     三组全 0                    -> ❌ 容器收不到按键，改用「光标点击」
+--                                    兜底（库的 onclick 已真机验证可用）
+--     ★ jumpDown 有数、jumpUp 为 0 -> 跳跃按下即触发，反而更好写
+--        （省掉"必须松手才能再跳"的状态机）
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   ⚠️ 两个已知陷阱（写探针时必须规避）：
+--
+--     1. 官方文档第 1317 行："按键事件被 Lua 回调标记已处理后，
+--        同容器内其他按键不再响应本次事件"。
+--        => 回调里【绝不能返回 true】。本模块一律 return false。
+--
+--     2. 回调必须返回 boolean。返回 nil 有些实现会当成"已处理"。
 --=============================================================================
 
-M.mount = {}
+M.key = {}
 
-M.mount.CSS = [[
+--[[ ★ 候选按键表。
+     key   = 日志里的短名
+     name  = Enum.KeyEventType 的成员名（★ 用 pcall 显式取，禁止照文档猜）
+     grp   = 分组（A 跳跃 / B 移动 / C 奇匠）
+]]--
+M.key.CANDIDATES = {
+  { key = "jumpDown",  name = "KeyboardJumpKeyDown",          grp = "A" },
+  { key = "jumpUp",    name = "KeyboardJumpKeyUp",            grp = "A" },
+  { key = "leftDown",  name = "KeyboardMoveLeftKeyDown",      grp = "B" },
+  { key = "leftUp",    name = "KeyboardMoveLeftKeyUp",        grp = "B" },
+  { key = "rightDown", name = "KeyboardMoveRightKeyDown",     grp = "B" },
+  { key = "rightUp",   name = "KeyboardMoveRightKeyUp",       grp = "B" },
+  { key = "fwdDown",   name = "KeyboardMoveForwardKeyDown",   grp = "B" },
+  { key = "fwdUp",     name = "KeyboardMoveForwardKeyUp",     grp = "B" },
+  { key = "backDown",  name = "KeyboardMoveBackwardKeyDown",  grp = "B" },
+  { key = "backUp",    name = "KeyboardMoveBackwardKeyUp",    grp = "B" },
+  { key = "c1Down",    name = "KeyboardCraftspersonKey1Down", grp = "C" },
+  { key = "c1Up",      name = "KeyboardCraftspersonKey1Up",   grp = "C" },
+  { key = "c2Down",    name = "KeyboardCraftspersonKey2Down", grp = "C" },
+  { key = "c2Up",      name = "KeyboardCraftspersonKey2Up",   grp = "C" },
+  { key = "c3Down",    name = "KeyboardCraftspersonKey3Down", grp = "C" },
+  { key = "c3Up",      name = "KeyboardCraftspersonKey3Up",   grp = "C" },
+  { key = "c4Down",    name = "KeyboardCraftspersonKey4Down", grp = "C" },
+  { key = "c4Up",      name = "KeyboardCraftspersonKey4Up",   grp = "C" },
+}
+
+M.key.CSS = [[
 <style>
-  #root { width: 1000px; height: 400px; background-color: #101018; }
-  .t { width: 900px; height: 40px; font-size: 20px; color: #7fd1ff; }
+  .stage { width: 1600px; height: 900px; background-color: #0e1016; }
+
+  .hdr { width: 1400px; height: 48px; font-size: 24px; color: #7fd1ff;
+         margin-left: 100px; margin-top: 40px; }
+  .sub { width: 1400px; height: 36px; font-size: 16px; color: #c8cfe0;
+         margin-left: 100px; margin-top: 8px; }
+
+  /* 3 个对照组标题 —— 用色块标出，便于在画面上确认探针跑起来了 */
+  .grp  { width: 420px; height: 40px; font-size: 18px; color: #ffffff;
+          margin-left: 100px; margin-top: 24px; }
+  .band { width: 420px; height: 10px; margin-left: 100px; margin-top: 4px; }
+  .a { background-color: #4ad07a; }   /* A 组 绿 */
+  .b { background-color: #7fd1ff; }   /* B 组 蓝 */
+  .c { background-color: #ffcc44; }   /* C 组 黄 */
+
+  .tip  { width: 1400px; height: 40px; font-size: 18px; color: #ff9a4a;
+          margin-left: 100px; margin-top: 30px; }
+  .tail { width: 1400px; height: 36px; font-size: 16px; color: #8a93a8;
+          margin-left: 100px; margin-top: 10px; }
 </style>
-<div id="root">
-  <div class="t" id="t1">mount 诊断</div>
-</div>
 ]]
 
-function M.mount.build()
+function M.key.build()
   return [[
-<div id="root">
-  <div class="t" id="t1">mount 诊断</div>
-</div>]]
+<div class="stage">
+  <div class="hdr" id="k-hdr">键盘事件探针 · 等待按键</div>
+  <div class="sub" id="k-sub">请按 空格 / ↑ / ↓ / F 等，每个键按 3 次以上</div>
+
+  <div class="grp" id="k-gA">A 组 · 跳跃键 KeyboardJumpKey</div>
+  <div class="band a" id="k-bA"></div>
+
+  <div class="grp" id="k-gB">B 组 · 移动键 KeyboardMove*Key</div>
+  <div class="band b" id="k-bB"></div>
+
+  <div class="grp" id="k-gC">C 组 · 奇匠按键 CraftspersonKey1~4</div>
+  <div class="band c" id="k-bC"></div>
+
+  <div class="tip" id="k-tip">★ 本探针只监听，不做任何动作 —— 结果全部看日志</div>
+  <div class="tail" id="k-tail">判读：Down 有数=能收到；Up 也有数=能做按下/抬起成对判定</div>
+</div>
+]]
 end
 
---[[ ★ 核心诊断：把 mount 依赖的每个前提逐个读出来 ]]--
-function M.mount.after(ui, items)
+M.key.classes = { hdr = true, sub = true, grp = true, band = true,
+                  tip = true, tail = true }
+
+--[[ ★ 核心：绑按键监听 + 统计。
+
+     探针是【裸调 webui.new】，拿不到 webui.mount 的 app 句柄，
+     所以这里直接对【引擎控件】AddKeyEventListener —— 反正要验的
+     就是引擎这一层的能力，绕开库反而更干净。
+
+     父控件候选顺序：control（视觉层）→ hot（按钮覆盖层）→ root。
+     哪个收到事件就说明【该把监听挂在哪】—— 这本身就是结论的一部分。
+]]--
+function M.key.after(ui)
   log("")
   log("============================================================")
-  log("  mount 诊断：逐个前提检查")
+  log("  键盘事件诊断：AddKeyEventListener 到底能不能用")
   log("============================================================")
 
-  -- ① game 到底是什么（这是先前一直靠猜的地方）
+  --===========================================================================
+  -- [1] Enum.KeyEventType 是否可索引（★ 真名不许猜，逐个读回）
+  --===========================================================================
   log("")
-  log("[1] game 对象")
-  log(string.format("    type(game)   = %s", tostring(type(game))))
-  local tn = safeCall(function() return typeof(game) end)
-  log(string.format("    typeof(game) = %s", tostring(tn)))
-  log(string.format("    type(game.FindClientUIRoot) = %s",
-      tostring(type(safeCall(function() return game.FindClientUIRoot end)))))
-  log(string.format("    ★ 关键: type(game)=='table' ? %s   （若为 false，"
-      .. "旧代码的 type(game)=='table' 判断会短路）",
-      tostring(type(game) == "table")))
-
-  -- ② script 对象
-  log("")
-  log("[2] script 对象")
-  log(string.format("    type(script) = %s", tostring(type(script))))
-  log(string.format("    typeof(script) = %s", tostring(safeCall(function() return typeof(script) end))))
-  log(string.format("    script.EnableUpdate = %s",
-      tostring(type(safeCall(function() return script.EnableUpdate end)))))
-
-  -- ③ Enum / Color
-  log("")
-  log("[3] Enum / Color 对象")
-  log(string.format("    type(Enum)  = %s   type(Color) = %s",
-      tostring(type(Enum)), tostring(type(Color))))
-  local isTbl = safeCall(function() return rawget(Enum, "ImageSource") end)
-  log(string.format("    rawget(Enum,'ImageSource') = %s", tostring(isTbl)))
-  log(string.format("    Enum.ImageSource.StaticReference = %s",
-      tostring(safeCall(function() return Enum.ImageSource.StaticReference end))))
-
-  -- ④ Root
-  log("")
-  log("[4] 找 Root 控件")
-  local r = safeCall(function() return game.FindClientUIRoot(ROOT_NAME) end)
-  log(string.format("    FindClientUIRoot(%q) = %s", ROOT_NAME, tostring(r)))
-  local roots = safeCall(function() return game.GetClientUIRoots() end)
-  if type(roots) == "table" then
-    log(string.format("    GetClientUIRoots() 共 %d 个:", #roots))
-    for i = 1, #roots do
-      local nm = safeCall(function() return roots[i].name end)
-      log(string.format("      [%d] name=%s", i, tostring(nm)))
-    end
-  else
-    log(string.format("    GetClientUIRoots() = %s", tostring(roots)))
+  log("[1] Enum.KeyEventType 成员实测（pcall 显式取，不照文档猜）")
+  local KET = safeCall(function() return Enum.KeyEventType end)
+  log(string.format("    Enum.KeyEventType = %s   type = %s",
+      tostring(KET), tostring(type(KET))))
+  if KET == nil then
+    log("    ★ Enum.KeyEventType 为 nil —— 键盘事件这条路走不通，")
+    log("      请直接用「光标点击」兜底（库的 onclick 已真机验证）。")
+    log("")
+    log("============================================================")
+    return
   end
 
-  -- ⑤ prefabs 索引是否真能建出控件
-  log("")
-  log("[5] prefabs 模板索引实测（用 Root 当父）")
-  if r then
-    for _, kind in ipairs({ "container", "textbox", "button", "image" }) do
-      local idx = PREFABS[kind]
-      local c = safeCall(function() return game.InstantiateClientUIControl(idx, r) end)
-      log(string.format("    %-10s idx=%-12s -> %s", kind, tostring(idx),
-          c ~= nil and "OK 建出控件" or "★ nil（索引不存在？）"))
-    end
-  else
-    log("    (Root 未找到，跳过)")
-  end
-
-  -- ⑥ 真正跑一次 mount，看 bound
-  log("")
-  log("[6] 实跑一次 webui.mount")
-  local webui = safeCall(function() return require('webui') end)
-  if not webui then
-    log("    ★ require('webui') 失败")
-  else
-    -- 先清掉探针自己建的控件，避免干扰
-    local ok, app = pcall(function()
-      return webui.mount{
-        root    = ROOT_NAME,
-        prefabs = PREFABS,
-        html    = [[<div id="root"><div class="t">mount 测试</div></div>]],
-        css     = [[#root { width:600px; height:100px; background-color:#1a1a28; }
-                    .t { width:560px; height:40px; font-size:20px; color:#ffffff; }]],
-        loop    = false,
-        on      = {},
-      }
-    end)
-    if not ok then
-      log("    ★ mount 抛错: " .. tostring(app))
+  local resolved = {}
+  local missing = 0
+  for _, c in ipairs(M.key.CANDIDATES) do
+    local v = safeCall(function() return KET[c.name] end)
+    resolved[c.key] = v
+    if v == nil then
+      missing = missing + 1
+      log(string.format("    %-10s %-32s -> nil  ★ 该成员不存在", c.key, c.name))
     else
-      log(string.format("    mount 返回 = %s", tostring(app)))
-      log(string.format("    app.bound    = %s   ★ 必须是 true", tostring(app.bound)))
-      log(string.format("    app.ui       = %s", tostring(app.ui)))
-      if app.ui then
-        log(string.format("    app.ui.doc   = %s", tostring(app.ui.doc)))
+      log(string.format("    %-10s %-32s -> %s", c.key, c.name, tostring(v)))
+    end
+  end
+  log(string.format("    ★ 命中 %d / %d，缺失 %d",
+      #M.key.CANDIDATES - missing, #M.key.CANDIDATES, missing))
+  if missing > 0 then
+    log("    ★ 有缺失说明【枚举名与文档不一致】（R16 的教训），")
+    log("      缺失项不能在代码里硬写，要按命中项降级。")
+  end
+
+  -- ★ 顺便列出真实枚举项，避免下次再猜
+  log("")
+  log("    [1b] 尝试遍历 Enum.KeyEventType 找含 Jump 的项")
+  local cnt, jump = 0, 0
+  pcall(function()
+    for k in pairs(KET) do
+      cnt = cnt + 1
+      if tostring(k):find("Jump") then
+        jump = jump + 1
+        if jump <= 6 then log("         " .. tostring(k)) end
       end
-      if app.ui and app.ui.rendered then
-        log(string.format("    rendered     = %s", tostring(safeCall(function()
-          return app.ui.rendered:statsText() end))))
-      end
-      if not app.bound then
-        log("")
-        log("    ★★ bound=false 说明 mount 没挂上。结合上面 [1] 的")
-        log("       type(game)=='table' 判读：若为 false 且代码里用了")
-        log("       那个判断，就是它短路了。")
+    end
+  end)
+  log(string.format("        pairs() 遍历到 %d 项，含 Jump 的 %d 项", cnt, jump))
+  if cnt == 0 then
+    log("        （★ pairs 为 0 是正常的 —— Enum 用了元表，")
+    log("          见引擎能力与限制.md §4.3.3，只能显式索引）")
+  end
+
+  --===========================================================================
+  -- [2] 找父控件，试挂监听
+  --===========================================================================
+  log("")
+  log("[2] 挂载点候选")
+
+  local targets = {}
+  -- 取一个活的 live 条目，拿它的 control / hot
+  for node, entry in pairs(ui.rendered.live or {}) do
+    if entry.control then
+      targets[#targets + 1] = { tag = "control(" .. tostring(entry.kind) .. ")", c = entry.control }
+    end
+    if entry.hot then
+      targets[#targets + 1] = { tag = "hot(button 覆盖层)", c = entry.hot }
+    end
+    if #targets >= 2 then break end
+  end
+  targets[#targets + 1] = { tag = "root(根控件)", c = ui.rootControl }
+
+  local stats = {}   -- stats[key] = { n=收到次数, grp=组, target=挂在哪 }
+  for _, cd in ipairs(M.key.CANDIDATES) do
+    stats[cd.key] = { n = 0, grp = cd.grp, target = nil, name = cd.name }
+  end
+
+  local boundOK, boundFail, noMethod = 0, 0, 0
+
+  for _, t in ipairs(targets) do
+    local c = t.c
+    local has = safeCall(function() return type(c.AddKeyEventListener) end)
+    log(string.format("    %-24s AddKeyEventListener = %s", t.tag, tostring(has)))
+
+    if has ~= "function" then
+      noMethod = noMethod + 1
+    else
+      for _, cd in ipairs(M.key.CANDIDATES) do
+        local ev = resolved[cd.key]
+        if ev ~= nil then
+          local ok = pcall(function()
+            c:AddKeyEventListener(ev, function(data)
+              -- ★★ 绝不返回 true —— 否则会吞掉同容器内其他按键
+              --    （官方文档第 1317 行）
+              local st = stats[cd.key]
+              st.n = st.n + 1
+              if st.target == nil then st.target = t.tag end
+
+              -- 前 3 次逐条打印，便于确认参数结构
+              if st.n <= 3 then
+                local extra = ""
+                if data ~= nil then
+                  extra = string.format(" data.type=%s",
+                      tostring(safeCall(function() return data.type end)))
+                end
+                log(string.format("      ★[捕获] %-10s %s 第%d次%s",
+                    cd.key, t.tag, st.n, extra))
+              end
+              return false
+            end)
+          end)
+          if ok then boundOK = boundOK + 1 else boundFail = boundFail + 1 end
+        end
       end
     end
   end
 
   log("")
+  log(string.format("    绑定成功 %d 次 / 失败 %d 次 / 无该方法的控件 %d 个",
+      boundOK, boundFail, noMethod))
+  if noMethod == #targets then
+    log("    ★★ 所有候选控件都没有 AddKeyEventListener ——")
+    log("       键盘这条路在本版本不可用，请走「光标点击」兜底。")
+  end
+
+  --===========================================================================
+  -- [3] 提示用户按键
+  --===========================================================================
+  log("")
   log("============================================================")
+  log("  ★★ 现在请按键 ★★")
+  log("============================================================")
+  log("  请在游戏里按：空格 / ↑ / ↓ / F / E / Q，每个键按 3 次以上")
+  log("  然后回来读下方【判读表】（或重跑一次本模块看统计）。")
+  log("")
+  log("  ⚠️ 本探针是【只监听】的，屏幕上不会有任何变化 ——")
+  log("     所有结果都在日志里。按键后日志会多出 [捕获] 行。")
+  log("")
+  M.key._stats = stats
+  M.key._resolved = resolved
+  M.key._targets = targets
+
+  -- 立刻先打一版判读表（此刻多半还是 0，供按键后对比）
+  M.key.printVerdict()
+end
+
+--[[ 打印判读表。按键期间会被 report() 再调一次，用于看最新统计。]]--
+function M.key.printVerdict()
+  local stats = M.key._stats
+  if not stats then return end
+
+  hr("【判读表】按键统计")
+  log(string.format("  %-10s %-24s %-6s %-8s %s",
+      "短名", "枚举成员", "组", "收到次数", "挂在哪个控件"))
+
+  local order = { "jumpDown", "jumpUp",
+                  "leftDown", "leftUp", "rightDown", "rightUp",
+                  "fwdDown", "fwdUp", "backDown", "backUp",
+                  "c1Down", "c1Up", "c2Down", "c2Up",
+                  "c3Down", "c3Up", "c4Down", "c4Up" }
+  local grpSum = { A = 0, B = 0, C = 0 }
+  local total = 0
+  for _, k in ipairs(order) do
+    local st = stats[k]
+    if st then
+      grpSum[st.grp] = grpSum[st.grp] + st.n
+      total = total + st.n
+      log(string.format("  %-10s %-24s %-6s %-8d %s",
+          k, st.name, st.grp, st.n, tostring(st.target or "-")))
+    end
+  end
+  log("")
+  log(string.format("  分组合计： A(跳跃)=%d   B(移动)=%d   C(奇匠)=%d   总计=%d",
+      grpSum.A, grpSum.B, grpSum.C, total))
+
+  hr("【结论】")
+  if total == 0 then
+    log("  还没有捕获到任何按键。")
+    log("  · 若你【确实按了】-> 键盘事件在本版本拿不到，")
+    log("    改用「光标点击」兜底（库的 onclick 已真机验证可用）。")
+    log("  · 若你【还没按】-> 按几下再重跑本模块，或看日志末尾统计。")
+  else
+    local jd = stats.jumpDown and stats.jumpDown.n or 0
+    local ju = stats.jumpUp and stats.jumpUp.n or 0
+    if jd > 0 and ju > 0 then
+      log("  ✅ 跳跃键 Down/Up 都收到了 —— 可做成对判定（推荐）。")
+    elseif jd > 0 and ju == 0 then
+      log("  ⚠️ 只有 jumpDown 有数 —— 只能按下触发一次性跳跃。")
+      log("     ★ 这对小恐龙反而够用（按下即跳，省掉松手状态机）。")
+    elseif grpSum.C > 0 then
+      log("  ⚠️ 跳跃/移动键拿不到，但【奇匠按键】能收到 ——")
+      log("     改为绑定 CraftspersonKey1Down 当跳跃键即可。")
+    else
+      log("  ⚠️ 收到了按键但不在候选表里 —— 看上面 [捕获] 行确认是哪个。")
+    end
+
+    -- 挂载点结论
+    local seenT = {}
+    for _, k in ipairs(order) do
+      local st = stats[k]
+      if st and st.target and not seenT[st.target] then
+        seenT[st.target] = true
+        log(string.format("  · 事件来自 %s", st.target))
+      end
+    end
+    log("  ★ 记下这个挂载点：以后实现键盘绑定时就挂它。")
+  end
+  log("")
+end
+
+M.key.report = function(ui, items)
+  log("")
+  log("【屏幕元素】")
+  log(string.format("  %-6s %-28s %-22s %s", "cls", "父", "box(x,y,w,h)", "kind"))
+  for _, it in ipairs(items) do
+    log(string.format("  %-6s %-28s (%4.0f,%4.0f,%4.0f,%4.0f) %s",
+        it.cls, tostring(it.pid), it.bx, it.by, it.bw, it.bh, tostring(it.kind)))
+  end
+  log(string.format("  共 %d 个控件", #items))
+  -- 再打一版统计（若之前已按过键，这里能看到数）
+  M.key.printVerdict()
 end
 
 --=============================================================================
 -- 主流程
 --=============================================================================
 
-local MODULES = { text = M.text, mask = M.mask, glyph = M.glyph,
-                  clip = M.clip, mount = M.mount }
+--[[ ★ 模块注册表。新增模块就在这加一行，并把 ACTIVE 改成模块名。
+
+     ⚠️ 已移除：text / mask / glyph / clip / mount
+        —— 归档在 docs/探针模块归档.md，需要时按那里重建。
+  ]]--
+local MODULES = { key = M.key }
 
 local root, ui, bound, retryCount = nil, nil, false, 0
 
@@ -858,13 +598,9 @@ local function boot()
       .. " x " .. tostring(select(2, game.GetUICanvasSize())))
   log("============================================================")
 
-  if ACTIVE == "all" then
-    for _, name in ipairs({ "text", "mask", "glyph" }) do
-      runModule(name)
-    end
-  else
-    runModule(ACTIVE)
-  end
+  -- ★ 当前只有 key 一个模块，故无 "all" 分支；
+  --   将来模块多了可恢复：if ACTIVE == "all" then for ... runModule(name) end
+  runModule(ACTIVE)
 
   return true
 end

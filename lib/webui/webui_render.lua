@@ -988,6 +988,28 @@ function Renderer:update(root, domChanged)
             tset("fontSize", util.toFontSize(st2._fontSize, 14))
             tsetColor("fontColor", st2._color)
 
+            --[[ ★★ 承载文字的子文本框必须【继承父的背景色】（R21，2026-10-08）
+
+                 为什么必须做：
+                   当一个元素【自带直接文字】时，库会额外挂一个
+                   textbox 子控件来承载文字（因为父可能是 image 等
+                   没有 text 字段的类型）。这个子控件是【新建的控件】，
+                   于是吃到【引擎的默认深色底】（实测 #535353）。
+
+                 真机症状：CSS 里明明写了 background-color:#f7f7f7
+                   和 color:#535353，屏幕上文字却【完全看不见】——
+                   因为文字其实画在这个带默认深色底的子控件上，
+                   深灰字压在深灰底上（实测对比度仅 3）。
+
+                 ★ 修复：父有什么底色，就刷到什么底色。
+                   这样 overflow:hidden 容器（父无底色、由子层承载）
+                   也不会被误刷成不透明 —— 父的 _bgColor 为 nil 时
+                   这里什么也不做。
+            ]]--
+            if st2._bgColor then
+              tsetColor("bgColor", st2._bgColor)
+            end
+
             -- 水平对齐
             local ta = st2._textAlign
             local alignVal = "left"

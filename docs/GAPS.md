@@ -48,6 +48,35 @@
 
 ## 二、库没实现（可以补）
 
+### ✅ 已完成：键盘事件 + 游戏循环钩子（2026-10-08）
+
+| 项 | 状态 |
+|---|---|
+| **键盘绑定** | ✅ **已支持** —— `mount{ keys = { jump = fn } }` |
+| **游戏循环钩子** | ✅ **已支持** —— `mount{ onTick = function(dt) end }` |
+| 真机结论 | ✅ **R20 验证：键盘可用** |
+
+```lua
+app = webui.mount{
+  keys = {
+    jump = function() ... end,   -- KeyboardJumpKeyDown（别名）
+    left = function() ... end,   -- KeyboardMoveLeftKeyDown
+  },
+  onTick = function(dt) ... end, -- 每帧先跑逻辑，再渲染
+}
+```
+
+**关键实现约束**（都来自 R20 真机实测）：
+- **一个按键只绑一个挂载点** —— 同一事件会被每个绑定者各收一遍，
+  绑多处 → 按一次跳 3 次。库固定只绑 `root`
+- **回调一律 `return false`** —— 返回 `true` 会吞掉同容器内其他按键
+  （官方文档第 1317 行）
+
+**示例：** `deploy/demo_dino.lua`（完整小恐龙，跳跃/碰撞/重开/加速）。
+**回归：** `tests/test_input.lua`、`tests/test_demo_dino*.lua`。
+
+详见 [引擎能力与限制.md](引擎能力与限制.md) §5.2。
+
 ### ✅ P0 —— 已完成
 
 `z-index` / `flex-grow`/`flex-shrink` / `transform` / `:hover`/`:active`
@@ -186,7 +215,8 @@ img.imageColor = Color.FromRGBA(255, 200, 60, 255)       -- 染色
 **别把字符当可平铺格子用**（详见 `引擎能力与限制.md` §4.2）。
 
 > 详见 `引擎能力与限制.md` §4.2。
-> 探针：`probe.lua`（模块 `glyph`）。
+> 探针：~~`probe.lua`（模块 `glyph`）~~ —— 模块已移除（2026-10-07），
+> 需复验时见 [探针模块归档.md](探针模块归档.md)。
 
 ## 五、优先级建议
 
