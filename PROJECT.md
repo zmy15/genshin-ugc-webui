@@ -117,6 +117,7 @@ lua test_xxx.lua
 | `test_real_prefabs` | 真实模板索引 |
 | **`test_clip`** | ★ **裁剪 / 换图**（遮罩容器、矩形裁剪、透明处理） |
 | `test_demo_panel` | 角色面板 demo 自检 |
+| `test_demo_feature` | 功能展示页 demo 自检（形状 / 裁剪数 / 文字硬约束） |
 | `test_probe` | 统一探针自检（四个模块都能跑通） |
 
 **★ 标记的是关键回归测试**，各自对应真机上踩过的严重 bug。

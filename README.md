@@ -5,6 +5,10 @@
 一个纯 Lua 实现的轻量 WebUI 引擎 —— 把 HTML/CSS 解析、布局、渲染到游戏的客户端控件上。
 零外部依赖，可在游戏沙箱内运行。
 
+<!-- ★ 截图：把真机截图保存为 docs/screenshot.png（或 .jpg 后改后缀）即可显示。
+     拍摄方法见下方「功能展示」一节，示例脚本是 deploy/demo_feature.lua。 -->
+![功能展示](docs/screenshot.png)
+
 ---
 
 ## 这是什么
@@ -63,10 +67,11 @@ lib/webui/        ★ 库本体（12 个模块，4800+ 行）
   └── ...
 deploy/           示例与探针
   ├── probe.lua     ★ 统一真机探针（改 ACTIVE 选模块）
-  ├── demo_panel.lua   角色面板
-  └── demo_shop.lua    装备商店
+  ├── demo_feature.lua  功能展示页（形状 / 裁剪 / flex，用于截图）
+  ├── demo_panel.lua    角色面板
+  └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            20 个测试套件
+tests/            22 个测试套件
 tools/            构建、验证、mock
 ```
 
@@ -118,6 +123,32 @@ local ACTIVE = "clip"   -- text / clip / mask / glyph / all
 | `glyph` | 几何字符 / 无缝方案 |
 
 探针头部固化了**历史结论**和**硬性约束清单**，写新验证前先读。
+
+---
+
+## 功能展示
+
+`deploy/demo_feature.lua` 是一屏之内展示全部已验证能力的示例页，
+也用于拍摄 README 顶部的那张截图：
+
+| 区块 | 展示的能力 |
+|---|---|
+| 顶栏 / 标题 | 盒模型、flex（`justify-content: space-between`）、文字渲染 |
+| 圆形头像 | `border-radius: 50%` 圆形裁剪（图片控件 + 圆形遮罩） |
+| 形状行 | 六种预置形状：方 / 圆 / 三角 / 四角星 / 五角星 / 圆环（`SetImage` + `imageColor` 染色） |
+| 裁剪区 | `overflow:hidden` 矩形裁剪 —— 内部色块宽 420px 超出容器 300px，溢出部分被切掉 |
+| 组件区 | flex 行布局、进度条、按钮 `onclick` / `onmouseenter` 事件 |
+
+复现截图：
+
+```bash
+lua tools/build_external.lua "<关卡目录>/external_lua_file"
+cp deploy/demo_feature.lua "<关卡目录>/external_lua_file/"
+lua tools/verify_external.lua "<关卡目录>/external_lua_file"   # 确认已同步
+```
+
+> ⚠️ **别忘了在编辑器里导入**。真机读的是 `.gil` 而不是文件夹，
+> 只复制文件不生效 —— 症状是「本地验证全过 + 真机没有任何反应」。
 
 ---
 
