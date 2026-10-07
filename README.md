@@ -5,9 +5,12 @@
 一个纯 Lua 实现的轻量 WebUI 引擎 —— 把 HTML/CSS 解析、布局、渲染到游戏的客户端控件上。
 零外部依赖，可在游戏沙箱内运行。
 
-<!-- ★ 截图：把真机截图保存为 docs/screenshot.png（或 .jpg 后改后缀）即可显示。
-     拍摄方法见下方「功能展示」一节，示例脚本是 deploy/demo_feature.lua。 -->
-![功能展示](docs/screenshot.png)
+![功能展示](docs/img/1.png)
+
+<div align="center">
+
+*① 真机运行效果 —— 形状 / 裁剪 / flex / 事件，一屏内展示全部已验证能力*
+</div>
 
 ---
 
@@ -19,7 +22,7 @@
 ```html
 <div class="card">
   <div class="avatar"></div>
-  <div class="name">夜兰</div>
+  <div class="name">若娜瓦</div>
   <div class="bar"><div class="fill"></div></div>
 </div>
 ```
@@ -50,35 +53,6 @@
 自定义字体、粗体/斜体、富文本、圆角/边框/阴影（只能预配图片）。
 
 详见 [`docs/引擎能力与限制.md`](docs/引擎能力与限制.md)（权威版）。
-
----
-
-## 目录结构
-
-```
-lib/webui/        ★ 库本体（12 个模块）。
-                    文件名即部署名（webui_util.lua 等），整目录可直接拷进游戏工程
-  ├── webui.lua         对外 API（入口）
-  ├── webui_html.lua    HTML 解析
-  ├── webui_css.lua     CSS 解析 + 选择器匹配
-  ├── webui_style.lua   层叠 / 继承 / 计算样式
-  ├── webui_layout.lua  盒模型 + flex
-  ├── webui_render.lua  控件池 + diff 渲染
-  ├── webui_clip.lua    图片控件（遮罩 / 换图 / 染色）
-  └── ...
-deploy/           示例与探针
-  ├── my_page.lua   ★ 用户视角的完整示例（队伍配置），install 的起始页模板
-  ├── probe.lua     统一真机探针（改 ACTIVE 选模块）
-  ├── demo_feature.lua  功能展示页（形状 / 裁剪 / flex，用于截图）
-  ├── demo_min.lua      最小示例（82 行）
-  ├── demo_panel.lua    角色面板
-  └── demo_shop.lua     装备商店
-docs/             文档（引擎能力、API、Gaps 等）
-tests/            28 个测试套件
-tools/            构建、验证、mock
-  ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
-  └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）
-```
 
 ---
 
@@ -138,7 +112,39 @@ function OnDestroy()  app:stop()   end
 会在下一帧被打回原值（真机踩过：日志在涨、界面恒为 0）。
 </details>
 
-### 跑测试
+
+### 部署到游戏
+
+**部署就是复制** —— 把`lib/webui/` 里的文件全部复制到你的项目文件夹下，并在`「千星沙箱」`里进行批量导入（见图 ②）
+
+`main.lua` 是你要改的页面默认包含了一份默认的初始界面可供参考，还有一份 `README-webui.md` 使用说明。
+
+<div align="center">
+
+![部署](docs/img/2.png)
+
+*② 「千星沙箱」客户端脚本导入*
+</div>
+
+
+### 功能展示
+
+`deploy/demo_feature.lua` 是一屏之内展示全部已验证能力的示例页，
+也用于拍摄 README 顶部的那张截图：
+
+| 区块 | 展示的能力 |
+|---|---|
+| 顶栏 / 标题 | 盒模型、flex（`justify-content: space-between`）、文字渲染 |
+| 圆形头像 | `border-radius: 50%` 圆形裁剪（图片控件 + 圆形遮罩） |
+| 形状行 | 六种预置形状：方 / 圆 / 三角 / 四角星 / 五角星 / 圆环（`SetImage` + `imageColor` 染色） |
+| 裁剪区 | `overflow:hidden` 矩形裁剪 —— 内部色块宽 420px 超出容器 300px，溢出部分被切掉 |
+| 组件区 | flex 行布局、进度条、按钮 `onclick` / `onmouseenter` 事件 |
+
+
+## 开发
+
+
+### 测试
 
 ```bash
 cd <repo>
@@ -148,36 +154,6 @@ for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 
 **28 个套件全部通过。** 路径自包含，任何目录都能跑。
 
-### 打包
-
-```bash
-lua tools/build.lua                 # -> bundle/webui.lua（单文件，给"粘贴源码"的场景）
-```
-
-### 部署到游戏
-
-**部署就是复制** —— `lib/webui/` 里的文件名已经是真机可直接用的扁平形式
-（`webui_util.lua` / `require('webui_util')`），不需要改名或改写。
-
-**一键安装**（库 + 起始页 + 使用说明）：
-
-```bash
-python tools/install.py "<关卡目录>/external_lua_file"
-```
-
-装完那个目录就是**能直接导入编辑器**的：`webui*.lua` 是库，
-`main.lua` 是你要改的页面，还有一份 `README-webui.md` 使用说明。
-
-> ⚠️ **必须在编辑器里导入**。真机读的是关卡文件 `.gil`，**不是文件夹**。
-> 只复制文件不生效 —— 症状是「本地验证全过 + 真机什么都没有」。
-> 详见 `docs/引擎能力与限制.md` §八。
-
-也可以只用底层工具（自行控制产物）：
-
-```bash
-lua tools/build_external.lua <目标目录>     # 只装库，不含示例（install.py 的薄封装）
-lua tools/verify_external.lua "<external_lua_file 路径>"   # 校验部署（含 .gil 同步检查）
-```
 
 ### 真机验证
 
@@ -195,32 +171,6 @@ local ACTIVE = "clip"   -- text / clip / mask / glyph / all
 | `glyph` | 几何字符 / 无缝方案 |
 
 探针头部固化了**历史结论**和**硬性约束清单**，写新验证前先读。
-
----
-
-## 功能展示
-
-`deploy/demo_feature.lua` 是一屏之内展示全部已验证能力的示例页，
-也用于拍摄 README 顶部的那张截图：
-
-| 区块 | 展示的能力 |
-|---|---|
-| 顶栏 / 标题 | 盒模型、flex（`justify-content: space-between`）、文字渲染 |
-| 圆形头像 | `border-radius: 50%` 圆形裁剪（图片控件 + 圆形遮罩） |
-| 形状行 | 六种预置形状：方 / 圆 / 三角 / 四角星 / 五角星 / 圆环（`SetImage` + `imageColor` 染色） |
-| 裁剪区 | `overflow:hidden` 矩形裁剪 —— 内部色块宽 420px 超出容器 300px，溢出部分被切掉 |
-| 组件区 | flex 行布局、进度条、按钮 `onclick` / `onmouseenter` 事件 |
-
-复现截图：
-
-```bash
-lua tools/build_external.lua "<关卡目录>/external_lua_file"
-cp deploy/demo_feature.lua "<关卡目录>/external_lua_file/"
-lua tools/verify_external.lua "<关卡目录>/external_lua_file"   # 确认已同步
-```
-
-> ⚠️ **别忘了在编辑器里导入**。真机读的是 `.gil` 而不是文件夹，
-> 只复制文件不生效 —— 症状是「本地验证全过 + 真机没有任何反应」。
 
 ---
 
@@ -255,3 +205,33 @@ lua tools/verify_external.lua "<关卡目录>/external_lua_file"   # 确认已�
 | [webui_feasibility.md](docs/webui_feasibility.md) | 早期可行性分析 |
 | [真机复用问题复盘.md](docs/真机复用问题复盘.md) | 控件复用 bug 排查 |
 | [lib/webui/README.md](lib/webui/README.md) | 库使用文档 |
+
+
+---
+
+## 目录结构
+
+```
+lib/webui/        ★ 库本体（12 个模块）。
+                    文件名即部署名（webui_util.lua 等），整目录可直接拷进游戏工程
+  ├── webui.lua         对外 API（入口）
+  ├── webui_html.lua    HTML 解析
+  ├── webui_css.lua     CSS 解析 + 选择器匹配
+  ├── webui_style.lua   层叠 / 继承 / 计算样式
+  ├── webui_layout.lua  盒模型 + flex
+  ├── webui_render.lua  控件池 + diff 渲染
+  ├── webui_clip.lua    图片控件（遮罩 / 换图 / 染色）
+  └── ...
+deploy/           示例与探针
+  ├── my_page.lua   ★ 用户视角的完整示例（队伍配置），install 的起始页模板
+  ├── probe.lua     统一真机探针（改 ACTIVE 选模块）
+  ├── demo_feature.lua  功能展示页（形状 / 裁剪 / flex，用于截图）
+  ├── demo_min.lua      最小示例（82 行）
+  ├── demo_panel.lua    角色面板
+  └── demo_shop.lua     装备商店
+docs/             文档（引擎能力、API、Gaps 等）
+tests/            28 个测试套件
+tools/            构建、验证、mock
+  ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
+  └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）
+```
