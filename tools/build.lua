@@ -202,10 +202,22 @@ if checkOnly then
   return
 end
 
+-- 输出目录若不存在则自动创建（bundle/ 在 .gitignore 里，克隆后没有）
+do
+  local probe = io.open(OUT_FILE, "r")
+  if probe then probe:close() else
+    -- 尝试用 os.execute 创建目录（兼容 Windows 与类 Unix）
+    local dir = OUT_FILE:match("^(.*)[/\\][^/\\]+$")
+    if dir then
+      os.execute('mkdir "' .. dir .. '" 2>nul || mkdir -p "' .. dir .. '" 2>/dev/null')
+    end
+  end
+end
+
 local ok, err = writeFile(OUT_FILE, out)
 if not ok then
   print("!! " .. err)
-  print("   请先创建目录 bundle/")
+  print("   请手动创建目录: " .. (OUT_FILE:match("^(.*)[/\\]") or "bundle"))
   return
 end
 
