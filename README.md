@@ -122,6 +122,23 @@ function OnDestroy()  app:stop()   end
 
 `main.lua` 是你要改的页面默认包含了一份默认的初始界面可供参考，还有一份 `README-webui.md` 使用说明。
 
+**⚠️ 别忘了改根控件的缩放** —— 选中根控件（客户端控件容器），把
+**缩放比例 `X` / `Y` 从 `1.00` 改成 `1.01`**。不然界面四周会留一圈缝
+（控件渲染区域比画布小一点）。位置填画布中心、大小填画布尺寸：
+
+| 字段 | 值 |
+|---|---|
+| 位置 | `X 800` / `Y 450`（1600×900 画布的中心） |
+| 大小 | `W 1600` / `H 900` |
+| **缩放比例** | **`X 1.01` / `Y 1.01`** ← 关键 |
+
+<div align="center">
+
+![根控件变换设置](docs/img/root_scale.png)
+
+*③ 根控件的「变换」面板：注意缩放是 `1.01`，不是 `1.00`*
+</div>
+
 <div align="center">
 
 ![部署](docs/img/2.png)
@@ -190,8 +207,9 @@ local ACTIVE = "clip"   -- text / clip / mask / glyph / all
 | **自定义字段不可写** | 控件上无法存状态；需用外部表或 `GetChildren()` |
 | **字段按控件类型封死** | 容器/按钮写 `bgColor`/`text` 静默失败 |
 | **`fontSize` 必须整数** | 浮点写入失败 |
-| **`OnUpdate` 不驱动** | 逐帧靠递归 `TweenSequence` |
+| **`OnUpdate` 不驱动** | 逐帧靠递归 `TweenSequence`；库里等 Root 的重试也走这条路 |
 | **枚举名不能照文档猜** | 真名是 `Enum.ImageSource.StaticReference` |
+| **根控件缩放要设 `1.01`** | 编辑器里的手工设置。设成 `1.00` 时界面**四周留一圈缝**；库改不了 `localScale` |
 
 完整的权威清单见 [`docs/引擎能力与限制.md`](docs/引擎能力与限制.md)。
 
