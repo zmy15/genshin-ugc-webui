@@ -40,8 +40,11 @@ jobs:
           luac5.3 -v
 
       - name: 语法检查（所有 .lua）
-        # 与 pre-commit 钩子同一套逻辑，防止有人绕过本地钩子直接推。
-        # 用 luac -p：只解析不执行，不会触发任何 require 副作用。
+        # ★ 这一层是 Lua 校验的唯一归属地（pre-commit 只做格式/卫生检查）。
+        #   理由见 .pre-commit-config.yaml 顶部：pre-commit 的 Lua 钩子在
+        #   pre-commit.ci（容器内无 lua）与本机（无 luarocks）之间环境假设
+        #   不一致；这里统一用与游戏沙箱一致的 lua5.3 校验，更可信。
+        #   用 luac5.3 -p：只解析不执行，不会触发任何 require 副作用。
         run: |
           fail=0
           checked=0
