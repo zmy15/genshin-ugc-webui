@@ -42,6 +42,7 @@ for _, c in ipairs(cases) do
   end
 end
 print(string.format("\n%d 通过, %d 失败", pass, fail))
+if fail > 0 then os.exit(1) end
 
 -- 详细看几个
 print("\n=== 详细：属性解析 ===")

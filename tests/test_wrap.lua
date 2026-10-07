@@ -153,3 +153,4 @@ check("矮项垂直居中", math.abs((k6[1].box.y - b6.box.contentY) - 10) < 1,
 
 print()
 print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
+if fail > 0 then os.exit(1) end

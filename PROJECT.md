@@ -114,7 +114,6 @@ lua test_xxx.lua
 | **`test_real`** | ★ **真机仿真**（用 `engine_mock`） |
 | `test_shop` | 装备商店端到端 |
 | `test_bundle` | 打包产物自检 |
-| `test_deploy` | 部署产物自检 |
 | `test_real_prefabs` | 真实模板索引 |
 | **`test_clip`** | ★ **裁剪 / 换图**（遮罩容器、矩形裁剪、透明处理） |
 | `test_demo_panel` | 角色面板 demo 自检 |

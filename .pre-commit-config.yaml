@@ -1,0 +1,41 @@
+# pre-commit 配置
+#
+# 本地安装：pip install pre-commit && pre-commit install
+# 全量跑一次：pre-commit run --all-files
+#
+# ★ 设计取舍：这里只用零依赖或 pre-commit 官方钩子。
+#   不用 luacheck —— 它需要 luarocks 编译安装，在 pre-commit.ci 上不稳定，
+#   而"提交的 Lua 文件能否通过语法检查"是本项目最低成本的底线保障。
+#   静态语义检查交给 CI 里的全量测试（tests/ 21 个套件）。
+
+repos:
+  # ---------- pre-commit 官方基础钩子 ----------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=1024']
+      - id: detect-private-key
+      - id: check-merge-conflict
+      - id: check-yaml
+      # ★ end-of-file-fixer / trailing-whitespace 只作用于「本次提交实际改动」
+      #   的文件（pre-commit 默认语义），不会主动重写全仓库。
+      #   实测 `--all-files` 会一次性改写 50+ 个历史文件的行尾/末尾换行，
+      #   把真实改动淹没在噪音里。需要全量整理时应单独跑、单独提交。
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # ---------- Lua 语法检查（零依赖，用系统 lua/luac 解释器）----------
+  #
+  # 原理：luac -p 只做语法解析不生成字节码，是 Lua 官方自带的语法检查。
+  # 优先用 luac，找不到则回落到 loadfile（路径经环境变量传递）。
+  # 这样在装了不同 Lua 版本的环境里都能工作（本机 5.5、CI 5.3）。
+  - repo: local
+    hooks:
+      - id: lua-syntax
+        name: Lua 语法检查
+        description: 用 luac -p / loadfile 检查所有 .lua 文件的语法
+        entry: tools/precommit_lua_syntax.sh
+        language: script
+        files: \.lua$
+        exclude: ^bundle/

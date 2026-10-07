@@ -1,0 +1,89 @@
+name: tests
+
+# 测试 CI
+#
+# 触发：push 到 main / 任意 PR / 手动
+# 环境：Lua 5.3（与游戏沙箱版本对齐；见 lib/webui/init.lua 的运行环境约束）
+#
+# ★ 为什么锁 5.3 而不是 5.4/5.5：
+#   库的目标运行环境是 Lua 5.3，且 init.lua 明确承诺"只用 5.1 就有的语言特性"。
+#   在更高版本上跑会掩盖 5.3 上的不兼容（例如位运算符、整数除法、
+#   table.move 等 5.3 新增能力在 5.4 行为不同），所以必须锁 5.3。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支的新推送取消上一次未完成的运行
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lua 5.3 全量测试
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Lua 5.3
+        # ubuntu-latest(24.04) 的 universe 仓库自带 lua5.3，
+        # 该包同时提供 /usr/bin/lua5.3 与 /usr/bin/luac5.3，无需第三方 action 编译。
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.3
+          lua5.3 -v
+          luac5.3 -v
+
+      - name: 语法检查（所有 .lua）
+        # 与 pre-commit 钩子同一套逻辑，防止有人绕过本地钩子直接推。
+        # 用 luac -p：只解析不执行，不会触发任何 require 副作用。
+        run: |
+          fail=0
+          checked=0
+          for f in $(git ls-files '*.lua' ':!bundle/*'); do
+            checked=$((checked + 1))
+            if ! luac5.3 -p "$f"; then
+              echo "::error file=$f::Lua 语法错误"
+              fail=1
+            fi
+          done
+          echo "语法检查完成：$checked 个文件"
+          exit $fail
+
+      - name: 构建 bundle
+        # 先构建：test_bundle.lua 依赖 bundle/webui.lua 产物
+        run: lua5.3 tools/build.lua
+
+      - name: 运行全部测试套件
+        # ★ 逐个跑而不是跑一个总入口，这样某个套件崩溃能明确定位是哪个。
+        #   任何套件返回非 0 即整体失败。
+        run: |
+          fail=0
+          total=0
+          passed=0
+          for f in tests/test_*.lua; do
+            total=$((total + 1))
+            echo "---------- $f ----------"
+            if lua5.3 "$f"; then
+              passed=$((passed + 1))
+            else
+              echo "::error file=$f::测试失败（退出码非 0）"
+              fail=$((fail + 1))
+            fi
+          done
+          echo ""
+          echo "===== $passed/$total 套件通过 ====="
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::$fail 个测试套件失败"
+            exit 1
+          fi
+
+      - name: 校验 bundle 与源码同步
+        # 若有人改了 lib/ 却忘了重新构建，bundle 会过期。
+        # 这里用 --check 模式确认构建结果与提交一致（不写文件）。
+        run: lua5.3 tools/build.lua --check

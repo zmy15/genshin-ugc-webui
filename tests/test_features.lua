@@ -186,3 +186,4 @@ check("flex-basis 覆盖 width", math.abs(k3.box.w - 200) < 1,
 
 print()
 print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
+if fail > 0 then os.exit(1) end
