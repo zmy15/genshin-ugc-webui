@@ -24,17 +24,32 @@ local function check(name, cond, detail)
 end
 
 --=============================================================================
--- 从 README.md 抽取示例代码
+-- 从 QUICKSTART 抽取示例代码
+--
+--   ★ 示例代码的【唯一来源】是 lib/webui/QUICKSTART.md。
+--     README 的「快速开始」只是一个指向它的链接（有意为之，避免两处维护）。
+--     所以这里只读 QUICKSTART，不再保留 README 回退分支。
 --=============================================================================
 
-local f = io.open("README.md", "r")
-if not f then print("找不到 README.md"); os.exit(1) end
-local md = f:read("*a")
-f:close()
+local SRC = { path = "lib/webui/QUICKSTART.md", section = "## 写一个页面" }
 
--- 找到 "### 写一个页面" 之后的第一段 lua 代码块
-local section = md:match("### 写一个页面(.-)###")
-check("README 里有「写一个页面」小节", section ~= nil)
+local sectionPath, section = nil, nil
+do
+  local fh = io.open(SRC.path, "r")
+  if fh then
+    local text = fh:read("*a")
+    fh:close()
+    -- 取该小节到下一个同级/更高级标题之间的内容
+    local pat = SRC.section:gsub("([%%%.%(%)%+%-%*%?%[%]%^%$])", "%%%1")
+    local body = text:match(pat .. "(.-)\n## ") or text:match(pat .. "(.*)$")
+    if body and body:find("```lua") then
+      sectionPath, section = SRC.path, body
+    end
+  end
+end
+
+check("在 QUICKSTART 找到含 lua 示例的小节", section ~= nil,
+    section and sectionPath or ("未找到 " .. SRC.path .. " 的「" .. SRC.section .. "」"))
 
 local example = nil
 if section then

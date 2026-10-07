@@ -58,94 +58,9 @@
 
 ## 快速开始
 
-### 写一个页面
-
-只需给 HTML / CSS，以及当 JS 用的 Lua 事件处理。剩下的
-（找根控件、渲染、绑事件、逐帧循环、等 Root 重试）都由库接管：
-
-```lua
-local webui = require('webui')
-
--- ★ 注意写法：必须先 local 声明，再赋值。
---   `local app = webui.mount{...}` 会让 on 表里的闭包看不到 app（恒为 nil），
---   因为 Lua 的 local 在整条赋值语句执行完之前对内部闭包不可见。
---
---   ★ onReady 里也一样看不到（它比 mount 返回更早触发），
---     要用它的第二个参数：onReady = function(ui, app) ... end
-local app
-app = webui.mount{
-  root    = "Root",
-  prefabs = { container=1073741933, textbox=1073741934,
-              button=1073741935,    image=1073741938 },
-  html = [[<div class="card" id="c" onclick="tap">你好</div>]],
-  css  = [[
-    .card { width:260px; height:60px; background-color:#222; font-size:16px; }
-    .card:hover { background-color:#333; }
-  ]],
-  on = {
-    tap = function() app:setText("c", "被点了") end,
-  },
-}
-
--- 引擎按固定名字找这几个函数，必须转接一次（3 行）
-function OnStart()    app:start()  end
-function OnUpdate(dt) app:update() end
-function OnDestroy()  app:stop()   end
-```
-
-完整可跑示例见 [`deploy/demo_min.lua`](deploy/demo_min.lua)（82 行，
-其中大半是 HTML/CSS）。**不写 mount 也可以** —— 用 `webui.new` 手动
-控制每一步，见 [`deploy/demo_feature.lua`](deploy/demo_feature.lua)。
-
-<details>
-<summary>mount 到底替你做了什么</summary>
-
-| 原来要手写 | 现在 |
-|---|---|
-| `game.FindClientUIRoot("Root")` | `root = "Root"` |
-| `webui.new{...}` + `ui:render()` | `html` / `css` 两个字段 |
-| `handlers` 表 | `on` 表 |
-| 写 `startLoop`（递归 `TweenSequence`） | `loop`（默认开） |
-| `OnStart` 里找 Root + `OnUpdate` 里重试 120 帧 | `app:start()` / `app:update()` |
-| `OnDestroy` 里 `Kill` 循环 | `app:stop()` |
-| 手写 `refreshCounter` 改文字 | `app:setText(id, text)` |
-
-`app:setText` / `app:setStyle` 内部走 **DOM**（`node:setText`）而不是
-直接写控件 —— 渲染器每帧都会用 DOM 文本覆盖控件，直接改 `control.text`
-会在下一帧被打回原值（真机踩过：日志在涨、界面恒为 0）。
-</details>
-
-
-### 部署到游戏
-
-**部署就是复制** —— 把`lib/webui/` 里的文件全部复制到你的项目文件夹下，并在`「千星沙箱」`里进行批量导入（见图 ②）
-
-`main.lua` 是你要改的页面默认包含了一份默认的初始界面可供参考，还有一份 `README-webui.md` 使用说明。
-
-**⚠️ 别忘了改根控件的缩放** —— 选中根控件（客户端控件容器），把
-**缩放比例 `X` / `Y` 从 `1.00` 改成 `1.01`**。不然界面四周会留一圈缝
-（控件渲染区域比画布小一点）。位置填画布中心、大小填画布尺寸：
-
-| 字段 | 值 |
-|---|---|
-| 位置 | `X 800` / `Y 450`（1600×900 画布的中心） |
-| 大小 | `W 1600` / `H 900` |
-| **缩放比例** | **`X 1.01` / `Y 1.01`** ← 关键 |
-
-<div align="center">
-
-![根控件变换设置](docs/img/root_scale.png)
-
-*③ 根控件的「变换」面板：注意缩放是 `1.01`，不是 `1.00`*
-</div>
-
-<div align="center">
-
-![部署](docs/img/2.png)
-
-*② 「千星沙箱」客户端脚本导入*
-</div>
-
+> 📖 完整版见 **[lib/webui/QUICKSTART.md](lib/webui/QUICKSTART.md)**
+> —— 含示例代码、四步部署（导入脚本 / 建 `Root` 并挂脚本 / 设缩放 `1.01` /
+> 建控件模板填 `prefabs`）与全部截图。
 
 ### 功能展示
 
@@ -210,6 +125,7 @@ local ACTIVE = "clip"   -- text / clip / mask / glyph / all
 | **`OnUpdate` 不驱动** | 逐帧靠递归 `TweenSequence`；库里等 Root 的重试也走这条路 |
 | **枚举名不能照文档猜** | 真名是 `Enum.ImageSource.StaticReference` |
 | **根控件缩放要设 `1.01`** | 编辑器里的手工设置。设成 `1.00` 时界面**四周留一圈缝**；库改不了 `localScale` |
+| **必须有名为 `Root` 的容器节点** | 且**要把脚本挂在它下面**。库靠 `game.FindClientUIRoot("Root")` 找挂载点，缺了或名字不对 → **界面空白且无日志** |
 
 完整的权威清单见 [`docs/引擎能力与限制.md`](docs/引擎能力与限制.md)。
 

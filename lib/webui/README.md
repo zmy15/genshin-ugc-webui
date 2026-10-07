@@ -10,6 +10,10 @@
 
 ## 快速开始
 
+> ★ **新手先看 [QUICKSTART.md](QUICKSTART.md)** —— 用 `webui.mount` 一步挂载，
+> 只需写 HTML / CSS / 事件，样板代码全部由库接管。
+> 下面这段是 `webui.new` 的手动写法，控制更细但要多写几行。
+
 ```lua
 local webui = require('webui')
 

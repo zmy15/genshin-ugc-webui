@@ -25,6 +25,7 @@
 
 import argparse
 import os
+import re
 import shutil
 import sys
 
@@ -179,6 +180,44 @@ def main(argv=None):
         except OSError as e:
             problems.append("写不进 %s: %s" % (dst, e))
             print("  x 写入失败: %s" % e)
+
+        # -------------------------------------------------------------------
+        # 说明里引用的图片
+        #
+        # ★ 说明会被拷成 README-webui.md 放到游戏工程里，而工程里【没有】
+        #   docs/ 目录 —— 不把图一起拷过去，说明里的图全是死链。
+        #   这里按“图片名”平铺拷到目标目录，并把 markdown 里的路径改成同级。
+        #
+        #   图片放在 docs/img/，说明放在 tools/，源路径形如 ../docs/img/xxx.png。
+        # -------------------------------------------------------------------
+        if not args.no_guide:
+            img_dir = os.path.join(REPO_ROOT, "docs", "img")
+            # 从 markdown 里抓出所有 ../docs/img/xxx.png 形式的引用
+            refs = re.findall(r"\.\./docs/img/([A-Za-z0-9_.\-]+\.(?:png|jpg|jpeg|gif))",
+                              guide)
+            copied_imgs = []
+            for name in sorted(set(refs)):
+                src_img = os.path.join(img_dir, name)
+                if not os.path.isfile(src_img):
+                    problems.append("找不到说明引用的图片 " + src_img)
+                    print("  x 图片缺失: %s" % name)
+                    continue
+                try:
+                    _copy_binary(src_img, os.path.join(target, name))
+                    copied_imgs.append(name)
+                except OSError as e:
+                    problems.append("写不进图片 %s: %s" % (name, e))
+                    print("  x 图片写入失败: %s" % e)
+
+            if copied_imgs:
+                # 把说明里的 ../docs/img/ 前缀去掉 —— 图片已平铺到同级目录
+                with open(dst, "r", encoding="utf-8", newline="") as f:
+                    text = f.read()
+                text = text.replace("../docs/img/", "")
+                with open(dst, "w", encoding="utf-8", newline="") as f:
+                    f.write(text)
+                print("  + %-22s %6d 个（%s）"
+                      % ("(附图)", len(copied_imgs), ", ".join(copied_imgs)))
 
     # -----------------------------------------------------------------------
     print()

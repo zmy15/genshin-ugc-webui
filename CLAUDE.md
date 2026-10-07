@@ -49,6 +49,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **枚举名不能照文档猜** | 真名 `Enum.ImageSource.StaticReference` |
 | **真机读 `.gil` 不是文件夹** | 复制文件不生效，须编辑器导入 |
 | **根控件缩放必须 `1.01`** | 编辑器里手工设。`1.00` 时界面**四周留一圈缝**；库改不了 `localScale` |
+| **必须有名为 `Root` 的容器节点 + 脚本挂在其下** | 库靠 `FindClientUIRoot("Root")` 找挂载点；缺了/名字不对 → **界面空白且无日志** |
 
 完整清单与证据：`docs/引擎能力与限制.md`
 
