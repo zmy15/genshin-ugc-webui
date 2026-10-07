@@ -25,8 +25,8 @@ for f in tests/test_*.lua; do lua "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
 lua tools/build.lua
 
 # 部署到游戏工程（库文件名已是真机可直接用的扁平形式，部署即复制）
-lua tools/install.lua "<external_lua_file 路径>"        # 库 + 起始页 + 使用说明
-lua tools/build_external.lua "<external_lua_file 路径>" # 只装库（install 的薄封装）
+python tools/install.py "<external_lua_file 路径>"        # 库 + 起始页 + 使用说明
+lua tools/build_external.lua "<external_lua_file 路径>" # 只装库（转调 install.py）
 
 # 部署校验（含 .gil 同步检查）
 lua tools/verify_external.lua "<external_lua_file 路径>"

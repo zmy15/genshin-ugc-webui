@@ -167,5 +167,5 @@ clip.setImage(ctrl, clip.SHAPES.STAR5)   -- 100001方 / 100002圆 / 100003三角
 ## 7. 版本
 
 库文件对应 genshin-ugc-webui 的 `0.1.0`。
-升级时用 `tools/install.lua` 重新装一遍即可（会覆盖 `webui*.lua`，
-你的 `@SAMPLE@` 不会被改）。
+升级时在仓库里跑 `python tools/install.py "<本目录>"` 重新装一遍即可
+（会覆盖 `webui*.lua`，你的 `@SAMPLE@` 不会被改）。

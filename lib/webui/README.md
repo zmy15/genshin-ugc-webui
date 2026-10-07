@@ -83,7 +83,7 @@ webui_event.lua
 **部署就是复制**（无需改名、无需改写 require）：
 
 ```bash
-lua tools/install.lua "<external_lua_file 路径>"     # 库 + 起始页 + 使用说明
+python tools/install.py "<external_lua_file 路径>"     # 库 + 起始页 + 使用说明
 lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 ```
 

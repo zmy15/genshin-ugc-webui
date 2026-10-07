@@ -45,8 +45,8 @@
 
 | 文件 | 用途 |
 |---|---|
-| `install.lua` | ★ **一键安装到游戏工程**（库 + 起始页 + 使用说明） |
-| `build_external.lua` | 只装库到 `external_lua_file`（`install.lua` 的薄封装） |
+| `install.py` | ★ **一键安装到游戏工程**（库 + 起始页 + 使用说明） |
+| `build_external.lua` | 只装库到 `external_lua_file`（`install.py` 的薄封装） |
 | `build.lua` | 打包成单文件（`bundle/webui.lua`），供"粘贴源码"场景 |
 | `verify_external.lua` | 模拟真机 require 规则，验证部署正确性（含 `.gil` 同步检查） |
 | `engine_mock.lua` | ★ **真机仿真 mock** —— 严格模拟"自定义字段不可写"等限制 |
@@ -58,7 +58,7 @@
 
 ```bash
 # 部署到千星（推荐：库 + 起始页 + 使用说明）
-lua tools/install.lua "<external_lua_file 路径>"
+python tools/install.py "<external_lua_file 路径>"
 lua tools/verify_external.lua "<external_lua_file 路径>"
 
 # 只装库
@@ -197,7 +197,7 @@ local ACTIVE = "clip"     -- 改这里
 | 看完整成果与历程 | `ugc_out/研究总览.md` |
 | 知道还缺什么 | `ugc_out/GAPS.md` |
 | 看真实例子 | `deploy/demo_panel.lua` |
-| 部署到游戏 | `install.lua` + `verify_external.lua` |
+| 部署到游戏 | `install.py` + `verify_external.lua` |
 | **跑真机验证** | `deploy/probe.lua`（改 `ACTIVE` 选模块） |
 | 跑测试 | `lua test_*.lua` |
 | 写新测试 | 参考 `test_real.lua`（用 `engine_mock.lua`） |

@@ -76,7 +76,7 @@ deploy/           示例与探针
 docs/             文档（引擎能力、API、Gaps 等）
 tests/            28 个测试套件
 tools/            构建、验证、mock
-  ├── install.lua        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
+  ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
   └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）
 ```
 
@@ -162,7 +162,7 @@ lua tools/build.lua                 # -> bundle/webui.lua（单文件，给"粘�
 **一键安装**（库 + 起始页 + 使用说明）：
 
 ```bash
-lua tools/install.lua "<关卡目录>/external_lua_file"
+python tools/install.py "<关卡目录>/external_lua_file"
 ```
 
 装完那个目录就是**能直接导入编辑器**的：`webui*.lua` 是库，
@@ -175,7 +175,7 @@ lua tools/install.lua "<关卡目录>/external_lua_file"
 也可以只用底层工具（自行控制产物）：
 
 ```bash
-lua tools/build_external.lua <目标目录>     # 只装库，不含示例（install.lua 的薄封装）
+lua tools/build_external.lua <目标目录>     # 只装库，不含示例（install.py 的薄封装）
 lua tools/verify_external.lua "<external_lua_file 路径>"   # 校验部署（含 .gil 同步检查）
 ```
 

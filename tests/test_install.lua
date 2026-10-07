@@ -24,7 +24,7 @@ local TARGET = arg and arg[1]
      忘了准备就永远失败，反而会让人把整个套件跑红当噪音忽略。
 ]]--
 local CLEANUP = nil
-local FROM_INSTALLER = false   -- 目录是不是 install.lua 产出的
+local FROM_INSTALLER = false   -- 目录是不是 install.py 产出的
 local RAW_COPY = false         -- 是不是"纯复制"场景（手动拷库 + 页面）
 
 if not TARGET then
@@ -37,16 +37,39 @@ if not TARGET then
   os.execute('rmdir /s /q "' .. TARGET:gsub("/", "\\") .. '" 2>nul')
   os.execute('mkdir "' .. TARGET:gsub("/", "\\") .. '" 2>nul')
 
-  -- 调安装器（路径要兼容：仓库根 = _root）
-  local installCmd = string.format('%s "%s/tools/install.lua" "%s"',
-      arg and arg[-1] or "lua", _root, TARGET)
-  local rc = os.execute(installCmd)
-  if rc ~= 0 and rc ~= true then
-    print("!! 无法自动安装到临时目录，请手动运行：")
-    print('   lua tools/install.lua "' .. TARGET .. '"')
+  --[[ 调安装器。
+
+       ★ 安装器是 Python 写的（tools/install.py）。
+         它内部按自身位置解析 lib/ 等源文件，所以传绝对路径最稳。
+         解释器按常见名字试：python / python3 / py -3。
+  ]]--
+  local installPy = _root .. "/tools/install.py"
+  local candidates = { "python", "python3", "py -3" }
+
+  local rc = nil
+  local usedExe = nil
+  for _, exe in ipairs(candidates) do
+    local probe = os.execute(exe .. " --version >nul 2>&1")
+    if probe == 0 or probe == true then
+      usedExe = exe
+      rc = os.execute(string.format('%s "%s" "%s"', exe, installPy, TARGET))
+      break
+    end
+  end
+
+  if not usedExe then
+    print("!! 找不到 Python 解释器，无法自动安装。")
+    print("   安装器现在是 tools/install.py（Python 写的）。")
+    print("   请先确保 python / python3 在 PATH 上。")
     os.exit(1)
   end
-  print("(自动安装到临时目录: " .. TARGET .. ")")
+
+  if rc ~= 0 and rc ~= true then
+    print("!! 无法自动安装到临时目录，请手动运行：")
+    print('   ' .. usedExe .. ' tools/install.py "' .. TARGET .. '"')
+    os.exit(1)
+  end
+  print("(自动安装到临时目录: " .. TARGET .. "，解释器: " .. usedExe .. ")")
 else
   --[[ 传了目录参数：判断它是"安装器产物"还是"纯复制"。
 
@@ -55,7 +78,7 @@ else
          所以用户【手动拷 lib/webui/*.lua】也应该能跑 ——
          那是本次改动要保证的核心能力，必须单独验证。
 
-         纯复制不会有 README-webui.md（那是 install.lua 额外放的），
+         纯复制不会有 README-webui.md（那是 install.py 额外放的），
          所以不能把"必须有 README"当成本场景的失败。
   ]]--
   local g = io.open(TARGET .. "/README-webui.md", "r")
@@ -71,7 +94,7 @@ end
 
 print("=== 验证安装产物: " .. TARGET .. " ===")
 print("  场景: " .. (RAW_COPY and "纯复制（手动拷 lib/webui/*.lua + 起始页）"
-                              or "安装器产物（install.lua）"))
+                              or "安装器产物（install.py）"))
 print("")
 
 --=============================================================================
@@ -259,7 +282,7 @@ if ok then
   OnDestroy()
 end
 
--- 说明文件（只有 install.lua 的产物才有；纯复制场景不做要求）
+-- 说明文件（只有 install.py 的产物才有；纯复制场景不做要求）
 -- ★ 名字必须是 ASCII：Lua 的 io.open 在 Windows 上写中文文件名会乱码
 --   （实测「使用说明.md」变成「浣跨敤璇存槑.md」）
 local g = io.open(TARGET .. "/README-webui.md", "r")
@@ -267,7 +290,7 @@ if FROM_INSTALLER then
   check("存在 README-webui.md", g ~= nil)
 else
   print(string.format("  [--] %-32s %s", "README-webui.md",
-      "纯复制场景不要求（install.lua 才会放）"))
+      "纯复制场景不要求（install.py 才会放）"))
 end
 if g then
   local txt = g:read("*a"); g:close()
