@@ -3,12 +3,22 @@
 Parse the Genshin UGC "客户端控件API文档" into a structured Markdown document.
 
 Source: plaintext extracted from textMap.json (key = mhtakr07vej4)
-Output: <repo>/docs\\client_control_api.md  (+ intermediate JSON)
-"""
-import json, re, io, os
+Output: <repo>/docs/client_control_api.md  (+ intermediate JSON)
 
-SRC = r"<article.txt>"
-OUT = r"<repo>\ugc_out"
+用法:
+    python tools/ugc_parse.py <article.txt 路径>
+
+若不传参数，则尝试用环境变量 UGC_ARTICLE，其次找同目录下的 article.txt。
+"""
+import json, re, io, os, sys
+
+# 源文件：命令行参数 > 环境变量 > 脚本同目录
+SRC = (sys.argv[1] if len(sys.argv) > 1
+       else os.environ.get("UGC_ARTICLE")
+       or os.path.join(os.path.dirname(os.path.abspath(__file__)), "article.txt"))
+
+# 输出到仓库的 docs/（脚本在 tools/，所以上一级）
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs")
 os.makedirs(OUT, exist_ok=True)
 
 t = io.open(SRC, encoding="utf-8-sig").read().replace("\u200b", "")

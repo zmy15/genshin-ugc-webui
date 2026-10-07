@@ -1,9 +1,19 @@
 # -*- coding: utf-8 -*-
-"""Verify every API identifier in the source text appears in the generated Markdown."""
-import re, io
+"""Verify every API identifier in the source text appears in the generated Markdown.
 
-SRC = r"<article.txt>"
-MD = r"<repo>\ugc_out\client_control_api.md"
+用法:
+    python tools/ugc_verify.py <article.txt 路径>
+
+若不传参数，则尝试用环境变量 UGC_ARTICLE，其次找同目录下的 article.txt。
+生成的 Markdown 固定取仓库的 docs/client_control_api.md。
+"""
+import re, io, os, sys
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = (sys.argv[1] if len(sys.argv) > 1
+       else os.environ.get("UGC_ARTICLE")
+       or os.path.join(_HERE, "article.txt"))
+MD = os.path.join(os.path.dirname(_HERE), "docs", "client_control_api.md")
 
 src = io.open(SRC, encoding="utf-8-sig").read().replace("\u200b", "")
 md = io.open(MD, encoding="utf-8").read()
