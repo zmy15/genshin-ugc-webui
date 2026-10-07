@@ -39,6 +39,18 @@ jobs:
           lua5.3 -v
           luac5.3 -v
 
+      - name: 确认 Python 可用
+        # ★ tools/install.py（部署安装器）是 Python 写的，
+        #   tests/test_install.lua 会调用它，所以这里显式确保解释器存在 ——
+        #   不依赖 runner 镜像的默认情况。
+        #   （ubuntu 上通常只有 python3，没有 python，测试里两个名字都会试。）
+        run: |
+          if ! command -v python3 >/dev/null 2>&1; then
+            sudo apt-get install -y python3
+          fi
+          python3 --version
+          if command -v python >/dev/null 2>&1; then python --version; fi
+
       - name: 语法检查（所有 .lua）
         # ★ 这一层是 Lua 校验的唯一归属地（pre-commit 只做格式/卫生检查）。
         #   理由见 .pre-commit-config.yaml 顶部：pre-commit 的 Lua 钩子在

@@ -35,61 +35,88 @@ end
 -- 建临时目录并"纯复制"
 --=============================================================================
 
-local TMP = (_root .. "/tests/_copy_tmp"):gsub("//", "/")
-local function sh(cmd) os.execute(cmd) end
+local FS = require('fs_util')
 
-sh('rmdir /s /q "' .. TMP:gsub("/", "\\") .. '" 2>nul')
-sh('mkdir "' .. TMP:gsub("/", "\\") .. '" 2>nul')
+--[[ 库文件清单：显式列出，不靠列目录。
+
+     ★ 为什么不用 `dir /b`：
+       那是 Windows 命令，CI 跑在 ubuntu 上会返回空列表 ——
+       结果"复制了 0 个文件"却看不出原因（已经踩过）。
+       显式列出反而更严格：任何文件被改名，这里立刻不匹配。
+]]--
+local LIB_FILES = {
+  "webui.lua",
+  "webui_util.lua", "webui_dom.lua", "webui_html.lua", "webui_css.lua",
+  "webui_color.lua", "webui_style.lua", "webui_transition.lua",
+  "webui_layout.lua", "webui_render.lua", "webui_clip.lua", "webui_event.lua",
+}
+
+local TMP = (_root .. "/tests/_copy_tmp"):gsub("//", "/")
+
+FS.rmdir(TMP)
+FS.mkdir(TMP)
 
 print("=== 纯复制验证 ===")
+print("  平台: " .. (FS.IS_WINDOWS and "Windows" or "Unix"))
 print("  临时目录: " .. TMP)
 print("")
 
-local function readFile(p)
-  local f = io.open(p, "rb")
-  if not f then return nil end
-  local s = f:read("*a"); f:close(); return s
-end
-local function writeFile(p, s)
-  local f = io.open(p, "wb")
-  if not f then return false end
-  f:write(s); f:close(); return true
-end
+--[[ 临时目录必须真的建出来了。
 
--- ① 原样复制 lib/webui 下所有 .lua
-local copiedLib = 0
-local libDir = _root .. "/lib/webui"
-local p = io.popen('dir /b "' .. libDir:gsub("/", "\\") .. '\\*.lua" 2>nul')
-local libFiles = {}
-if p then
-  for raw in p:lines() do
-    local n = (raw:gsub("%s+$", ""))
-    if n ~= "" then libFiles[#libFiles + 1] = n end
+     踩过：mkdir 在另一个平台静默失败，后面一路"文件不存在"，
+     却看不出是目录没建起来。这里先明确验证一次。
+]]--
+do
+  local probe = TMP .. "/.probe"
+  FS.write(probe, "x")
+  local ok = FS.exists(probe)
+  check("临时目录创建成功", ok, ok and TMP or "建不出来（检查 mkdir 是否跨平台）")
+  if not ok then
+    print()
+    print(">>> 临时目录不可用，后续检查没有意义，提前退出")
+    os.exit(1)
   end
-  p:close()
 end
 
 print("---- ① 复制 lib/webui/*.lua ----")
-for _, n in ipairs(libFiles) do
-  local s = readFile(_root .. "/lib/webui/" .. n)
-  if s and writeFile(TMP .. "/" .. n, s) then
-    copiedLib = copiedLib + 1
-    print(string.format("  + %s", n))
+
+local copiedLib = 0
+local missingSrc = {}
+for _, n in ipairs(LIB_FILES) do
+  local s = FS.read(_root .. "/lib/webui/" .. n)
+  if not s then
+    missingSrc[#missingSrc + 1] = n
+    print(string.format("  x %-22s 源文件不存在", n))
   else
-    print(string.format("  x %s 复制失败", n))
+    local wrote = FS.write(TMP .. "/" .. n, s)
+    if wrote then
+      copiedLib = copiedLib + 1
+      print(string.format("  + %-22s %6d 字节", n, wrote))
+    else
+      print(string.format("  x %-22s 写入失败", n))
+    end
   end
 end
-print()
-check("库文件已复制", copiedLib >= 12, string.format("%d 个", copiedLib))
+
+print("")
+check("库文件全部复制", copiedLib == #LIB_FILES,
+    string.format("%d/%d", copiedLib, #LIB_FILES))
 
 -- ② 起始页
 print("---- ② 复制起始页 ----")
-local sampleSrc = readFile(_root .. "/deploy/my_page.lua")
+local sampleSrc = FS.read(_root .. "/deploy/my_page.lua")
 if sampleSrc then
-  writeFile(TMP .. "/main.lua", sampleSrc)
+  FS.write(TMP .. "/main.lua", sampleSrc)
   print("  + my_page.lua -> main.lua")
 end
-check("起始页已复制", sampleSrc ~= nil)
+--[[ ★ 断言要查"目标文件真的写出来了"，不能只查源文件可读。
+
+     踩过：这里原来只判断 sampleSrc ~= nil，
+     结果目标目录没建起来时，这条依然显示 OK，
+     后面才以"cannot open main.lua"的形式暴露，定位绕了远路。
+]]--
+check("起始页已复制", FS.exists(TMP .. "/main.lua"),
+    sampleSrc and "已写入 main.lua" or "源文件 my_page.lua 读不到")
 
 --=============================================================================
 -- ③ 用真机风格的 loader 加载
@@ -240,7 +267,7 @@ end
 -- 收尾
 --=============================================================================
 
-sh('rmdir /s /q "' .. TMP:gsub("/", "\\") .. '" 2>nul')
+FS.rmdir(TMP)
 
 print("")
 print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))

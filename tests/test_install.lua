@@ -27,6 +27,9 @@ local CLEANUP = nil
 local FROM_INSTALLER = false   -- 目录是不是 install.py 产出的
 local RAW_COPY = false         -- 是不是"纯复制"场景（手动拷库 + 页面）
 
+-- 跨平台的文件系统辅助（CI 是 Linux，本地是 Windows）
+local FS = require('fs_util')
+
 if not TARGET then
   -- 用仓库内的临时目录（tests/ 可写），跑完删掉
   TARGET = (_root .. "/tests/_install_tmp"):gsub("//", "/")
@@ -34,8 +37,24 @@ if not TARGET then
   FROM_INSTALLER = true
 
   -- 先清掉上一次的残留
-  os.execute('rmdir /s /q "' .. TARGET:gsub("/", "\\") .. '" 2>nul')
-  os.execute('mkdir "' .. TARGET:gsub("/", "\\") .. '" 2>nul')
+  FS.rmdir(TARGET)
+  FS.mkdir(TARGET)
+
+  --[[ ★ 临时目录必须真的建出来了。
+
+       踩过：这里原来用 `mkdir "..." 2>nul`（Windows 写法），
+       在 CI 的 ubuntu 上静默失败，install.py 于是正确地报
+       "目标目录不存在" —— 测试看上去是安装器坏了，其实是测试自己没建目录。
+       先明确验证一次，别让这种问题伪装成"被测代码有问题"。
+  ]]--
+  local probe = TARGET .. "/.probe"
+  FS.write(probe, "x")
+  if not FS.exists(probe) then
+    print("!! 临时目录建不出来: " .. TARGET)
+    print("   平台: " .. (FS.IS_WINDOWS and "Windows" or "Unix"))
+    print("   检查 tests/fs_util.lua 的 mkdir 是否覆盖了当前平台。")
+    os.exit(1)
+  end
 
   --[[ 调安装器。
 
@@ -49,7 +68,8 @@ if not TARGET then
   local rc = nil
   local usedExe = nil
   for _, exe in ipairs(candidates) do
-    local probe = os.execute(exe .. " --version >nul 2>&1")
+    -- ★ 用 FS.SILENT 而不是写死 ">nul"：后者在 Linux 上不是重定向
+    local probe = os.execute(exe .. " --version" .. FS.SILENT)
     if probe == 0 or probe == true then
       usedExe = exe
       rc = os.execute(string.format('%s "%s" "%s"', exe, installPy, TARGET))
@@ -323,18 +343,15 @@ end
 
 -- 目录里不应有非 ASCII 文件名（中文名会乱码）
 do
-  local p = io.popen('dir /b "' .. TARGET:gsub("/", "\\") .. '" 2>nul')
+  local names = FS.listdir(TARGET)
   local weird = {}
-  if p then
-    for line in p:lines() do
-      -- 文件名里出现 0x80 以上字节 => 非 ASCII
-      local hasHigh = false
-      for i = 1, #line do
-        if line:byte(i) > 127 then hasHigh = true; break end
-      end
-      if hasHigh then weird[#weird + 1] = line end
+  for _, line in ipairs(names) do
+    -- 文件名里出现 0x80 以上字节 => 非 ASCII
+    local hasHigh = false
+    for i = 1, #line do
+      if line:byte(i) > 127 then hasHigh = true; break end
     end
-    p:close()
+    if hasHigh then weird[#weird + 1] = line end
   end
   check("没有非 ASCII 文件名", #weird == 0,
       #weird > 0 and table.concat(weird, ", ") or "全部 ASCII")
@@ -345,7 +362,7 @@ print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
 
 -- 清理自动创建的临时目录
 if CLEANUP then
-  os.execute('rmdir /s /q "' .. CLEANUP:gsub("/", "\\") .. '" 2>nul')
+  FS.rmdir(CLEANUP)
 end
 
 if fail > 0 then os.exit(1) end
