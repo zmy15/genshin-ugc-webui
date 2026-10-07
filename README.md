@@ -66,13 +66,16 @@ lib/webui/        ★ 库本体（12 个模块，4800+ 行）
   ├── clip.lua      图片控件（遮罩 / 换图 / 染色）
   └── ...
 deploy/           示例与探针
-  ├── probe.lua     ★ 统一真机探针（改 ACTIVE 选模块）
+  ├── my_page.lua   ★ 用户视角的完整示例（队伍配置），install 的起始页模板
+  ├── probe.lua     统一真机探针（改 ACTIVE 选模块）
   ├── demo_feature.lua  功能展示页（形状 / 裁剪 / flex，用于截图）
+  ├── demo_min.lua      最小示例（82 行）
   ├── demo_panel.lua    角色面板
   └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            24 个测试套件
+tests/            27 个测试套件
 tools/            构建、验证、mock
+  └── install.lua  ★ 一键安装到游戏工程（库 + 起始页 + 说明）
 ```
 
 ---
@@ -141,7 +144,7 @@ lua tests/test_html.lua      # 单个
 for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 ```
 
-**24 个套件全部通过。** 路径自包含，任何目录都能跑。
+**27 个套件全部通过。** 路径自包含，任何目录都能跑。
 
 ### 打包
 
@@ -152,14 +155,26 @@ lua tools/build_external.lua <目标目录>   # 扁平化多文件
 
 ### 部署到游戏
 
+**一键安装**（把库扁平化 + 起始页 + 使用说明 一次装好）：
+
 ```bash
-lua tools/verify_external.lua "<external_lua_file 路径>"
+lua tools/install.lua "<关卡目录>/external_lua_file"
 ```
 
-> ⚠️ **部署铁律**：真机读的是关卡文件 `.gil`，**不是文件夹**。
-> 复制文件进去**不生效**，必须让**编辑器导入**。
-> 症状是「本地验证全过 + 真机报 `failed to load script`」。
-> `verify_external.lua` 会检查同步状态。详见 `docs/引擎能力与限制.md` §八。
+装完那个目录就是**能直接导入编辑器**的：`webui*.lua` 是库，
+`main.lua` 是你要改的页面，还有一份 `README-webui.md` 使用说明。
+
+> ⚠️ **必须在编辑器里导入**。真机读的是关卡文件 `.gil`，**不是文件夹**。
+> 只复制文件不生效 —— 症状是「本地验证全过 + 真机什么都没有」。
+> 详见 `docs/引擎能力与限制.md` §八。
+
+也可以只用底层工具（自行控制产物）：
+
+```bash
+lua tools/build.lua                        # -> bundle/webui.lua（单文件）
+lua tools/build_external.lua <目标目录>     # 只扁平化库，不含示例
+lua tools/verify_external.lua "<external_lua_file 路径>"   # 校验部署
+```
 
 ### 真机验证
 
