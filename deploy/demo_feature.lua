@@ -257,7 +257,12 @@ local function buildPage()
     background-color: #3a7bd5;
     font-size: 15px; color: #ffffff;
   }
-  .btn-hover { background-color: #2f6ab8; }
+  /* ★ 必须真的写 :hover 选择器才会变色。
+       只声明一个 .btn-hover 类是不够的 —— 类名不会自己生效。
+       库的 :hover 依赖 event.lua 维护的 node._hover，
+       而它由 onmouseenter/onmouseleave 绑定的
+       CursorEnter/CursorExit 驱动，所以这两个属性都要写。 */
+  .btn:hover { background-color: #2f6ab8; }
 
   /* ---------- 右侧图例 ---------- */
   .right-col { width: 700px; height: 480px; }
@@ -335,8 +340,8 @@ local function buildPage()
       </div>
       <div class="right-col">
         <div class="btns">
-          <div class="btn" id="btn-ok"   onclick="onOk"    onmouseenter="onHover">确定</div>
-          <div class="btn" id="btn-cancel" onclick="onCancel">取消</div>
+          <div class="btn" id="btn-ok"   onclick="onOk"    onmouseenter="onHover" onmouseleave="onLeave">确定</div>
+          <div class="btn" id="btn-cancel" onclick="onCancel" onmouseenter="onHover" onmouseleave="onLeave">取消</div>
         </div>
         <div class="counter" id="counter">已点击：0 次</div>
         <div class="legend">事件：onclick / onmouseenter（鼠标移入会变深）</div>
@@ -445,16 +450,26 @@ end
 -- 事件处理器
 --=============================================================================
 
+--[[ 刷新计数文字。
+
+     ⚠️ 必须走 node:setText()（写 DOM），不能直接写 control.text。
+
+     真机踩过：直接改控件的 text 字段，下一帧 flush 时会被渲染器
+     用 DOM 里的文本覆盖回去（render.lua 每帧都执行
+     `tset("text", dom.textOf(node))`），表现为"点了没反应"——
+     日志里计数一直在涨，界面却始终显示 0。
+
+     dom.lua 的 Node:setText 注释里已经把这条写死了：
+       「直接改 control.text 会在下一帧被 DOM 文本覆盖，必须走这个 API」
+]]--
 local function refreshCounter()
-  if not ui then return end
+  if not ui or not ui.doc then return end
   local node = findById(ui.doc, "counter")
   if not node then return end
-  local entry = ui.rendered and ui.rendered.live and ui.rendered.live[node]
-  if entry and entry.control and type(entry.control.setText) == "function" then
-    pcall(function()
-      entry.control:setText(string.format("已点击：%d 次", clickCount))
-    end)
-  end
+  if type(node.setText) ~= "function" then return end
+  pcall(function()
+    node:setText(string.format("已点击：%d 次", clickCount))
+  end)
 end
 
 local HANDLERS = {
@@ -464,10 +479,15 @@ local HANDLERS = {
     refreshCounter()
   end,
   onCancel = function()
-    print("[DEMO] 取消 被点击")
+    clickCount = clickCount + 1
+    print(string.format("[DEMO] 取消 被点击，累计 %d 次", clickCount))
+    refreshCounter()
   end,
   onHover = function()
     print("[DEMO] 鼠标移入按钮")
+  end,
+  onLeave = function()
+    print("[DEMO] 鼠标移出按钮")
   end,
 }
 

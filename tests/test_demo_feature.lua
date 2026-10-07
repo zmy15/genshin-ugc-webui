@@ -172,6 +172,83 @@ if ok then
   check("确实有文字被渲染", textCount > 10,
       string.format("有文字的控件 %d 个", textCount))
 
+  --[[ ★ 交互断言：这两条对应真机上出现过的两个 bug。
+
+       ① 计数不变：refreshCounter 若直接写 control.text，
+          下一帧会被渲染器用 DOM 文本覆盖回去（render.lua 每帧执行
+          tset("text", dom.textOf(node))），日志在涨而界面恒为 0。
+          必须走 node:setText()（写 DOM）。
+       ② 不变色：CSS 里必须真的写 .btn:hover，
+          且按钮要绑 onmouseenter/onmouseleave（驱动 _hover）。
+          只声明一个 .btn-hover 类不会生效。
+  ]]--
+  local function findCtrl(pred)
+    for _, c in ipairs(E.controls) do
+      local d = E.dataOf(c)
+      if d and pred(d, d.fields or {}) then return c, d end
+    end
+    return nil, nil
+  end
+
+  local function counterText()
+    local _, d = findCtrl(function(_, f) return f.text and tostring(f.text):find("已点击") end)
+    return d and tostring(d.fields.text) or nil
+  end
+
+  local function btnBg()
+    local _, d = findCtrl(function(dd, f) return dd.kind == "textbox" and f.text == "确定" end)
+    if not d then return nil end
+    local bg = d.fields.bgColor
+    if type(bg) == "table" then
+      return string.format("%s,%s,%s", tostring(bg.r), tostring(bg.g), tostring(bg.b))
+    end
+    return tostring(bg)
+  end
+
+  -- 触发所有按钮的 CursorClick
+  local function fireAll(evName)
+    local n = 0
+    for _, c in ipairs(E.controls) do
+      local d = E.dataOf(c)
+      if d and d.listeners then
+        for _, l in ipairs(d.listeners) do
+          if l.ev == evName then
+            pcall(l.cb, { GetUIPos=function() return 1,1 end,
+                          GetPressUIPos=function() return 1,1 end,
+                          GetUIPosDelta=function() return 0,0 end,
+                          dragging=false, touchId=-1 })
+            n = n + 1
+          end
+        end
+      end
+    end
+    return n
+  end
+
+  -- ① 计数必须跨帧保持（旧写法会被覆盖回 0）
+  local beforeTxt = counterText()
+  local clicked = fireAll("CursorClick")
+  pump()
+  local afterTxt = counterText()
+  for i = 1, 60 do pump() end
+  local laterTxt = counterText()
+
+  check("按钮绑定了点击事件", clicked > 0, string.format("触发 %d 次", clicked))
+  check("点击后计数文字变化", beforeTxt ~= afterTxt,
+      string.format("%s -> %s", tostring(beforeTxt), tostring(afterTxt)))
+  check("计数跨帧不被覆盖", afterTxt == laterTxt,
+      string.format("1 帧后=%s, 60 帧后=%s", tostring(afterTxt), tostring(laterTxt)))
+
+  -- ② :hover 必须真的改到背景色
+  local normalBg = btnBg()
+  local hoverFired = fireAll("CursorEnter")
+  pump(); pump()
+  local hoverBg = btnBg()
+  check("按钮绑定了 hover 事件", hoverFired > 0,
+      string.format("触发 %d 次", hoverFired))
+  check(":hover 改变背景色", normalBg ~= hoverBg,
+      string.format("%s -> %s", tostring(normalBg), tostring(hoverBg)))
+
   print("")
   print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
   if fail > 0 then os.exit(1) end
