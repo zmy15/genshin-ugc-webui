@@ -3,13 +3,22 @@
 # 本地安装：pip install pre-commit && pre-commit install
 # 全量跑一次：pre-commit run --all-files
 #
-# ★ 设计取舍：这里只用零依赖或 pre-commit 官方钩子。
-#   不用 luacheck —— 它需要 luarocks 编译安装，在 pre-commit.ci 上不稳定，
-#   而"提交的 Lua 文件能否通过语法检查"是本项目最低成本的底线保障。
-#   静态语义检查交给 CI 里的全量测试（tests/ 21 个套件）。
+# ★ 职责划分（重要）：
+#   本文件只做「格式与卫生」类检查 —— 这些是 pre-commit 的强项，
+#   且 pre-commit.ci 会自动修复 PR。
+#
+#   Lua 的语法与语义验证**不放这里**，全部交给 .github/workflows/tests.yml：
+#     - 语法检查：luac5.3 -p（覆盖所有 .lua）
+#     - 全量测试：21 个套件，在 Lua 5.3 下跑
+#   原因：pre-commit 的 Lua 钩子在本机与普通 GitHub runner 上都要求
+#   额外安装 luarocks（`language: lua` 会调用 `luarocks config`，
+#   `language: script/unsupported` 则依赖 PATH 里有 lua）。
+#   而 pre-commit.ci 的 runner 是独立容器、PATH 上没有 lua，
+#   两边的环境假设不一致，容易产生"本地过、CI 挂"的假象。
+#   统一交给 Actions 后，验证环境与实际游戏沙箱版本（5.3）一致，更可信。
 
 repos:
-  # ---------- pre-commit 官方基础钩子 ----------
+  # ---------- 基础卫生检查（pre-commit 官方钩子）----------
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -18,24 +27,7 @@ repos:
       - id: detect-private-key
       - id: check-merge-conflict
       - id: check-yaml
-      # ★ end-of-file-fixer / trailing-whitespace 只作用于「本次提交实际改动」
-      #   的文件（pre-commit 默认语义），不会主动重写全仓库。
-      #   实测 `--all-files` 会一次性改写 50+ 个历史文件的行尾/末尾换行，
-      #   把真实改动淹没在噪音里。需要全量整理时应单独跑、单独提交。
+      # 末尾换行与行尾空白：仓库已在第一次接入时全量规范化过，
+      # 之后只作用于本次改动涉及的文件。
       - id: end-of-file-fixer
       - id: trailing-whitespace
-
-  # ---------- Lua 语法检查（零依赖，用系统 lua/luac 解释器）----------
-  #
-  # 原理：luac -p 只做语法解析不生成字节码，是 Lua 官方自带的语法检查。
-  # 优先用 luac，找不到则回落到 loadfile（路径经环境变量传递）。
-  # 这样在装了不同 Lua 版本的环境里都能工作（本机 5.5、CI 5.3）。
-  - repo: local
-    hooks:
-      - id: lua-syntax
-        name: Lua 语法检查
-        description: 用 luac -p / loadfile 检查所有 .lua 文件的语法
-        entry: tools/precommit_lua_syntax.sh
-        language: script
-        files: \.lua$
-        exclude: ^bundle/
