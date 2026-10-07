@@ -1,7 +1,7 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
@@ -66,7 +66,7 @@ Enum={CursorEventType={CursorClick="CursorClick",CursorDown="CursorDown",
       TextHorizontalAlignmentRight="R",EaseType={Linear="Linear"}}
 
 local webui = require('webui')
-local dom    = require('webui.dom')
+local dom    = require('webui_dom')
 
 local root = mc("container", nil)
 script = { object = root }

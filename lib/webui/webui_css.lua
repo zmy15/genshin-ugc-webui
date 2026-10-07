@@ -19,7 +19,7 @@
     @media / @keyframes / 伪类 / 伪元素 / 属性选择器
 ==============================================================================]]
 
-local util = require('webui.util')
+local util = require('webui_util')
 
 local C = {}
 

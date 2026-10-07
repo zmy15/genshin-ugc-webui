@@ -12,7 +12,7 @@
     node.control  对应的引擎控件（render.lua 填）
 ==============================================================================]]
 
-local util = require('webui.util')
+local util = require('webui_util')
 
 local D = {}
 

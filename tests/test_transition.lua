@@ -1,13 +1,13 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
-local html   = require('webui.html')
-local css    = require('webui.css')
-local style  = require('webui.style')
-local trans  = require('webui.transition')
+local html   = require('webui_html')
+local css    = require('webui_css')
+local style  = require('webui_style')
+local trans  = require('webui_transition')
 
 local pass, fail = 0, 0
 local function check(name, cond, detail)
@@ -49,7 +49,7 @@ local doc = html.parse([[
 style.apply(doc, { css.parse(html.extractStyles(doc)[1]) })
 
 local divs = {}
-for _, e in ipairs(require('webui.dom').elements(doc)) do
+for _, e in ipairs(require('webui_dom').elements(doc)) do
   if e.tag == "div" then divs[#divs+1] = e end
 end
 

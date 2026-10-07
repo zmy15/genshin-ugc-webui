@@ -2,7 +2,7 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
@@ -257,7 +257,7 @@ print()
 print("========== 验证 PREFABS 校验逻辑 ==========")
 -- 故意用错误索引，看是否给出警告
 -- ★ 捕获 warn：要断言"确实 warn 了"，而不是只靠人眼看
-local util = require('webui.util')
+local util = require('webui_util')
 local warns = {}
 local origWarn = util.warn
 local function captureWarn(...)

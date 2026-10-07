@@ -452,9 +452,10 @@ end
 local function bindImages(ui)
   --[[ ★ 模块名要用【扁平写法】webui_clip，不是 webui.clip
 
-       真机 require 规则只认 external_lua_file 里的扁平文件名。
-       build_external.lua 会自动改写【库内部】的 require，
-       但本文件是独立 demo，不经改写 —— 必须自己写对。
+       真机的 require 规则是「同目录 + 文件名原样」：
+         require('webui_clip') 找的就是 webui_clip.lua
+       而 require('webui.clip') 会去找名为 webui.clip.lua 的文件 —— 不存在。
+       （库内部也是这么写的，见 lib/webui/webui.lua。）
 
        实测教训：写 webui.clip 会得到
          "failed to load script 'webui_clip'" 之外的空返回，

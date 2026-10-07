@@ -16,7 +16,7 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
@@ -82,7 +82,7 @@ end
 -- 给 mock 补 image 类型支持
 --=============================================================================
 
-local clip = require('webui.clip')
+local clip = require('webui_clip')
 
 print("=== 1. clip.lua 基础 ===")
 
@@ -114,8 +114,8 @@ local webui = require('webui')
 
 -- 造一个带 overflow:hidden 的节点
 local function styleOf(html)
-  local doc = require('webui.html').parse(html)
-  require('webui.style').apply(doc, {})
+  local doc = require('webui_html').parse(html)
+  require('webui_style').apply(doc, {})
   -- 找第一个元素
   local function firstEl(n)
     if n:isElement() then return n end

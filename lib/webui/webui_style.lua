@@ -14,10 +14,10 @@
   }
 ==============================================================================]]
 
-local css   = require('webui.css')
-local color = require('webui.color')
-local util  = require('webui.util')
-local dom   = require('webui.dom')
+local css   = require('webui_css')
+local color = require('webui_color')
+local util  = require('webui_util')
+local dom   = require('webui_dom')
 
 local S = {}
 

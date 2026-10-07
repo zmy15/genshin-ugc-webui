@@ -24,9 +24,9 @@
   }
 ==============================================================================]]
 
-local style = require('webui.style')
-local util  = require('webui.util')
-local dom   = require('webui.dom')
+local style = require('webui_style')
+local util  = require('webui_util')
+local dom   = require('webui_dom')
 
 local L = {}
 

@@ -20,6 +20,19 @@ local MODULES = {
 local LIB_DIR  = "lib/webui"
 local OUT_FILE = "bundle/webui.lua"
 
+--[[ 逻辑模块名 -> 实际文件名。
+
+     ★ lib/webui/ 采用【真机可直接用】的扁平命名：
+         webui.lua（入口，对应逻辑名 init）
+         webui_util.lua / webui_clip.lua / ...
+       这样整个文件夹拷进游戏工程就能跑，不需要构建改名。
+       打包脚本这里跟着映射一下即可。
+]]--
+local function srcNameOf(logical)
+  if logical == "init" then return "webui.lua" end
+  return "webui_" .. logical .. ".lua"
+end
+
 --=============================================================================
 
 local function readFile(path)
@@ -38,9 +51,14 @@ local function writeFile(path, content)
   return true
 end
 
---[[ 把 require('webui.xxx') 改写成内部查表 ]]--
+--[[ 把 require 改写成内部查表。
+
+     lib/webui 现在是扁平命名，所以两种都要处理：
+       require('webui_xxx')  -> __webui_require('xxx')
+       require('webui')      -> __webui_require('init')
+]]--
 local function rewriteRequires(src)
-  src = src:gsub("require%s*%(%s*['\"]webui%.([%w_]+)['\"]%s*%)",
+  src = src:gsub("require%s*%(%s*['\"]webui_([%w_]+)['\"]%s*%)",
                  "__webui_require('%1')")
   src = src:gsub("require%s*%(%s*['\"]webui['\"]%s*%)",
                  "__webui_require('init')")
@@ -69,7 +87,7 @@ local pieces = {}
 local problems = {}
 
 for _, name in ipairs(MODULES) do
-  local path = LIB_DIR .. "/" .. name .. ".lua"
+  local path = LIB_DIR .. "/" .. srcNameOf(name)
   local src, err = readFile(path)
   if not src then
     problems[#problems + 1] = err
@@ -78,7 +96,8 @@ for _, name in ipairs(MODULES) do
     local ext = findExternalRequires(src)
     local bad = {}
     for _, m in ipairs(ext) do
-      if m:sub(1, 6) ~= "webui." and m ~= "webui" then
+      -- 只允许库内部依赖：webui 或 webui_xxx
+      if m ~= "webui" and m:sub(1, 6) ~= "webui_" then
         bad[#bad + 1] = m
       end
     end

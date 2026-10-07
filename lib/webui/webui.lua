@@ -27,16 +27,16 @@
     - 代码只用 Lua 5.1 就有的语言特性，保证兼容
 ==============================================================================]]
 
-local util   = require('webui.util')
-local dom    = require('webui.dom')
-local html   = require('webui.html')
-local css    = require('webui.css')
-local color  = require('webui.color')
-local style  = require('webui.style')
-local layout = require('webui.layout')
-local render = require('webui.render')
-local clip   = require('webui.clip')
-local event  = require('webui.event')
+local util   = require('webui_util')
+local dom    = require('webui_dom')
+local html   = require('webui_html')
+local css    = require('webui_css')
+local color  = require('webui_color')
+local style  = require('webui_style')
+local layout = require('webui_layout')
+local render = require('webui_render')
+local clip   = require('webui_clip')
+local event  = require('webui_event')
 
 local M = {}
 

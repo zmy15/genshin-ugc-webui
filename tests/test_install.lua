@@ -11,7 +11,7 @@
 
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
@@ -24,10 +24,14 @@ local TARGET = arg and arg[1]
      忘了准备就永远失败，反而会让人把整个套件跑红当噪音忽略。
 ]]--
 local CLEANUP = nil
+local FROM_INSTALLER = false   -- 目录是不是 install.lua 产出的
+local RAW_COPY = false         -- 是不是"纯复制"场景（手动拷库 + 页面）
+
 if not TARGET then
   -- 用仓库内的临时目录（tests/ 可写），跑完删掉
   TARGET = (_root .. "/tests/_install_tmp"):gsub("//", "/")
   CLEANUP = TARGET
+  FROM_INSTALLER = true
 
   -- 先清掉上一次的残留
   os.execute('rmdir /s /q "' .. TARGET:gsub("/", "\\") .. '" 2>nul')
@@ -43,6 +47,19 @@ if not TARGET then
     os.exit(1)
   end
   print("(自动安装到临时目录: " .. TARGET .. ")")
+else
+  --[[ 传了目录参数：判断它是"安装器产物"还是"纯复制"。
+
+       ★ 这个区分很重要。
+         lib/webui/ 现在已经改成真机可直接用的扁平命名，
+         所以用户【手动拷 lib/webui/*.lua】也应该能跑 ——
+         那是本次改动要保证的核心能力，必须单独验证。
+
+         纯复制不会有 README-webui.md（那是 install.lua 额外放的），
+         所以不能把"必须有 README"当成本场景的失败。
+  ]]--
+  local g = io.open(TARGET .. "/README-webui.md", "r")
+  if g then g:close(); FROM_INSTALLER = true else RAW_COPY = true end
 end
 TARGET = TARGET:gsub("[/\\]+$", "")
 
@@ -53,6 +70,8 @@ local function check(name, cond, detail)
 end
 
 print("=== 验证安装产物: " .. TARGET .. " ===")
+print("  场景: " .. (RAW_COPY and "纯复制（手动拷 lib/webui/*.lua + 起始页）"
+                              or "安装器产物（install.lua）"))
 print("")
 
 --=============================================================================
@@ -240,11 +259,16 @@ if ok then
   OnDestroy()
 end
 
--- 说明文件
+-- 说明文件（只有 install.lua 的产物才有；纯复制场景不做要求）
 -- ★ 名字必须是 ASCII：Lua 的 io.open 在 Windows 上写中文文件名会乱码
 --   （实测「使用说明.md」变成「浣跨敤璇存槑.md」）
 local g = io.open(TARGET .. "/README-webui.md", "r")
-check("存在 README-webui.md", g ~= nil)
+if FROM_INSTALLER then
+  check("存在 README-webui.md", g ~= nil)
+else
+  print(string.format("  [--] %-32s %s", "README-webui.md",
+      "纯复制场景不要求（install.lua 才会放）"))
+end
 if g then
   local txt = g:read("*a"); g:close()
   check("说明里没有未替换的占位符", not txt:find("@SAMPLE@", 1, true),

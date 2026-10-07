@@ -20,7 +20,7 @@
     ondraggable   -> 启用拖拽事件（配合上面几个）
 ==============================================================================]]
 
-local util = require('webui.util')
+local util = require('webui_util')
 
 local E = {}
 
@@ -184,7 +184,7 @@ end
 --[[ 判断某个 UI 坐标落在哪个元素的 box 内（从后往前，模拟 z 序）]]--
 function E.hitTest(root, x, y)
   local best = nil
-  local dom = require('webui.dom')
+  local dom = require('webui_dom')
   dom.walk(root, function(n)
     if n:isElement() and n.box and not n.box.hidden then
       local b = n.box
@@ -207,7 +207,7 @@ end
 
 --[[ 把光标 UI 坐标转成库内部坐标 ]]--
 function E.toLocal(uiX, uiY)
-  local util = require('webui.util')
+  local util = require('webui_util')
   local _, ch = util.canvasSize()
   return uiX, ch - uiY
 end

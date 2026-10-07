@@ -310,7 +310,7 @@ M.mask.classes = { lbl = true, sq = true, box = true }
 -- 渲染后绑定形状图
 M.mask.after = function(ui)
   local clip = safeCall(function() return require('webui_clip') end)
-             or safeCall(function() return require('webui.clip') end)
+             or safeCall(function() return require('webui_clip') end)
   if not clip then
     warn("webui_clip 加载失败，形状图无法设置")
     return

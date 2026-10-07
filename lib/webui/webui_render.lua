@@ -23,11 +23,11 @@
     其他              -> ContainerControl
 ==============================================================================]]
 
-local color      = require('webui.color')
-local util       = require('webui.util')
-local dom        = require('webui.dom')
-local transition = require('webui.transition')
-local clip       = require('webui.clip')
+local color      = require('webui_color')
+local util       = require('webui_util')
+local dom        = require('webui_dom')
+local transition = require('webui_transition')
+local clip       = require('webui_clip')
 
 local R = {}
 

@@ -35,7 +35,7 @@
      horizontalSoftRange, verticalSoftRange, scrollProgress
 ==============================================================================]]
 
-local util = require('webui.util')
+local util = require('webui_util')
 
 local T = {}
 

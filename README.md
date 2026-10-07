@@ -56,14 +56,15 @@
 ## 目录结构
 
 ```
-lib/webui/        ★ 库本体（12 个模块，4800+ 行）
-  ├── init.lua      对外 API
-  ├── html.lua      HTML 解析
-  ├── css.lua       CSS 解析 + 选择器匹配
-  ├── style.lua     层叠 / 继承 / 计算样式
-  ├── layout.lua    盒模型 + flex
-  ├── render.lua    控件池 + diff 渲染
-  ├── clip.lua      图片控件（遮罩 / 换图 / 染色）
+lib/webui/        ★ 库本体（12 个模块）。
+                    文件名即部署名（webui_util.lua 等），整目录可直接拷进游戏工程
+  ├── webui.lua         对外 API（入口）
+  ├── webui_html.lua    HTML 解析
+  ├── webui_css.lua     CSS 解析 + 选择器匹配
+  ├── webui_style.lua   层叠 / 继承 / 计算样式
+  ├── webui_layout.lua  盒模型 + flex
+  ├── webui_render.lua  控件池 + diff 渲染
+  ├── webui_clip.lua    图片控件（遮罩 / 换图 / 染色）
   └── ...
 deploy/           示例与探针
   ├── my_page.lua   ★ 用户视角的完整示例（队伍配置），install 的起始页模板
@@ -73,9 +74,10 @@ deploy/           示例与探针
   ├── demo_panel.lua    角色面板
   └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            27 个测试套件
+tests/            28 个测试套件
 tools/            构建、验证、mock
-  └── install.lua  ★ 一键安装到游戏工程（库 + 起始页 + 说明）
+  ├── install.lua        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
+  └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）
 ```
 
 ---
@@ -144,18 +146,20 @@ lua tests/test_html.lua      # 单个
 for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 ```
 
-**27 个套件全部通过。** 路径自包含，任何目录都能跑。
+**28 个套件全部通过。** 路径自包含，任何目录都能跑。
 
 ### 打包
 
 ```bash
-lua tools/build.lua                 # -> bundle/webui.lua（单文件）
-lua tools/build_external.lua <目标目录>   # 扁平化多文件
+lua tools/build.lua                 # -> bundle/webui.lua（单文件，给"粘贴源码"的场景）
 ```
 
 ### 部署到游戏
 
-**一键安装**（把库扁平化 + 起始页 + 使用说明 一次装好）：
+**部署就是复制** —— `lib/webui/` 里的文件名已经是真机可直接用的扁平形式
+（`webui_util.lua` / `require('webui_util')`），不需要改名或改写。
+
+**一键安装**（库 + 起始页 + 使用说明）：
 
 ```bash
 lua tools/install.lua "<关卡目录>/external_lua_file"
@@ -171,9 +175,8 @@ lua tools/install.lua "<关卡目录>/external_lua_file"
 也可以只用底层工具（自行控制产物）：
 
 ```bash
-lua tools/build.lua                        # -> bundle/webui.lua（单文件）
-lua tools/build_external.lua <目标目录>     # 只扁平化库，不含示例
-lua tools/verify_external.lua "<external_lua_file 路径>"   # 校验部署
+lua tools/build_external.lua <目标目录>     # 只装库，不含示例（install.lua 的薄封装）
+lua tools/verify_external.lua "<external_lua_file 路径>"   # 校验部署（含 .gil 同步检查）
 ```
 
 ### 真机验证

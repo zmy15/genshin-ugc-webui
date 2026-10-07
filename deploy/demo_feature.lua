@@ -40,8 +40,8 @@
     6. 文字渲染（★ 所有文字框高 >= 字号 × 1.9，否则真机上字会消失）
     7. onclick / onmouseenter 事件绑定
 
-  ⚠️ 本文件是独立 demo，不经 build_external 改写，
-     所以 require 必须写【扁平名】webui_clip，不能写 webui.clip。
+  ⚠️ require 必须写【扁平名】webui_clip，不能写 webui.clip ——
+     真机把 require 名原样当文件名（webui_clip.lua）。
 ==============================================================================]]
 
 local PREFABS = {
@@ -373,8 +373,7 @@ end
 
 local function bindImages(u)
   --[[ ★ 模块名用【扁平写法】webui_clip。
-       真机 require 只认 external_lua_file 里的扁平文件名，
-       本文件不经 build_external 改写，必须自己写对。 ]]--
+       真机把 require 名原样当文件名，所以必须是 webui_clip.lua 这个名字。 ]]--
   if not clip then
     local ok, m = pcall(require, "webui_clip")
     if not ok then

@@ -2,11 +2,11 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
-local html = require('webui.html')
-local dom  = require('webui.dom')
+local html = require('webui_html')
+local dom  = require('webui_dom')
 
 local cases = {
   {"基本嵌套", [[<div><span>hi</span></div>]]},

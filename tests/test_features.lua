@@ -1,14 +1,14 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
-local html   = require('webui.html')
-local css    = require('webui.css')
-local style  = require('webui.style')
-local layout = require('webui.layout')
-local dom    = require('webui.dom')
+local html   = require('webui_html')
+local css    = require('webui_css')
+local style  = require('webui_style')
+local layout = require('webui_layout')
+local dom    = require('webui_dom')
 
 local pass, fail = 0, 0
 local function check(name, cond, detail)
@@ -109,7 +109,7 @@ local CSS3 = ".b { background-color: #111111; }\n.b:hover { background-color: #f
 local doc3 = build("<style>" .. CSS3 .. "</style><div class=\"b\" id=\"x\"></div>")
 local x = nil
 for _, e in ipairs(dom.elements(doc3)) do if e.id == "x" then x = e end end
-local c1 = require('webui.color')
+local c1 = require('webui_color')
 check("未 hover 时", c1.toHex(x.style._bgColor) == "#111111ff",
     c1.toHex(x.style._bgColor))
 

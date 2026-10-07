@@ -6,7 +6,7 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
@@ -175,7 +175,7 @@ local htmlSrc = [[
 ui:render(htmlSrc)
 
 print("  DOM 统计:", (function()
-  local dom = require('webui.dom')
+  local dom = require('webui_dom')
   local st = dom.stats(ui.doc)
   return string.format("元素=%d 文本=%d 深度=%d", st.elements, st.texts, st.maxDepth)
 end)())
@@ -188,7 +188,7 @@ print()
 -- 断言：首次渲染的契约
 --=============================================================================
 do
-  local dom = require('webui.dom')
+  local dom = require('webui_dom')
   local st = dom.stats(ui.doc)
   -- HTML 里 6 个元素：<style> / panel / title / row / btn / btn
   -- ★ 量出来的值，不是猜的（<style> 本身也算一个元素）

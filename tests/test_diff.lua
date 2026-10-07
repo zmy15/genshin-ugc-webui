@@ -1,7 +1,7 @@
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
 local _root = _here:match("^(.*)/tests/") or "."
-package.path = _root .. "/lib/?.lua;" .. _root .. "/lib/?/init.lua;"
+package.path = _root .. "/lib/webui/?.lua;"
              .. _root .. "/?.lua;" .. _root .. "/tests/?.lua;"
             .. _root .. "/tools/?.lua;" .. package.path
 
@@ -108,7 +108,7 @@ check("第 3 次 flush 零写入", (s.written - before3) == 0,
 print()
 print("=== 追踪每帧重复写入的字段 ===")
 -- 直接检查每个控件的 last 表，找出哪些值在变
-local dom = require('webui.dom')
+local dom = require('webui_dom')
 print(string.format("  %-12s %-22s %-24s %s", "字段", "上一帧值", "本帧值", "控件"))
 
 -- 更直接：连续 flush 两次，比较 last 表

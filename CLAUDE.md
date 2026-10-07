@@ -6,11 +6,13 @@
 ## 目录
 
 ```
-lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎
+lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎。
+             ★ 文件名即真机部署名（webui_util.lua / webui_render.lua …），
+               整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md 是权威版）
-tests/       20 个测试套件
-tools/       构建 / 验证 / 真机仿真 mock
+tests/       28 个测试套件
+tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
 ## 常用命令
@@ -19,11 +21,14 @@ tools/       构建 / 验证 / 真机仿真 mock
 # 跑全部测试（从仓库根执行）
 for f in tests/test_*.lua; do lua "$f" >/dev/null 2>&1 || echo "FAIL $f"; done
 
-# 打包单文件
+# 打包单文件（给"粘贴源码"场景）
 lua tools/build.lua
 
-# 部署并验证（含 .gil 同步检查）
-lua tools/build_external.lua "<external_lua_file 路径>"
+# 部署到游戏工程（库文件名已是真机可直接用的扁平形式，部署即复制）
+lua tools/install.lua "<external_lua_file 路径>"        # 库 + 起始页 + 使用说明
+lua tools/build_external.lua "<external_lua_file 路径>" # 只装库（install 的薄封装）
+
+# 部署校验（含 .gil 同步检查）
 lua tools/verify_external.lua "<external_lua_file 路径>"
 ```
 
@@ -51,11 +56,13 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - **改库** → 跑全部测试；涉及布局/渲染的改动要同时看 `docs/引擎能力与限制.md` 的约束
 - **加真机验证** → 往 `deploy/probe.lua` 加模块（改 `ACTIVE` 切换），**不要新建探针文件**
 - **改文档** → 权威版是 `docs/引擎能力与限制.md`；不要保留已被推翻的结论
-- **新增库文件** → 同步 `tools/build.lua` 和 `tools/build_external.lua` 的 `MODULES` 列表
+- **新增库文件** → 必须叫 `lib/webui/webui_<名字>.lua`（文件名即真机 require 名），
+  并同步 `tools/build.lua` 的 `MODULES` 列表；`lib/webui/README.md` 的模块清单也要更新。
+  命名不能带点：真机把 require 名原样当文件名，`webui.util` 会找不到文件。
 
 ## 测试
 
-20 个套件，路径自包含（任何目录可跑）。关键回归：
+28 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩

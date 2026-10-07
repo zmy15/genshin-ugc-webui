@@ -6,22 +6,25 @@
 
 ## 一、库（`lib/webui/`）
 
-**交付物本体。12 个模块，4,800+ 行。**
+**交付物本体。12 个模块，约 4000 行。**
+
+> ★ 文件名**就是**真机部署名（`webui_util.lua` 对应 `require('webui_util')`），
+> 整个目录可直接拷进游戏工程，不需要构建改名。
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `init.lua` | 274 | 对外 API（`new` / `render` / `flush` / `startLoop`） |
-| `util.lua` | 265 | 字符串、数值、画布尺寸工具 |
-| `dom.lua` | 316 | DOM 节点、class 管理、运行时样式 |
-| `html.lua` | 266 | HTML 解析器 |
-| `css.lua` | 350 | CSS 解析 + 选择器匹配 + 特指度 |
-| `color.lua` | 180 | 颜色解析（hex / rgb / 命名色） |
-| `style.lua` | 621 | 层叠、继承、默认样式、transform、裁剪形状推导 |
-| `transition.lua` | 207 | `transition` 简写/长写法解析 |
-| `layout.lua` | 694 | 盒模型 + flex（含 wrap / grow / shrink / column 对齐） |
-| `render.lua` | 1159 | 控件池、diff 渲染、双层架构、z-index、**裁剪容器** |
-| **`clip.lua`** | 246 | ★ **图片控件：遮罩 / 换图 / 染色**（运行时探测枚举） |
-| `event.lua` | 250 | 事件绑定、伪类状态、坐标换算 |
+| `webui.lua` | 374 | 对外 API（`mount` / `new` / `render` / `flush` / `startLoop`） |
+| `webui_util.lua` | 222 | 字符串、数值、画布尺寸工具 |
+| `webui_dom.lua` | 255 | DOM 节点、class 管理、运行时样式 |
+| `webui_html.lua` | 213 | HTML 解析器 |
+| `webui_css.lua` | 289 | CSS 解析 + 选择器匹配 + 特指度 |
+| `webui_color.lua` | 156 | 颜色解析（hex / rgb / 命名色） |
+| `webui_style.lua` | 483 | 层叠、继承、默认样式、transform、裁剪形状推导 |
+| `webui_transition.lua` | 166 | `transition` 简写/长写法解析 |
+| `webui_layout.lua` | 604 | 盒模型 + flex（含 wrap / grow / shrink / column 对齐） |
+| `webui_render.lua` | 867 | 控件池、diff 渲染、双层架构、z-index、**裁剪容器** |
+| **`webui_clip.lua`** | 175 | ★ **图片控件：遮罩 / 换图 / 染色**（运行时探测枚举） |
+| `webui_event.lua` | 198 | 事件绑定、伪类状态、坐标换算 |
 | `README.md` | — | **使用文档（入口）** |
 
 ---
@@ -42,20 +45,27 @@
 
 | 文件 | 用途 |
 |---|---|
-| `build.lua` | 打包成单文件（`bundle/webui.lua`），供单文件部署 |
-| `build_external.lua` | **扁平化输出到 `external_lua_file`**（多文件 require 部署） |
-| `verify_external.lua` | 模拟真机 require 规则，验证部署正确性 |
+| `install.lua` | ★ **一键安装到游戏工程**（库 + 起始页 + 使用说明） |
+| `build_external.lua` | 只装库到 `external_lua_file`（`install.lua` 的薄封装） |
+| `build.lua` | 打包成单文件（`bundle/webui.lua`），供"粘贴源码"场景 |
+| `verify_external.lua` | 模拟真机 require 规则，验证部署正确性（含 `.gil` 同步检查） |
 | `engine_mock.lua` | ★ **真机仿真 mock** —— 严格模拟"自定义字段不可写"等限制 |
+
+> `lib/webui/` 的文件名**就是**真机部署名（`webui_util.lua` / `require('webui_util')`），
+> 所以部署退化成"复制"，不再需要改名或改写 require。
 
 ### 用法
 
 ```bash
-# 部署到千星（多文件 require）
-lua build_external.lua "<external_lua_file 路径>"
-lua verify_external.lua "<external_lua_file 路径>"
+# 部署到千星（推荐：库 + 起始页 + 使用说明）
+lua tools/install.lua "<external_lua_file 路径>"
+lua tools/verify_external.lua "<external_lua_file 路径>"
+
+# 只装库
+lua tools/build_external.lua "<external_lua_file 路径>"
 
 # 打包成单文件
-lua build.lua
+lua tools/build.lua
 ```
 
 ### ⚠️ 部署铁律：真机读 `.gil`，不是文件夹
@@ -89,7 +99,7 @@ lua verify_external.lua "<external_lua_file 路径>"
 
 ---
 
-## 四、测试（19 个套件）
+## 四、测试（28 个套件）
 
 ```bash
 lua test_xxx.lua
@@ -187,7 +197,7 @@ local ACTIVE = "clip"     -- 改这里
 | 看完整成果与历程 | `ugc_out/研究总览.md` |
 | 知道还缺什么 | `ugc_out/GAPS.md` |
 | 看真实例子 | `deploy/demo_panel.lua` |
-| 部署到游戏 | `build_external.lua` + `verify_external.lua` |
+| 部署到游戏 | `install.lua` + `verify_external.lua` |
 | **跑真机验证** | `deploy/probe.lua`（改 `ACTIVE` 选模块） |
 | 跑测试 | `lua test_*.lua` |
 | 写新测试 | 参考 `test_real.lua`（用 `engine_mock.lua`） |

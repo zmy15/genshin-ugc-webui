@@ -64,10 +64,10 @@ end
 - **同目录、无 `.lua` 后缀、不支持子目录**
 - 有缓存，`_ENV` 隔离
 
-所以模块要扁平化命名：
+所以模块**直接就是扁平化命名**（不需要任何构建步骤）：
 
 ```
-webui.lua              ← 入口
+webui.lua              ← 入口，require('webui')
 webui_util.lua         ← require('webui_util')
 webui_dom.lua
 webui_html.lua
@@ -80,13 +80,16 @@ webui_render.lua
 webui_event.lua
 ```
 
-**用 `build_external.lua` 自动生成：**
+**部署就是复制**（无需改名、无需改写 require）：
 
 ```bash
-lua build_external.lua "<external_lua_file 路径>"
+lua tools/install.lua "<external_lua_file 路径>"     # 库 + 起始页 + 使用说明
+lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 ```
 
-它会改写 `require('webui.x')` → `require('webui_x')`，并把 `init.lua` 输出为 `webui.lua`。
+因为 `lib/webui/` 里的文件名已经是扁平形式，直接把整个文件夹拷进去
+就能被真机 `require` 到 —— 真机的规则是「同目录 + 文件名原样」，
+`require('webui_util')` 找的就是 `webui_util.lua`。
 
 **⚠️ 新增模块时必须同步导入到编辑器**，否则依赖它的模块会 `require` 失败。
 
@@ -252,18 +255,19 @@ end)
 ## 架构
 
 ```
-lib/webui/
-├── util.lua        265 行   字符串/数值/画布工具
-├── dom.lua         300 行   DOM 节点、class、运行时样式
-├── html.lua        266 行   HTML 解析器
-├── css.lua         360 行   CSS 解析 + 选择器匹配
-├── color.lua       180 行   颜色解析（hex/rgb/named）
-├── style.lua       460 行   层叠/继承/默认样式/transform
-├── transition.lua  230 行   transition 解析
-├── layout.lua      620 行   盒模型 + flex（含 wrap）
-├── render.lua      950 行   控件池 + diff 渲染 + 双层架构
-├── event.lua       230 行   事件绑定 + 伪类状态 + 坐标换算
-└── init.lua        260 行   对外 API
+lib/webui/                （文件名即真机部署名，可直接整目录拷贝）
+├── webui_util.lua       222 行   字符串/数值/画布工具
+├── webui_dom.lua        255 行   DOM 节点、class、运行时样式
+├── webui_html.lua       213 行   HTML 解析器
+├── webui_css.lua        289 行   CSS 解析 + 选择器匹配
+├── webui_color.lua      156 行   颜色解析（hex/rgb/named）
+├── webui_style.lua      483 行   层叠/继承/默认样式/transform
+├── webui_transition.lua 166 行   transition 解析
+├── webui_layout.lua     604 行   盒模型 + flex（含 wrap）
+├── webui_render.lua     867 行   控件池 + diff 渲染 + 双层架构
+├── webui_clip.lua       175 行   图片控件（遮罩 / 换图 / 染色）
+├── webui_event.lua      198 行   事件绑定 + 伪类状态 + 坐标换算
+└── webui.lua            374 行   对外 API（入口）
 ```
 
 ### 渲染流程

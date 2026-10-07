@@ -18,8 +18,8 @@
     - CDATA
 ==============================================================================]]
 
-local D    = require('webui.dom')
-local util = require('webui.util')
+local D    = require('webui_dom')
+local util = require('webui_util')
 
 local H = {}
 
