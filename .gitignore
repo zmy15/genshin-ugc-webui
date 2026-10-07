@@ -1,0 +1,29 @@
+# 构建产物
+bundle/
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+*~
+Thumbs.db
+desktop.ini
+
+# 临时与调试产物
+*.tmp
+*.bak
+*.orig
+diag_*.lua
+diag_*.py
+_*.py
+*_out.txt
+*_trial.txt
+
+# Lua 编译产物
+*.luac
+luac.out
+
+# Python
+__pycache__/
+*.pyc

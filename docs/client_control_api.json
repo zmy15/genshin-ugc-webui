@@ -1,0 +1,4269 @@
+{
+ "source": "mhtakr07vej4",
+ "tables": [
+  {
+   "header": [
+    "中文名词",
+    "英文名词"
+   ],
+   "rows": [
+    {
+     "中文名词": "脚本",
+     "英文名词": "Script"
+    },
+    {
+     "中文名词": "信号",
+     "英文名词": "ServerSignal"
+    },
+    {
+     "中文名词": "自定义变量",
+     "英文名词": "CustomVariable"
+    },
+    {
+     "中文名词": "脚本内的参数",
+     "英文名词": "Param"
+    },
+    {
+     "中文名词": "补间动画",
+     "英文名词": "Tween"
+    },
+    {
+     "中文名词": "进度",
+     "英文名词": "fillAmount"
+    },
+    {
+     "中文名词": "基础",
+     "英文名词": "Basic"
+    },
+    {
+     "中文名词": "拉伸",
+     "英文名词": "Stretch"
+    },
+    {
+     "中文名词": "边缘羽化",
+     "英文名词": "soft edge"
+    },
+    {
+     "中文名词": "90度环绕",
+     "英文名词": "Radial90"
+    },
+    {
+     "中文名词": "180度环绕",
+     "英文名词": "Radial180"
+    },
+    {
+     "中文名词": "360度环绕",
+     "英文名词": "Radial360"
+    },
+    {
+     "中文名词": "客户端控件运行时ID",
+     "英文名词": "ClientControlID"
+    },
+    {
+     "中文名词": "客户端控件运行时ID列表",
+     "英文名词": "ClientControlIDList"
+    },
+    {
+     "中文名词": "关卡时停",
+     "英文名词": "LevelTimePaused"
+    },
+    {
+     "中文名词": "容器节点",
+     "英文名词": "ContainerControl"
+    },
+    {
+     "中文名词": "文本框",
+     "英文名词": "TextBoxControl"
+    },
+    {
+     "中文名词": "文本视窗",
+     "英文名词": "TextWindowControl"
+    },
+    {
+     "中文名词": "图片",
+     "英文名词": "ImageControl"
+    },
+    {
+     "中文名词": "界面动效",
+     "英文名词": "UIAnimationControl"
+    },
+    {
+     "中文名词": "全屏动效",
+     "英文名词": "FullscreenUIAnimationControl"
+    },
+    {
+     "中文名词": "按键提示",
+     "英文名词": "KeyHintControl"
+    },
+    {
+     "中文名词": "网格视窗",
+     "英文名词": "GridScrollerControl"
+    },
+    {
+     "中文名词": "光标检测区域",
+     "英文名词": "CursorEventArea"
+    },
+    {
+     "中文名词": "模板引用控件",
+     "英文名词": "ReferenceControl"
+    },
+    {
+     "中文名词": "预设按钮",
+     "英文名词": "PresetButton"
+    },
+    {
+     "中文名词": "存活",
+     "英文名词": "alive"
+    },
+    {
+     "中文名词": "启用",
+     "英文名词": "enable"
+    },
+    {
+     "中文名词": "激活",
+     "英文名词": "active"
+    },
+    {
+     "中文名词": "可见",
+     "英文名词": "visible"
+    },
+    {
+     "中文名词": "隔离手柄导航",
+     "英文名词": "IsolateNavigation"
+    },
+    {
+     "中文名词": "屏蔽按键事件穿透",
+     "英文名词": "disableKeyEventPassthrough"
+    },
+    {
+     "中文名词": "屏蔽区域内点击事件穿透",
+     "英文名词": "disableCursorEventPassthrough"
+    },
+    {
+     "中文名词": "显示常驻光标",
+     "英文名词": "showCursor"
+    },
+    {
+     "中文名词": "可被光标射线检测",
+     "英文名词": "Raycast Target"
+    }
+   ],
+   "path": [
+    "一、术语约定"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "参数",
+    "功能"
+   ],
+   "rows": [
+    {
+     "函数": "`OnInit()`",
+     "参数": "无",
+     "功能": "脚本初始化时调用"
+    },
+    {
+     "函数": "`OnStart()`",
+     "参数": "无",
+     "功能": "脚本启动时调用"
+    },
+    {
+     "函数": "`OnEnable()`",
+     "参数": "无",
+     "功能": "脚本启用时调用"
+    },
+    {
+     "函数": "`OnDisable()`",
+     "参数": "无",
+     "功能": "脚本停用时调用"
+    },
+    {
+     "函数": "`OnUpdate(dt)`",
+     "参数": "`dt: number`",
+     "功能": "脚本逐帧更新时调用，**不受关卡时停影响**"
+    },
+    {
+     "函数": "`OnLevelUpdate(dt)`",
+     "参数": "`dt: number`",
+     "功能": "关卡逐帧更新时调用，**受关卡时停影响**"
+    },
+    {
+     "函数": "`OnDestroy()`",
+     "参数": "无",
+     "功能": "脚本销毁时调用"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "1. 脚本生命周期"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`script:EnableUpdate(enabled: boolean)`",
+     "返回值": "—",
+     "说明": "控制当前脚本的逐帧更新；`false` 关闭，`true` 重新启用"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "2. 逐帧控制方法"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`typeof(value)`",
+     "返回值": "`string`",
+     "说明": "返回运行时类型名称；用于识别宿主对象"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "3. 全局 API",
+    "(1) 类型查询"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`print(...)`",
+     "返回值": "—",
+     "说明": "将传入值写入普通级别日志；该函数不阻断运行"
+    },
+    {
+     "函数": "`printerr(...)`",
+     "返回值": "—",
+     "说明": "将传入值写入错误级别日志；该函数不抛出 Lua 错误，也不阻断运行"
+    },
+    {
+     "函数": "`debug.traceback([message[, level]])`",
+     "返回值": "`string`",
+     "说明": "生成并返回调用栈文本；`message` 添加文本开头的说明，`level` 指定调用栈起始层级；该函数仅返回文本，不自动写入日志"
+    },
+    {
+     "函数": "`game.PrintClientUITree()`",
+     "返回值": "—",
+     "说明": "将当前客户端控件树按父子层级写入日志"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "3. 全局 API",
+    "(2) 日志和调试"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`math.isnan(n)`",
+     "返回值": "`boolean`",
+     "说明": "判断数值是否为 NaN"
+    },
+    {
+     "函数": "`math.isinf(n)`",
+     "返回值": "`boolean`",
+     "说明": "判断数值是否为正负无穷"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "3. 全局 API",
+    "(3) 数值检查"
+   ]
+  },
+  {
+   "header": [
+    "名称",
+    "类型",
+    "说明"
+   ],
+   "rows": [
+    {
+     "名称": "`script`",
+     "类型": "`Script`",
+     "说明": "当前脚本"
+    },
+    {
+     "名称": "`Enum`",
+     "类型": "`Enum`",
+     "说明": "枚举"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "3. 全局 API",
+    "(4) 全局变量"
+   ]
+  },
+  {
+   "header": [
+    "构造函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "构造函数": "`Color(r: number, g: number, b: number, a: number?)`",
+     "返回值": "`ColorValue`",
+     "说明": "由 0–255 RGBA 创建颜色；`a` 可省略，也可传 `nil`。传 `nil` 时等同于 255（不透明）"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "4. Color",
+    "(1) 构造函数"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`Color.FromRGB(r: number, g: number, b: number)`",
+     "返回值": "`ColorValue`",
+     "说明": "由 0–255 RGB 创建颜色"
+    },
+    {
+     "函数": "`Color.FromRGBA(r: number, g: number, b: number, a: number?)`",
+     "返回值": "`ColorValue`",
+     "说明": "由 0–255 RGBA 创建颜色；`a` 可省略或传 `nil`。传 `nil` 时等同于 255（不透明）"
+    },
+    {
+     "函数": "`Color.ToRGBA(colorValue: ColorValue)`",
+     "返回值": "`r, g, b, a: number`",
+     "说明": "将颜色拆分为 0-255 的 RGBA 四个值"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "4. Color",
+    "(2) 函数"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`alive`",
+     "类型": "`boolean`",
+     "访问": "**只读**",
+     "说明": "脚本实例是否存活"
+    },
+    {
+     "字段": "`scriptMappingId`",
+     "类型": "`integer`",
+     "访问": "**只读**",
+     "说明": "脚本映射 ID"
+    },
+    {
+     "字段": "`object`",
+     "类型": "`any`",
+     "访问": "**只读**",
+     "说明": "脚本所挂载的宿主对象"
+    },
+    {
+     "字段": "`path`",
+     "类型": "`string`",
+     "访问": "**只读**",
+     "说明": "脚本路径"
+    },
+    {
+     "字段": "`enabled`",
+     "类型": "`boolean`",
+     "访问": "**读写**",
+     "说明": "脚本启用状态"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "5. Script",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`script:GetParam(paramName: string)`",
+     "返回值": "`any`",
+     "说明": "按变量名称 `paramName` 读取当前脚本内对应变量的参数"
+    },
+    {
+     "方法": "`script:Invoke(funcName: string, ...: any)`",
+     "返回值": "—",
+     "说明": "在 UI 脚本内定义的全局方法（脚本内环境）；调用当前脚本中名称为 `funcName` 的函数；参数应使用运行时支持的可传递类型"
+    },
+    {
+     "方法": "`script:EnableUpdate(enabled: boolean)`",
+     "返回值": "—",
+     "说明": "控制当前脚本的 Tick 更新；`false` 关闭，`true` 重新启用"
+    },
+    {
+     "方法": "`script:RegisterServerSignalHandler(signalName: string, callback: fun(signalName: string, signalParams: any[]))`",
+     "返回值": "—",
+     "说明": "注册 `signalName` 对应的服务器信号监听；回调参数依次为信号名称和信号参数数组"
+    },
+    {
+     "方法": "`script:UnregisterServerSignalHandler(signalName: string)`",
+     "返回值": "—",
+     "说明": "移除 `signalName` 对应的服务器信号监听"
+    },
+    {
+     "方法": "`script:RegisterCustomVariableChangedHandler(entityType: CustomVariableEntityType, customVariableName: string, callback: fun(entityType: CustomVariableEntityType, customVariableName: string))`",
+     "返回值": "—",
+     "说明": "监听 `entityType` 和 `customVariableName` 对应的全局自定义变量变化；回调仅提供实体类型和变量名称，**当前值需通过 `game.GetGlobalCustomVariableValue` 读取**"
+    },
+    {
+     "方法": "`script:UnregisterCustomVariableChangedHandler(entityType: CustomVariableEntityType, customVariableName: string)`",
+     "返回值": "—",
+     "说明": "移除 `entityType` 和 `customVariableName` 对应的自定义变量监听"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "5. Script",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.InstantiateClientUIControl(controlPrefabIndex: integer, parent: ClientUIBaseControl)`",
+     "返回值": "`ClientUIBaseControl`",
+     "说明": "根据已配置的控件模板索引，在 `parent` 下创建控件实例"
+    },
+    {
+     "函数": "`game.DestroyClientUIControl(control: ClientUIBaseControl)`",
+     "返回值": "—",
+     "说明": "销毁指定客户端控件实例"
+    },
+    {
+     "函数": "`game.GetClientUIControl(controlId: integer)`",
+     "返回值": "`ClientUIBaseControl`",
+     "说明": "按客户端控件运行时 ID 获取控件"
+    },
+    {
+     "函数": "`game.FindClientUIRoot(nodeName: string)`",
+     "返回值": "`ClientUIBaseControl`",
+     "说明": "查找名称为 `nodeName` 的 UI 根控件"
+    },
+    {
+     "函数": "`game.GetClientUIRoots()`",
+     "返回值": "`ClientUIBaseControl[]`",
+     "说明": "获取全部 UI 根控件。即实际显示的客户端控件容器画布中的默认容器节点"
+    },
+    {
+     "函数": "`game.GetUICanvasSize()`",
+     "返回值": "`x, y: number`",
+     "说明": "获取 UI 画布宽高"
+    },
+    {
+     "函数": "`game.GetCursorUIPos()`",
+     "返回值": "`x, y: number`",
+     "说明": "获取光标 UI 坐标"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "6. game",
+    "(1) UI 与层级"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.GetDevice()`",
+     "返回值": "`Device`",
+     "说明": "获取当前输入设备类型"
+    },
+    {
+     "函数": "`game.SetControllerFocus(control: ClientUIBaseControl)`",
+     "返回值": "—",
+     "说明": "设置手柄当前聚焦控件"
+    },
+    {
+     "函数": "`game.GetControllerFocus()`",
+     "返回值": "`ClientUIBaseControl`",
+     "说明": "获取当前聚焦控件"
+    },
+    {
+     "函数": "`game.GetControllerLeftStickAxis()`",
+     "返回值": "`horizontal, vertical: number`",
+     "说明": "获取左摇杆轴值"
+    },
+    {
+     "函数": "`game.GetControllerRightStickAxis()`",
+     "返回值": "`horizontal, vertical: number`",
+     "说明": "获取右摇杆轴值"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "6. game",
+    "(2) 输入与聚焦"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.Tween(object: any, tweenDataTable: table, duration: number)`",
+     "返回值": "`Tween`",
+     "说明": "按目标字段和持续时间为对象创建补间动画。传入参数分别为传入对象、传入对象的 tweenable 字段名为键，目标值为值组成的 table，持续时间"
+    },
+    {
+     "函数": "`game.TweenSequence()`",
+     "返回值": "`TweenSequence`",
+     "说明": "创建空的补间动画序列"
+    },
+    {
+     "函数": "`game.ServerSignal(signalName: string)`",
+     "返回值": "`ServerSignal`",
+     "说明": "使用服务器约定的信号名称 `signalName` 创建服务器信号"
+    },
+    {
+     "函数": "`game.GetGlobalCustomVariableValue(entityType: CustomVariableEntityType, customVariableName: string)`",
+     "返回值": "`any`",
+     "说明": "读取 `entityType` 和 `customVariableName` 对应的全局自定义变量，支持复杂变量结构（列表、字典、结构体）"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "6. game",
+    "(3) 补间动画、服务器信号与自定义变量"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.PauseLevelTime(pause: boolean)`",
+     "返回值": "—",
+     "说明": "单人模式下设置关卡时停状态；`true` 开启，`false` 关闭；**不暂停脚本自身**"
+    },
+    {
+     "函数": "`game.IsLevelTimePaused()`",
+     "返回值": "`boolean`",
+     "说明": "查询是否处于关卡时停"
+    },
+    {
+     "函数": "`game.PlayAudio2D(audioId: integer)`",
+     "返回值": "`integer`",
+     "说明": "按已配置的音效 ID 播放 2D 音效，并返回音效实例 ID"
+    },
+    {
+     "函数": "`game.StopAudio(audioInstanceId: integer)`",
+     "返回值": "—",
+     "说明": "停止指定音效实例"
+    },
+    {
+     "函数": "`game.IsAudioAlive(audioInstanceId: integer)`",
+     "返回值": "`boolean`",
+     "说明": "查询音效实例是否存活"
+    },
+    {
+     "函数": "`game.GetLanguageType()`",
+     "返回值": "`LanguageType`",
+     "说明": "获取当前语言"
+    },
+    {
+     "函数": "`game.GetStageMode()`",
+     "返回值": "`StageMode`",
+     "说明": "获取当前关卡模式"
+    },
+    {
+     "函数": "`game.IsTestPlay()`",
+     "返回值": "`boolean`",
+     "说明": "查询当前是否处于测试游玩状态"
+    },
+    {
+     "函数": "`game.GetText(textMapId: string)`",
+     "返回值": "`string`",
+     "说明": "按已配置的文本映射 ID 获取本地化文本"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "6. game",
+    "(4) 关卡、音效与本地化"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.Tween(object: any, tweenDataTable: table, duration: number)`",
+     "返回值": "`Tween`",
+     "说明": "按目标字段和持续时间为对象创建补间动画。传入参数分别为传入对象、传入对象的 tweenable 字段名为键，目标值为值组成的 table，持续时间"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "7. Tween",
+    "(1) 创建"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`Tween:SetEase(easeType: EaseType)`",
+     "返回值": "`Tween`",
+     "说明": "设置缓动类型并返回当前实例"
+    },
+    {
+     "方法": "`Tween:SetRelative(relative: boolean)`",
+     "返回值": "`Tween`",
+     "说明": "设置 `tweenDataTable` 中目标值的解释方式；`false` 表示绝对目标值，`true` 表示相对当前值的增量"
+    },
+    {
+     "方法": "`Tween:Play()`",
+     "返回值": "`Tween`",
+     "说明": "开始播放并返回当前实例"
+    },
+    {
+     "方法": "`Tween:Pause()`",
+     "返回值": "—",
+     "说明": "暂停并保留当前进度"
+    },
+    {
+     "方法": "`Tween:Resume()`",
+     "返回值": "—",
+     "说明": "从暂停处继续播放"
+    },
+    {
+     "方法": "`Tween:Restart()`",
+     "返回值": "—",
+     "说明": "回到初始状态并重新播放"
+    },
+    {
+     "方法": "`Tween:Complete()`",
+     "返回值": "—",
+     "说明": "立即切换到结束状态并完成"
+    },
+    {
+     "方法": "`Tween:Kill(complete: boolean)`",
+     "返回值": "—",
+     "说明": "销毁实例；`true` 表示先切换到结束状态并触发完成回调，`false` 表示保持当前状态结束且不触发完成回调"
+    },
+    {
+     "方法": "`Tween:SetOnComplete(onComplete: fun())`",
+     "返回值": "`Tween`",
+     "说明": "设置全部循环完成后的回调并返回当前实例"
+    },
+    {
+     "方法": "`Tween:SetOnStepComplete(onStepComplete: fun())`",
+     "返回值": "`Tween`",
+     "说明": "设置步骤完成回调并返回当前实例"
+    },
+    {
+     "方法": "`Tween:SetLoops(times: integer)`",
+     "返回值": "`Tween`",
+     "说明": "设置循环次数并返回当前实例；**负数表示无限循环**"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "7. Tween",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.TweenSequence()`",
+     "返回值": "`TweenSequence`",
+     "说明": "创建空的补间动画序列"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "8. TweenSequence",
+    "(1) 创建"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`TweenSequence:Append(tween: Tween)`",
+     "返回值": "`TweenSequence`",
+     "说明": "在序列末尾接入补间动画"
+    },
+    {
+     "方法": "`TweenSequence:AppendInterval(interval: number)`",
+     "返回值": "`TweenSequence`",
+     "说明": "在序列末尾接入指定秒数的等待时间"
+    },
+    {
+     "方法": "`TweenSequence:AppendCallback(callback: fun())`",
+     "返回值": "`TweenSequence`",
+     "说明": "在序列末尾接入回调"
+    },
+    {
+     "方法": "`TweenSequence:Join(tween: Tween)`",
+     "返回值": "`TweenSequence`",
+     "说明": "与当前队尾步骤同时播放；该步骤以最晚结束者为准"
+    },
+    {
+     "方法": "`TweenSequence:Insert(time: number, tween: Tween)`",
+     "返回值": "`TweenSequence`",
+     "说明": "在指定时间点插入并行补间动画"
+    },
+    {
+     "方法": "`TweenSequence:InsertCallback(time: number, callback: fun())`",
+     "返回值": "`TweenSequence`",
+     "说明": "在指定时间点插入回调"
+    },
+    {
+     "方法": "`TweenSequence:Play()`",
+     "返回值": "`TweenSequence`",
+     "说明": "开始播放并返回当前实例"
+    },
+    {
+     "方法": "`TweenSequence:Pause()`",
+     "返回值": "—",
+     "说明": "暂停序列"
+    },
+    {
+     "方法": "`TweenSequence:Resume()`",
+     "返回值": "—",
+     "说明": "继续播放序列"
+    },
+    {
+     "方法": "`TweenSequence:Restart()`",
+     "返回值": "—",
+     "说明": "回到初始状态并重新播放"
+    },
+    {
+     "方法": "`TweenSequence:Complete()`",
+     "返回值": "—",
+     "说明": "立即完成整个序列"
+    },
+    {
+     "方法": "`TweenSequence:Kill(complete: boolean)`",
+     "返回值": "—",
+     "说明": "销毁序列；`true` 表示先完成，`false` 表示保持当前状态结束"
+    },
+    {
+     "方法": "`TweenSequence:SetOnComplete(onComplete: fun())`",
+     "返回值": "`TweenSequence`",
+     "说明": "设置整个序列完成回调并返回当前实例"
+    },
+    {
+     "方法": "`TweenSequence:SetOnStepComplete(onStepComplete: fun())`",
+     "返回值": "`TweenSequence`",
+     "说明": "设置步骤完成回调并返回当前实例"
+    },
+    {
+     "方法": "`TweenSequence:SetLoops(times: integer)`",
+     "返回值": "`TweenSequence`",
+     "说明": "设置循环次数并返回当前实例；**负数表示无限循环**"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "8. TweenSequence",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "函数",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "函数": "`game.ServerSignal(signalName: string)`",
+     "返回值": "`ServerSignal`",
+     "说明": "使用服务器约定的信号名称 `signalName` 创建服务器信号"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "9. ServerSignal",
+    "(1) 创建"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`ServerSignal:AddParam(paramType: ParamType, paramValue: any)`",
+     "返回值": "—",
+     "说明": "`paramType` 指定参数类型，`paramValue` 指定参数值"
+    },
+    {
+     "方法": "`ServerSignal:SendSignal()`",
+     "返回值": "—",
+     "说明": "发送已构建的服务器信号"
+    },
+    {
+     "方法": "`ServerSignal:AddInt(intValue: integer)`",
+     "返回值": "—",
+     "说明": "添加整数参数"
+    },
+    {
+     "方法": "`ServerSignal:AddIntList(intListValue: integer[])`",
+     "返回值": "—",
+     "说明": "添加整数列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddFloat(floatValue: number)`",
+     "返回值": "—",
+     "说明": "添加浮点数参数"
+    },
+    {
+     "方法": "`ServerSignal:AddFloatList(floatListValue: number[])`",
+     "返回值": "—",
+     "说明": "添加浮点数列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddString(stringValue: string)`",
+     "返回值": "—",
+     "说明": "添加字符串参数"
+    },
+    {
+     "方法": "`ServerSignal:AddStringList(stringListValue: string[])`",
+     "返回值": "—",
+     "说明": "添加字符串列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddVector3(vector3Value: table)`",
+     "返回值": "—",
+     "说明": "添加三维向量参数；传入以 x,y,z 为键，目标值为值组成的 table"
+    },
+    {
+     "方法": "`ServerSignal:AddVector3List(vector3ListValue: table[])`",
+     "返回值": "—",
+     "说明": "添加三维向量列表参数；传入以 x,y,z 为键，目标值为值组成的 table 列表"
+    },
+    {
+     "方法": "`ServerSignal:AddBool(boolValue: boolean)`",
+     "返回值": "—",
+     "说明": "添加布尔值参数"
+    },
+    {
+     "方法": "`ServerSignal:AddBoolList(boolListValue: boolean[])`",
+     "返回值": "—",
+     "说明": "添加布尔值列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddGuid(guidValue: integer)`",
+     "返回值": "—",
+     "说明": "添加 GUID 参数"
+    },
+    {
+     "方法": "`ServerSignal:AddGuidList(guidListValue: integer[])`",
+     "返回值": "—",
+     "说明": "添加 GUID 列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddEntity(entityValue: integer)`",
+     "返回值": "—",
+     "说明": "添加实体参数"
+    },
+    {
+     "方法": "`ServerSignal:AddEntityList(entityListValue: integer[])`",
+     "返回值": "—",
+     "说明": "添加实体列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddPrefabId(prefabIdValue: integer)`",
+     "返回值": "—",
+     "说明": "添加元件 ID 参数"
+    },
+    {
+     "方法": "`ServerSignal:AddPrefabIdList(prefabIdListValue: integer[])`",
+     "返回值": "—",
+     "说明": "添加元件 ID 列表参数"
+    },
+    {
+     "方法": "`ServerSignal:AddConfigId(configIdValue: integer)`",
+     "返回值": "—",
+     "说明": "添加配置 ID 参数"
+    },
+    {
+     "方法": "`ServerSignal:AddConfigIdList(configIdListValue: integer[])`",
+     "返回值": "—",
+     "说明": "添加配置 ID 列表参数"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "9. ServerSignal",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`Name`",
+     "类型": "`string`",
+     "访问": "**只读**",
+     "说明": "枚举值名称"
+    },
+    {
+     "字段": "`FullName`",
+     "类型": "`string`",
+     "访问": "**只读**",
+     "说明": "枚举值完整名称"
+    },
+    {
+     "字段": "`EnumType`",
+     "类型": "`string`",
+     "访问": "**只读**",
+     "说明": "枚举类型名称"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "10. EnumItem",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.EaseTypeLinear`",
+     "说明": "线性"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInSine`",
+     "说明": "正弦缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutSine`",
+     "说明": "正弦缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutSine`",
+     "说明": "正弦缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInQuad`",
+     "说明": "二次缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutQuad`",
+     "说明": "二次缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutQuad`",
+     "说明": "二次缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInCubic`",
+     "说明": "三次缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutCubic`",
+     "说明": "三次缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutCubic`",
+     "说明": "三次缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInQuart`",
+     "说明": "四次缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutQuart`",
+     "说明": "四次缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutQuart`",
+     "说明": "四次缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInQuint`",
+     "说明": "五次缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutQuint`",
+     "说明": "五次缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutQuint`",
+     "说明": "五次缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInExpo`",
+     "说明": "指数缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutExpo`",
+     "说明": "指数缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutExpo`",
+     "说明": "指数缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInCirc`",
+     "说明": "圆形缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutCirc`",
+     "说明": "圆形缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutCirc`",
+     "说明": "圆形缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInBack`",
+     "说明": "回弹缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutBack`",
+     "说明": "回弹缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutBack`",
+     "说明": "回弹缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInElastic`",
+     "说明": "弹性缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutElastic`",
+     "说明": "弹性缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutElastic`",
+     "说明": "弹性缓入缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInBounce`",
+     "说明": "弹跳缓入"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeOutBounce`",
+     "说明": "弹跳缓出"
+    },
+    {
+     "枚举名": "`Enum.EaseTypeInOutBounce`",
+     "说明": "弹跳缓入缓出"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(1) `Enum.EaseType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.CustomVariableEntityTypeLevel`",
+     "说明": "关卡"
+    },
+    {
+     "枚举名": "`Enum.CustomVariableEntityTypePlayerSelf`",
+     "说明": "玩家自身"
+    },
+    {
+     "枚举名": "`Enum.CustomVariableEntityTypeAvatarSelf`",
+     "说明": "角色自身"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(2) `Enum.CustomVariableEntityType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.DeviceKeyboardAndMouse`",
+     "说明": "键鼠"
+    },
+    {
+     "枚举名": "`Enum.DeviceMobile`",
+     "说明": "移动端触屏"
+    },
+    {
+     "枚举名": "`Enum.DeviceController`",
+     "说明": "主机手柄"
+    },
+    {
+     "枚举名": "`Enum.DeviceMobileController`",
+     "说明": "移动端手柄"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(3) `Enum.Device`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.StageModeBeyond`",
+     "说明": "超限模式"
+    },
+    {
+     "枚举名": "`Enum.StageModeClassic`",
+     "说明": "经典模式"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(4) `Enum.StageMode`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageNone`",
+     "说明": "未指定"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageEng`",
+     "说明": "英语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageChs`",
+     "说明": "简体中文"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageCht`",
+     "说明": "繁体中文"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageFra`",
+     "说明": "法语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageDeu`",
+     "说明": "德语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageSpa`",
+     "说明": "西班牙语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguagePor`",
+     "说明": "葡萄牙语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageRus`",
+     "说明": "俄语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageJpn`",
+     "说明": "日语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageKor`",
+     "说明": "韩语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageTha`",
+     "说明": "泰语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageVie`",
+     "说明": "越南语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageInd`",
+     "说明": "印度尼西亚语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageTur`",
+     "说明": "土耳其语"
+    },
+    {
+     "枚举名": "`Enum.LanguageTypeLanguageIta`",
+     "说明": "意大利语"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(5) `Enum.LanguageType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ParamTypeEntity`",
+     "说明": "实体"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeEntityList`",
+     "说明": "实体列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeInt`",
+     "说明": "整数"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeIntList`",
+     "说明": "整数列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeBool`",
+     "说明": "布尔值"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeBoolList`",
+     "说明": "布尔值列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeFloat`",
+     "说明": "浮点数"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeFloatList`",
+     "说明": "浮点数列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeString`",
+     "说明": "字符串"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeStringList`",
+     "说明": "字符串列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeVector3`",
+     "说明": "三维向量"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeVector3List`",
+     "说明": "三维向量列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeGuid`",
+     "说明": "GUID"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeGuidList`",
+     "说明": "GUID 列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeConfigId`",
+     "说明": "配置 ID"
+    },
+    {
+     "枚举名": "`Enum.ParamTypePrefabId`",
+     "说明": "元件 ID"
+    },
+    {
+     "枚举名": "`Enum.ParamTypeConfigIdList`",
+     "说明": "配置 ID 列表"
+    },
+    {
+     "枚举名": "`Enum.ParamTypePrefabIdList`",
+     "说明": "元件 ID 列表"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(6) `Enum.ParamType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorDown`",
+     "说明": "光标按下"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorUp`",
+     "说明": "光标抬起"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorEnter`",
+     "说明": "光标进入检测区域"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorExit`",
+     "说明": "光标离开检测区域"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorDrag`",
+     "说明": "光标拖拽"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorBeginDrag`",
+     "说明": "开始拖拽"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorEndDrag`",
+     "说明": "结束拖拽"
+    },
+    {
+     "枚举名": "`Enum.CursorEventTypeCursorClick`",
+     "说明": "完成点击"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(7) `Enum.CursorEventType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ScrollDirectionHorizontal`",
+     "说明": "水平滚动"
+    },
+    {
+     "枚举名": "`Enum.ScrollDirectionVertical`",
+     "说明": "垂直滚动"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(8) `Enum.ScrollDirection`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ScrollLayoutConstraintAutoWrap`",
+     "说明": "自动换行布局"
+    },
+    {
+     "枚举名": "`Enum.ScrollLayoutConstraintFixed`",
+     "说明": "固定行数或列数布局"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(9) `Enum.ScrollLayoutConstraint`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ScrollAlignTypeBottom`",
+     "说明": "底部对齐"
+    },
+    {
+     "枚举名": "`Enum.ScrollAlignTypeCenter`",
+     "说明": "居中对齐"
+    },
+    {
+     "枚举名": "`Enum.ScrollAlignTypeTop`",
+     "说明": "顶部对齐"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(10) `Enum.ScrollAlignType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ControllerNavigationDirUp`",
+     "说明": "向上"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationDirDown`",
+     "说明": "向下"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationDirLeft`",
+     "说明": "向左"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationDirRight`",
+     "说明": "向右"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(11) `Enum.ControllerNavigationDir`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeConfirm`",
+     "说明": "确认"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeCancel`",
+     "说明": "取消"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeFocus`",
+     "说明": "进入聚焦"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeLostFocus`",
+     "说明": "退出聚焦"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeRightStickUp`",
+     "说明": "右摇杆向上"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeRightStickDown`",
+     "说明": "右摇杆向下"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeRightStickRight`",
+     "说明": "右摇杆向右"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeRightStickLeft`",
+     "说明": "右摇杆向左"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeLeftStickUp`",
+     "说明": "左摇杆向上"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeLeftStickDown`",
+     "说明": "左摇杆向下"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeLeftStickRight`",
+     "说明": "左摇杆向右"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationEventTypeLeftStickLeft`",
+     "说明": "左摇杆向左"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(12) `Enum.ControllerNavigationEventType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ControllerNavigationModeNone`",
+     "说明": "无导航"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationModeNearestControl`",
+     "说明": "导航至最近控件"
+    },
+    {
+     "枚举名": "`Enum.ControllerNavigationModeSpecified`",
+     "说明": "导航至指定控件"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(13) `Enum.ControllerNavigationMode`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.TextHorizontalAlignmentLeft`",
+     "说明": "左对齐"
+    },
+    {
+     "枚举名": "`Enum.TextHorizontalAlignmentMiddle`",
+     "说明": "水平居中"
+    },
+    {
+     "枚举名": "`Enum.TextHorizontalAlignmentRight`",
+     "说明": "右对齐"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(14) `Enum.TextHorizontalAlignment`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.TextVerticalAlignmentTop`",
+     "说明": "顶部对齐"
+    },
+    {
+     "枚举名": "`Enum.TextVerticalAlignmentMiddle`",
+     "说明": "垂直居中"
+    },
+    {
+     "枚举名": "`Enum.TextVerticalAlignmentBottom`",
+     "说明": "底部对齐"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(15) `Enum.TextVerticalAlignment`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageTypeBasic`",
+     "说明": "基础"
+    },
+    {
+     "枚举名": "`Enum.ImageTypeStretch`",
+     "说明": "拉伸"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(16) `Enum.ImageType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageSourceStaticReference`",
+     "说明": "静态引用"
+    },
+    {
+     "枚举名": "`Enum.ImageSourceItem`",
+     "说明": "道具"
+    },
+    {
+     "枚举名": "`Enum.ImageSourceEquipment`",
+     "说明": "装备"
+    },
+    {
+     "枚举名": "`Enum.ImageSourceSkill`",
+     "说明": "技能"
+    },
+    {
+     "枚举名": "`Enum.ImageSourceUnitStatus`",
+     "说明": "单位状态"
+    },
+    {
+     "枚举名": "`Enum.ImageSourceFaction`",
+     "说明": "阵营"
+    },
+    {
+     "枚举名": "`Enum.ImageSourceCurrency`",
+     "说明": "货币"
+    },
+    {
+     "枚举名": "`Enum.ImageSourcePrefab`",
+     "说明": "元件"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(17) `Enum.ImageSource`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageFillTypeUnused`",
+     "说明": "不使用填充"
+    },
+    {
+     "枚举名": "`Enum.ImageFillTypeHorizontal`",
+     "说明": "水平"
+    },
+    {
+     "枚举名": "`Enum.ImageFillTypeVertical`",
+     "说明": "垂直"
+    },
+    {
+     "枚举名": "`Enum.ImageFillTypeRadial90`",
+     "说明": "90度环绕"
+    },
+    {
+     "枚举名": "`Enum.ImageFillTypeRadial180`",
+     "说明": "180度环绕"
+    },
+    {
+     "枚举名": "`Enum.ImageFillTypeRadial360`",
+     "说明": "360度环绕"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(18) `Enum.ImageFillType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageFillHorizontalTypeLeft`",
+     "说明": "从左侧开始"
+    },
+    {
+     "枚举名": "`Enum.ImageFillHorizontalTypeRight`",
+     "说明": "从右侧开始"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(19) `Enum.ImageFillHorizontalType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageFillVerticalTypeBottom`",
+     "说明": "从底部开始"
+    },
+    {
+     "枚举名": "`Enum.ImageFillVerticalTypeTop`",
+     "说明": "从顶部开始"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(20) `Enum.ImageFillVerticalType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageFillRadial90TypeBottomLeft`",
+     "说明": "左下"
+    },
+    {
+     "枚举名": "`Enum.ImageFillRadial90TypeTopLeft`",
+     "说明": "左上"
+    },
+    {
+     "枚举名": "`Enum.ImageFillRadial90TypeTopRight`",
+     "说明": "右上"
+    },
+    {
+     "枚举名": "`Enum.ImageFillRadial90TypeBottomRight`",
+     "说明": "右下"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(21) `Enum.ImageFillRadial90Type`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageFillRadialTypeBottom`",
+     "说明": "底部"
+    },
+    {
+     "枚举名": "`Enum.ImageFillRadialTypeLeft`",
+     "说明": "左侧"
+    },
+    {
+     "枚举名": "`Enum.ImageFillRadialTypeTop`",
+     "说明": "顶部"
+    },
+    {
+     "枚举名": "`Enum.ImageFillRadialTypeRight`",
+     "说明": "右侧"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(22) `Enum.ImageFillRadialType`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ImageMaskSoftEdgeModePercentage`",
+     "说明": "按比例设置边缘羽化"
+    },
+    {
+     "枚举名": "`Enum.ImageMaskSoftEdgeModePixel`",
+     "说明": "按像素设置边缘羽化"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(23) `Enum.ImageMaskSoftEdgeMode`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.UIAnimationLayerAboveAllControls`",
+     "说明": "所有控件之上"
+    },
+    {
+     "枚举名": "`Enum.UIAnimationLayerBelowAllControls`",
+     "说明": "所有控件之下"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "11. 枚举系统",
+    "(24) `Enum.UIAnimationLayer`"
+   ]
+  },
+  {
+   "header": [
+    "类型",
+    "控件名"
+   ],
+   "rows": [
+    {
+     "类型": "`ClientUIImageControl`",
+     "控件名": "图片"
+    },
+    {
+     "类型": "`ClientUITextBoxControl`",
+     "控件名": "文本框"
+    },
+    {
+     "类型": "`ClientUITextWindowControl`",
+     "控件名": "文本视窗"
+    },
+    {
+     "类型": "`ClientUIPresetButtonControl`",
+     "控件名": "预设按钮"
+    },
+    {
+     "类型": "`ClientUICursorEventAreaControl`",
+     "控件名": "光标检测区域"
+    },
+    {
+     "类型": "`ClientUIGridScrollerControl`",
+     "控件名": "网格视窗"
+    },
+    {
+     "类型": "`ClientUIKeyHintControl`",
+     "控件名": "按键提示"
+    },
+    {
+     "类型": "`ClientUIAnimationControl`",
+     "控件名": "界面动效"
+    },
+    {
+     "类型": "`ClientUIFullscreenAnimationControl`",
+     "控件名": "全屏动效"
+    },
+    {
+     "类型": "`ClientUIContainerControl`",
+     "控件名": "容器节点"
+    },
+    {
+     "类型": "`ClientUIReferenceControl`",
+     "控件名": "模板引用控件"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "12. 客户端控件",
+    "(1) 继承关系"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`alive`",
+     "类型": "`boolean`",
+     "访问": "只读",
+     "说明": "控件是否存活"
+    },
+    {
+     "字段": "`id`",
+     "类型": "`integer`",
+     "访问": "只读",
+     "说明": "运行时 ID"
+    },
+    {
+     "字段": "`prefabIndex`",
+     "类型": "`integer`",
+     "访问": "只读",
+     "说明": "控件模板索引"
+    },
+    {
+     "字段": "`active`",
+     "类型": "`boolean`",
+     "访问": "只读",
+     "说明": "激活状态；`true` 时控件可见且挂载脚本逻辑运行，`false` 时控件不可见且脚本逻辑停止运行。默认为 `false`。"
+    },
+    {
+     "字段": "`activeInHierarchy`",
+     "类型": "`boolean`",
+     "访问": "只读",
+     "说明": "计入全部父级后的实际激活状态"
+    },
+    {
+     "字段": "`visible`",
+     "类型": "`boolean`",
+     "访问": "只读",
+     "说明": "**仅控制可见性，不改变激活状态或脚本逻辑运行状态**"
+    },
+    {
+     "字段": "`name`",
+     "类型": "`string`",
+     "访问": "读写",
+     "说明": "控件名称"
+    },
+    {
+     "字段": "`parent`",
+     "类型": "`ClientUIBaseControl`",
+     "访问": "读写",
+     "说明": "父控件"
+    },
+    {
+     "字段": "`anchoredPositionX, anchoredPositionY`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "位置、Tweenable"
+    },
+    {
+     "字段": "`sizeDeltaX, sizeDeltaY`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "大小差异、Tweenable"
+    },
+    {
+     "字段": "`anchorMinX, anchorMinY`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "最小锚点、Tweenable"
+    },
+    {
+     "字段": "`anchorMaxX, anchorMaxY`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "最大锚点、Tweenable"
+    },
+    {
+     "字段": "`pivotX, pivotY`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "中心、Tweenable"
+    },
+    {
+     "字段": "`localScaleX, localScaleY, localScaleZ`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "缩放、Tweenable"
+    },
+    {
+     "字段": "`localRotationX, localRotationY, localRotationZ`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "旋转、Tweenable"
+    },
+    {
+     "字段": "`canControllerFocus`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "可被手柄导航摇杆聚焦"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`GetChildren()`",
+     "返回值": "`ClientUIBaseControl[]`",
+     "说明": "获取直接子控件"
+    },
+    {
+     "方法": "`GetChild(name)`",
+     "返回值": "`ClientUIBaseControl`",
+     "说明": "获取当前控件中名称为 `name` 的直接子控件"
+    },
+    {
+     "方法": "`FindChild(path)`",
+     "返回值": "`ClientUIBaseControl`",
+     "说明": "按路径查找子控件"
+    },
+    {
+     "方法": "`SetActive(active)`",
+     "返回值": "—",
+     "说明": "设置激活状态；关闭后控件不可见且挂载脚本逻辑停止运行"
+    },
+    {
+     "方法": "`SetVisible(visible)`",
+     "返回值": "—",
+     "说明": "**仅设置可见性**，不改变激活状态，也不停止脚本逻辑"
+    },
+    {
+     "方法": "`GetSiblingIndex()`",
+     "返回值": "`integer`",
+     "说明": "获取同级排序索引；返回值范围为 0 到父控件的子控件数量减一"
+    },
+    {
+     "方法": "`SetSiblingIndex(index)`",
+     "返回值": "`boolean`",
+     "说明": "设置同级排序索引；`index` 范围为 0 到父控件的子控件数量减一；数值越大通常越靠后、显示越靠上"
+    },
+    {
+     "方法": "`SetAsFirstSibling()`",
+     "返回值": "`boolean`",
+     "说明": "移到同级首位"
+    },
+    {
+     "方法": "`SetAsLastSibling()`",
+     "返回值": "`boolean`",
+     "说明": "移到同级末位"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(2) 层级与可见性"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`GetAnchoredPosition()`",
+     "返回值": "`x, y`",
+     "说明": "无父层级时，以画布左下为原点获取位置；存在父层级时，获取与父层级中心的相对偏移"
+    },
+    {
+     "方法": "`SetAnchoredPosition(x, y)`",
+     "返回值": "—",
+     "说明": "无父层级时，以画布左下为原点设置位置；存在父层级时，设置与父层级中心的相对偏移"
+    },
+    {
+     "方法": "`GetSizeDelta()`",
+     "返回值": "`x, y`",
+     "说明": "获取大小"
+    },
+    {
+     "方法": "`SetSizeDelta(x, y)`",
+     "返回值": "—",
+     "说明": "设置大小"
+    },
+    {
+     "方法": "`GetAnchorMin()`",
+     "返回值": "`x, y`",
+     "说明": "获取最小锚点"
+    },
+    {
+     "方法": "`SetAnchorMin(x, y)`",
+     "返回值": "—",
+     "说明": "设置最小锚点"
+    },
+    {
+     "方法": "`GetAnchorMax()`",
+     "返回值": "`x, y`",
+     "说明": "获取最大锚点"
+    },
+    {
+     "方法": "`SetAnchorMax(x, y)`",
+     "返回值": "—",
+     "说明": "设置最大锚点"
+    },
+    {
+     "方法": "`GetPivot()`",
+     "返回值": "`x, y`",
+     "说明": "获取中心"
+    },
+    {
+     "方法": "`SetPivot(x, y)`",
+     "返回值": "—",
+     "说明": "设置中心"
+    },
+    {
+     "方法": "`GetLocalScale()`",
+     "返回值": "`x, y, z`",
+     "说明": "获取缩放"
+    },
+    {
+     "方法": "`SetLocalScale(x, y, z)`",
+     "返回值": "—",
+     "说明": "设置缩放"
+    },
+    {
+     "方法": "`GetLocalRotation()`",
+     "返回值": "`x, y, z`",
+     "说明": "获取旋转"
+    },
+    {
+     "方法": "`SetLocalRotation(x, y, z)`",
+     "返回值": "—",
+     "说明": "设置旋转"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(3) 布局与变换"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`GetScriptByPath(scriptPath)`",
+     "返回值": "`Script`",
+     "说明": "按路径获取挂载脚本"
+    },
+    {
+     "方法": "`GetScript(scriptMappingId)`",
+     "返回值": "`Script`",
+     "说明": "按脚本映射 ID 获取脚本"
+    },
+    {
+     "方法": "`GetScripts()`",
+     "返回值": "`Script[]`",
+     "说明": "获取控件上全部脚本"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(4) 脚本访问"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`AddKeyEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "注册指定按键事件监听；回调返回 `boolean`；移除单个监听时需保留该回调引用。同一个容器中，如果交互按键事件被 Lua 回调响应并标记为已处理，容器内的其他按键不会也响应此次按键事件"
+    },
+    {
+     "方法": "`RemoveKeyEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "移除指定按键事件和回调的监听；回调必须与注册时的引用相同"
+    },
+    {
+     "方法": "`RemoveKeyEventListeners(eventType)`",
+     "返回值": "—",
+     "说明": "移除指定按键事件的全部监听"
+    },
+    {
+     "方法": "`RemoveAllKeyEventListeners()`",
+     "返回值": "—",
+     "说明": "移除全部按键事件监听"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(5) 键鼠/手柄按键事件"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`AddNavigationEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "注册指定手柄导航事件监听"
+    },
+    {
+     "方法": "`RemoveNavigationEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "移除指定手柄导航事件和回调的监听"
+    },
+    {
+     "方法": "`RemoveNavigationEventListeners(eventType)`",
+     "返回值": "—",
+     "说明": "移除指定手柄导航事件的全部监听"
+    },
+    {
+     "方法": "`RemoveAllNavigationEventListeners()`",
+     "返回值": "—",
+     "说明": "移除全部手柄导航事件监听"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(6) 手柄导航事件"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`SetControllerNavigation(navigationDir, navigationMode, navigationTarget)`",
+     "返回值": "—",
+     "说明": "设置指定方向的导航模式和目标控件；目标可以为 `nil`"
+    },
+    {
+     "方法": "`GetControllerNavigation(navigationDir)`",
+     "返回值": "`navigationMode, navigationTarget`",
+     "说明": "获取指定方向的导航模式和目标控件"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "13. ClientUIBaseControl",
+    "(7) 手柄导航配置"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`imageSource`",
+     "类型": "`ImageSource`",
+     "访问": "只读",
+     "说明": "图片来源"
+    },
+    {
+     "字段": "`imageId`",
+     "类型": "`integer`",
+     "访问": "只读",
+     "说明": "图片 ID"
+    },
+    {
+     "字段": "`imageColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "图片颜色、Tweenable"
+    },
+    {
+     "字段": "`imageType`",
+     "类型": "`ImageType`",
+     "访问": "读写",
+     "说明": "基础或拉伸类型"
+    },
+    {
+     "字段": "`enableMask`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否启用遮罩"
+    },
+    {
+     "字段": "`enableSoftEdge`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否启用边缘羽化"
+    },
+    {
+     "字段": "`softEdgeMode`",
+     "类型": "`ImageMaskSoftEdgeMode`",
+     "访问": "读写",
+     "说明": "边缘羽化模式"
+    },
+    {
+     "字段": "`softEdgeWidthX`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "水平边缘羽化宽度、Tweenable"
+    },
+    {
+     "字段": "`softEdgeWidthY`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "垂直边缘羽化宽度、Tweenable"
+    },
+    {
+     "字段": "`horizontalSoftRange`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "水平边缘羽化范围、Tweenable"
+    },
+    {
+     "字段": "`verticalSoftRange`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "垂直边缘羽化范围、Tweenable"
+    },
+    {
+     "字段": "`reverseMaskArea`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否反转遮罩区域"
+    },
+    {
+     "字段": "`fillType`",
+     "类型": "`ImageFillType`",
+     "访问": "读写",
+     "说明": "当前填充方式"
+    },
+    {
+     "字段": "`fillHorizontalType`",
+     "类型": "`ImageFillHorizontalType`",
+     "访问": "读写",
+     "说明": "水平填充方向"
+    },
+    {
+     "字段": "`fillVerticalType`",
+     "类型": "`ImageFillVerticalType`",
+     "访问": "读写",
+     "说明": "垂直填充方向"
+    },
+    {
+     "字段": "`fillRadial90Type`",
+     "类型": "`ImageFillRadial90Type`",
+     "访问": "读写",
+     "说明": "90度环绕起点"
+    },
+    {
+     "字段": "`fillRadialType`",
+     "类型": "`ImageFillRadialType`",
+     "访问": "读写",
+     "说明": "180度环绕和 360度环绕的起点"
+    },
+    {
+     "字段": "`fillAmount`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "进度、Tweenable"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "14. ClientUIImageControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`SetImage(imageSource, imageId)`",
+     "返回值": "—",
+     "说明": "设置图片来源与图片 ID"
+    },
+    {
+     "方法": "`SetSoftEdgeWidth(widthX, widthY)`",
+     "返回值": "—",
+     "说明": "设置水平与垂直边缘羽化宽度"
+    },
+    {
+     "方法": "`SetFillUnused()`",
+     "返回值": "—",
+     "说明": "设置为不使用填充"
+    },
+    {
+     "方法": "`SetFillHorizontal(fillHorizontalType, fillAmount)`",
+     "返回值": "—",
+     "说明": "设置水平填充"
+    },
+    {
+     "方法": "`SetFillVertical(fillVerticalType, fillAmount)`",
+     "返回值": "—",
+     "说明": "设置垂直填充"
+    },
+    {
+     "方法": "`SetFillRadial90(fillRadial90Type, fillAmount)`",
+     "返回值": "—",
+     "说明": "设置 90度环绕填充"
+    },
+    {
+     "方法": "`SetFillRadial180(fillRadialType, fillAmount)`",
+     "返回值": "—",
+     "说明": "设置 180度环绕填充"
+    },
+    {
+     "方法": "`SetFillRadial360(fillRadialType, fillAmount)`",
+     "返回值": "—",
+     "说明": "设置 360度环绕填充"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "14. ClientUIImageControl",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`text`",
+     "类型": "`string`",
+     "访问": "读写",
+     "说明": "显示文本"
+    },
+    {
+     "字段": "`fontSize`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "字号，Tweenable"
+    },
+    {
+     "字段": "`fontColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "字色，Tweenable"
+    },
+    {
+     "字段": "`bgColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "背景色，Tweenable"
+    },
+    {
+     "字段": "`enableOutline`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否启用描边"
+    },
+    {
+     "字段": "`outlineColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "描边色，Tweenable"
+    },
+    {
+     "字段": "`horizontalAlignment`",
+     "类型": "`TextHorizontalAlignment`",
+     "访问": "读写",
+     "说明": "水平对齐"
+    },
+    {
+     "字段": "`verticalAlignment`",
+     "类型": "`TextVerticalAlignment`",
+     "访问": "读写",
+     "说明": "垂直对齐"
+    },
+    {
+     "字段": "`adaptiveFontSize`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "字号自适应"
+    },
+    {
+     "字段": "`minimumFontSize`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "字号自适应的最小字号，Tweenable"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "15. ClientUITextBoxControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`interactable`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否可交互；与 `showScrollBar` 同时为 `false` 时，手柄无法滚动文本视窗"
+    },
+    {
+     "字段": "`showScrollBar`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否显示滚动条"
+    },
+    {
+     "字段": "`text`",
+     "类型": "`string`",
+     "访问": "读写",
+     "说明": "显示文本"
+    },
+    {
+     "字段": "`fontSize`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "字号，Tweenable"
+    },
+    {
+     "字段": "`fontColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "字色，Tweenable"
+    },
+    {
+     "字段": "`bgColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "背景色，Tweenable"
+    },
+    {
+     "字段": "`enableOutline`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否启用描边"
+    },
+    {
+     "字段": "`outlineColor`",
+     "类型": "`ColorValue`",
+     "访问": "读写",
+     "说明": "描边色，Tweenable"
+    },
+    {
+     "字段": "`horizontalAlignment`",
+     "类型": "`TextHorizontalAlignment`",
+     "访问": "读写",
+     "说明": "水平对齐"
+    },
+    {
+     "字段": "`verticalAlignment`",
+     "类型": "`TextVerticalAlignment`",
+     "访问": "读写",
+     "说明": "垂直对齐"
+    },
+    {
+     "字段": "`adaptiveFontSize`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "字号自适应"
+    },
+    {
+     "字段": "`minimumFontSize`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "字号自适应的最小字号，Tweenable"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "16. ClientUITextWindowControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`interactable`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否可交互"
+    },
+    {
+     "字段": "`clickAudioId`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "点击音效 ID"
+    },
+    {
+     "字段": "`raycastTarget`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "可被光标射线检测"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "17. ClientUIPresetButtonControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`AddCursorEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "注册指定光标事件监听；回调接收 `CursorEventData`"
+    },
+    {
+     "方法": "`RemoveCursorEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "移除指定光标事件和回调的监听"
+    },
+    {
+     "方法": "`RemoveCursorEventListeners(eventType)`",
+     "返回值": "—",
+     "说明": "移除指定光标事件的全部监听"
+    },
+    {
+     "方法": "`RemoveAllCursorEventListeners()`",
+     "返回值": "—",
+     "说明": "移除全部光标事件监听"
+    },
+    {
+     "方法": "`SimulateCursorClick()`",
+     "返回值": "—",
+     "说明": "按顺序模拟 `CursorDown`、`CursorUp` 与 `CursorClick`"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "17. ClientUIPresetButtonControl",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`raycastTarget`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "可被光标射线检测"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "18. ClientUICursorEventAreaControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`AddCursorEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "注册指定光标事件监听；回调接收 `CursorEventData`"
+    },
+    {
+     "方法": "`RemoveCursorEventListener(eventType, callback)`",
+     "返回值": "—",
+     "说明": "移除指定光标事件和回调的监听"
+    },
+    {
+     "方法": "`RemoveCursorEventListeners(eventType)`",
+     "返回值": "—",
+     "说明": "移除指定光标事件的全部监听"
+    },
+    {
+     "方法": "`RemoveAllCursorEventListeners()`",
+     "返回值": "—",
+     "说明": "移除全部光标事件监听"
+    },
+    {
+     "方法": "`SimulateCursorClick()`",
+     "返回值": "—",
+     "说明": "按顺序模拟 `CursorDown`、`CursorUp` 与 `CursorClick`"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "18. ClientUICursorEventAreaControl",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`dragging`",
+     "类型": "`boolean`",
+     "访问": "只读",
+     "说明": "当前是否在拖拽"
+    },
+    {
+     "字段": "`touchId`",
+     "类型": "`integer`",
+     "访问": "只读",
+     "说明": "触点 ID"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "19. CursorEventData",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`CursorEventData:GetUIPos()`",
+     "返回值": "`x, y: number`",
+     "说明": "以画布左下角为原点，获取当前屏幕 UI 坐标。坐标比例和布局坐标一致"
+    },
+    {
+     "方法": "`CursorEventData:GetPressUIPos()`",
+     "返回值": "`x, y: number`",
+     "说明": "获取按下时的屏幕 UI 坐标"
+    },
+    {
+     "方法": "`CursorEventData:GetUIPosDelta()`",
+     "返回值": "`x, y: number`",
+     "说明": "获取本次事件的屏幕 UI 位移"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "19. CursorEventData",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`itemCount`",
+     "类型": "`integer`",
+     "访问": "只读",
+     "说明": "列表项数量"
+    },
+    {
+     "字段": "`itemPrefabIndex`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "列表项控件模板索引"
+    },
+    {
+     "字段": "`raycastTarget`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "可被光标射线检测"
+    },
+    {
+     "字段": "`showScrollBar`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否显示滚动条"
+    },
+    {
+     "字段": "`interactable`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否可交互"
+    },
+    {
+     "字段": "`scrollDirection`",
+     "类型": "`ScrollDirection`",
+     "访问": "只读",
+     "说明": "滚动方向"
+    },
+    {
+     "字段": "`layoutConstraint`",
+     "类型": "`ScrollLayoutConstraint`",
+     "访问": "只读",
+     "说明": "列表项布局约束"
+    },
+    {
+     "字段": "`layoutConstraintFixedCount`",
+     "类型": "`number`",
+     "访问": "只读",
+     "说明": "固定布局时每行或每列的列表项数量"
+    },
+    {
+     "字段": "`scrollProgress`",
+     "类型": "`number`",
+     "访问": "读写",
+     "说明": "滚动进度、Tweenable"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "20. ClientUIGridScrollerControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`RefreshItems(itemCount, refreshCallback)`",
+     "返回值": "—",
+     "说明": "刷新列表项并逐项调用回调；刷新回调形式为 `fun(control: ClientUIBaseControl, index: integer)`，参数依次为当前列表项控件和列表项索引"
+    },
+    {
+     "方法": "`GetItemIndex(control)`",
+     "返回值": "`integer`",
+     "说明": "获取列表项控件的索引"
+    },
+    {
+     "方法": "`GetItemSize()`",
+     "返回值": "`x, y: number`",
+     "说明": "获取列表项宽度与高度"
+    },
+    {
+     "方法": "`GetItemSpacing()`",
+     "返回值": "`x, y: number`",
+     "说明": "获取列表项的水平与垂直间距"
+    },
+    {
+     "方法": "`GetPadding()`",
+     "返回值": "`top, bottom, left, right: number`",
+     "说明": "获取内容区域的上、下、左、右内边距"
+    },
+    {
+     "方法": "`ScrollToItemAt(index, scrollAlignType)`",
+     "返回值": "—",
+     "说明": "滚动到索引为 `index` 的列表项，并按 `scrollAlignType` 对齐"
+    },
+    {
+     "方法": "`GetContentLength()`",
+     "返回值": "`number`",
+     "说明": "获取滚动内容在滚动方向上的长度"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "20. ClientUIGridScrollerControl",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`keyboardKeyCode`",
+     "类型": "`KeyboardKeyCode`",
+     "访问": "读写",
+     "说明": "键鼠按键枚举值"
+    },
+    {
+     "字段": "`controllerKeyCode`",
+     "类型": "`ControllerKeyCode`",
+     "访问": "读写",
+     "说明": "手柄按键枚举值"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "21. ClientUIKeyHintControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`animationId`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "动效 ID"
+    },
+    {
+     "字段": "`playSoundEffect`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否播放动效音效"
+    },
+    {
+     "字段": "`layer`",
+     "类型": "`UIAnimationLayer`",
+     "访问": "读写",
+     "说明": "动效层级"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "22. ClientUIAnimationControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "方法",
+    "返回值",
+    "说明"
+   ],
+   "rows": [
+    {
+     "方法": "`PlayAnimation()`",
+     "返回值": "—",
+     "说明": "播放界面动效"
+    },
+    {
+     "方法": "`StopAnimation()`",
+     "返回值": "—",
+     "说明": "停止界面动效"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "22. ClientUIAnimationControl",
+    "(2) 方法"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`animationId`",
+     "类型": "`integer`",
+     "访问": "读写",
+     "说明": "动效 ID"
+    },
+    {
+     "字段": "`playSoundEffect`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否播放动效音效"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "23. ClientUIFullscreenAnimationControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`isolateNavigation`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否隔离手柄导航"
+    },
+    {
+     "字段": "`disableKeyEventPassthrough`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否屏蔽按键事件穿透"
+    },
+    {
+     "字段": "`disableCursorEventPassthrough`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否屏蔽区域内点击事件穿透"
+    },
+    {
+     "字段": "`showCursor`",
+     "类型": "`boolean`",
+     "访问": "读写",
+     "说明": "是否显示常驻光标；**CursorEvent 相关方法都需设置该参数为真后才可正常使用**"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "24. ClientUIContainerControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "字段",
+    "类型",
+    "访问",
+    "说明"
+   ],
+   "rows": [
+    {
+     "字段": "`referencedPrefabIndex`",
+     "类型": "`integer`",
+     "访问": "只读",
+     "说明": "引用控件模板索引"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "25. ClientUIReferenceControl",
+    "(1) 字段"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明",
+    "默认物理键"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey1`",
+     "说明": "奇匠按键1",
+     "默认物理键": "`1`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey2`",
+     "说明": "奇匠按键2",
+     "默认物理键": "`2`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey3`",
+     "说明": "奇匠按键3",
+     "默认物理键": "`3`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey4`",
+     "说明": "奇匠按键4",
+     "默认物理键": "`4`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey5`",
+     "说明": "奇匠按键5",
+     "默认物理键": "`5`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey6`",
+     "说明": "奇匠按键6",
+     "默认物理键": "`6`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey7`",
+     "说明": "奇匠按键7",
+     "默认物理键": "`7`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey8`",
+     "说明": "奇匠按键8",
+     "默认物理键": "`8`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey9`",
+     "说明": "奇匠按键9",
+     "默认物理键": "`9`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey10`",
+     "说明": "奇匠按键10",
+     "默认物理键": "`0`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey11`",
+     "说明": "奇匠按键11",
+     "默认物理键": "`U`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey12`",
+     "说明": "奇匠按键12",
+     "默认物理键": "`Z`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey13`",
+     "说明": "奇匠按键13",
+     "默认物理键": "`Y`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey14`",
+     "说明": "奇匠按键14",
+     "默认物理键": "`G`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey15`",
+     "说明": "奇匠按键15",
+     "默认物理键": "`H`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey16`",
+     "说明": "奇匠按键16",
+     "默认物理键": "`I`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey17`",
+     "说明": "奇匠按键17",
+     "默认物理键": "`O`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey18`",
+     "说明": "奇匠按键18",
+     "默认物理键": "`P`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey19`",
+     "说明": "奇匠按键19",
+     "默认物理键": "`J`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey20`",
+     "说明": "奇匠按键20",
+     "默认物理键": "`K`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey21`",
+     "说明": "奇匠按键21",
+     "默认物理键": "`L`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey22`",
+     "说明": "奇匠按键22",
+     "默认物理键": "`V`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey23`",
+     "说明": "奇匠按键23",
+     "默认物理键": "`F5`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey24`",
+     "说明": "奇匠按键24",
+     "默认物理键": "`F6`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey25`",
+     "说明": "奇匠按键25",
+     "默认物理键": "`F7`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey26`",
+     "说明": "奇匠按键26",
+     "默认物理键": "`F8`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey27`",
+     "说明": "奇匠按键27",
+     "默认物理键": "`F9`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey28`",
+     "说明": "奇匠按键28",
+     "默认物理键": "`F10`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey29`",
+     "说明": "奇匠按键29",
+     "默认物理键": "```"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey30`",
+     "说明": "奇匠按键30",
+     "默认物理键": "`-`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey31`",
+     "说明": "奇匠按键31",
+     "默认物理键": "`=`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey32`",
+     "说明": "奇匠按键32",
+     "默认物理键": "`[`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey33`",
+     "说明": "奇匠按键33",
+     "默认物理键": "`,`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey34`",
+     "说明": "奇匠按键34",
+     "默认物理键": "`.`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey35`",
+     "说明": "奇匠按键35",
+     "默认物理键": "`/`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey36`",
+     "说明": "奇匠按键36",
+     "默认物理键": "`↑`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey37`",
+     "说明": "奇匠按键37",
+     "默认物理键": "`↓`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey38`",
+     "说明": "奇匠按键38",
+     "默认物理键": "`←`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey39`",
+     "说明": "奇匠按键39",
+     "默认物理键": "`→`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey40`",
+     "说明": "奇匠按键40",
+     "默认物理键": "`右Ctrl`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey41`",
+     "说明": "奇匠按键41",
+     "默认物理键": "`右Shift`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey42`",
+     "说明": "奇匠按键42",
+     "默认物理键": "`Backspace`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCraftspersonKey43`",
+     "说明": "奇匠按键43",
+     "默认物理键": "`CapsLock`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeMoveForwardKey`",
+     "说明": "向前移动",
+     "默认物理键": "`W`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeMoveBackwardKey`",
+     "说明": "向后移动",
+     "默认物理键": "`S`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeMoveLeftKey`",
+     "说明": "向左移动",
+     "默认物理键": "`A`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeMoveRightKey`",
+     "说明": "向右移动",
+     "默认物理键": "`D`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeSwitchToWalkOrRunKey`",
+     "说明": "切换行走/奔跑状态",
+     "默认物理键": "`左Ctrl`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeSprintKey`",
+     "说明": "冲刺",
+     "默认物理键": "`鼠标右键`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeJumpKey`",
+     "说明": "跳跃",
+     "默认物理键": "`Space`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeDropKey`",
+     "说明": "落下",
+     "默认物理键": "`X`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeOpenShortcutWheelKey`",
+     "说明": "呼出快捷轮盘",
+     "默认物理键": "`Tab`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeInteractKey`",
+     "说明": "拾取/交互",
+     "默认物理键": "`F`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeNormalAttackKey`",
+     "说明": "普通攻击",
+     "默认物理键": "`鼠标左键`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCharacterSkill1Key`",
+     "说明": "角色技能1",
+     "默认物理键": "`E`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCharacterSkill2Key`",
+     "说明": "角色技能2",
+     "默认物理键": "`Q`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCharacterSkill3Key`",
+     "说明": "角色技能3",
+     "默认物理键": "`R`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeCharacterSkill4Key`",
+     "说明": "角色技能4",
+     "默认物理键": "`T`"
+    },
+    {
+     "枚举名": "`Enum.KeyboardKeyCodeNone`",
+     "说明": "无",
+     "默认物理键": "`无`"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "26. 按键输入",
+    "(1) `Enum.KeyboardKeyCode`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明",
+    "默认物理键"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey1`",
+     "说明": "奇匠按键1",
+     "默认物理键": "`十字键左`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey2`",
+     "说明": "奇匠按键2",
+     "默认物理键": "`十字键下`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey3`",
+     "说明": "奇匠按键3",
+     "默认物理键": "`LT`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey4`",
+     "说明": "奇匠按键4",
+     "默认物理键": "`LB + Y`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey5`",
+     "说明": "奇匠按键5",
+     "默认物理键": "`LB + X`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey6`",
+     "说明": "奇匠按键6",
+     "默认物理键": "`LB + A`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey7`",
+     "说明": "奇匠按键7",
+     "默认物理键": "`LB + 十字键上`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey8`",
+     "说明": "奇匠按键8",
+     "默认物理键": "`LB + 十字键右`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey9`",
+     "说明": "奇匠按键9",
+     "默认物理键": "`LB + 十字键左`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey10`",
+     "说明": "奇匠按键10",
+     "默认物理键": "`LB + 十字键下`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey11`",
+     "说明": "奇匠按键11",
+     "默认物理键": "`LB + RB`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey12`",
+     "说明": "奇匠按键12",
+     "默认物理键": "`LB + LT`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey13`",
+     "说明": "奇匠按键13",
+     "默认物理键": "`LB + RT`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCraftspersonKey14`",
+     "说明": "奇匠按键14",
+     "默认物理键": "`LB + LS(按下)`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeSprintKey`",
+     "说明": "冲刺",
+     "默认物理键": "`RB`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeJumpKey`",
+     "说明": "跳跃",
+     "默认物理键": "`A`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeInteractKey`",
+     "说明": "拾取/交互",
+     "默认物理键": "`X`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeNormalAttackKey`",
+     "说明": "普通攻击",
+     "默认物理键": "`B`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCharacterSkill1Key`",
+     "说明": "角色技能1",
+     "默认物理键": "`RT`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCharacterSkill2Key`",
+     "说明": "角色技能2",
+     "默认物理键": "`Y`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCharacterSkill3Key`",
+     "说明": "角色技能3",
+     "默认物理键": "`十字键上`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeCharacterSkill4Key`",
+     "说明": "角色技能4",
+     "默认物理键": "`十字键右`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeMenuConfirmKey`",
+     "说明": "菜单确认",
+     "默认物理键": "`—（由手柄导航配置决定）`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeMenuBackKey`",
+     "说明": "菜单返回",
+     "默认物理键": "`—（由手柄导航配置决定）`"
+    },
+    {
+     "枚举名": "`Enum.ControllerKeyCodeNone`",
+     "说明": "无",
+     "默认物理键": "`无`"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "26. 按键输入",
+    "(2) `Enum.ControllerKeyCode`"
+   ]
+  },
+  {
+   "header": [
+    "枚举名",
+    "说明"
+   ],
+   "rows": [
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey1Down`",
+     "说明": "键鼠：奇匠按键1（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey1Up`",
+     "说明": "键鼠：奇匠按键1（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey2Down`",
+     "说明": "键鼠：奇匠按键2（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey2Up`",
+     "说明": "键鼠：奇匠按键2（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey3Down`",
+     "说明": "键鼠：奇匠按键3（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey3Up`",
+     "说明": "键鼠：奇匠按键3（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey4Down`",
+     "说明": "键鼠：奇匠按键4（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey4Up`",
+     "说明": "键鼠：奇匠按键4（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey5Down`",
+     "说明": "键鼠：奇匠按键5（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey5Up`",
+     "说明": "键鼠：奇匠按键5（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey6Down`",
+     "说明": "键鼠：奇匠按键6（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey6Up`",
+     "说明": "键鼠：奇匠按键6（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey7Down`",
+     "说明": "键鼠：奇匠按键7（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey7Up`",
+     "说明": "键鼠：奇匠按键7（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey8Down`",
+     "说明": "键鼠：奇匠按键8（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey8Up`",
+     "说明": "键鼠：奇匠按键8（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey9Down`",
+     "说明": "键鼠：奇匠按键9（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey9Up`",
+     "说明": "键鼠：奇匠按键9（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey10Down`",
+     "说明": "键鼠：奇匠按键10（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey10Up`",
+     "说明": "键鼠：奇匠按键10（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey11Down`",
+     "说明": "键鼠：奇匠按键11（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey11Up`",
+     "说明": "键鼠：奇匠按键11（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey12Down`",
+     "说明": "键鼠：奇匠按键12（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey12Up`",
+     "说明": "键鼠：奇匠按键12（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey13Down`",
+     "说明": "键鼠：奇匠按键13（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey13Up`",
+     "说明": "键鼠：奇匠按键13（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey14Down`",
+     "说明": "键鼠：奇匠按键14（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey14Up`",
+     "说明": "键鼠：奇匠按键14（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey15Down`",
+     "说明": "键鼠：奇匠按键15（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey15Up`",
+     "说明": "键鼠：奇匠按键15（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey16Down`",
+     "说明": "键鼠：奇匠按键16（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey16Up`",
+     "说明": "键鼠：奇匠按键16（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey17Down`",
+     "说明": "键鼠：奇匠按键17（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey17Up`",
+     "说明": "键鼠：奇匠按键17（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey18Down`",
+     "说明": "键鼠：奇匠按键18（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey18Up`",
+     "说明": "键鼠：奇匠按键18（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey19Down`",
+     "说明": "键鼠：奇匠按键19（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey19Up`",
+     "说明": "键鼠：奇匠按键19（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey20Down`",
+     "说明": "键鼠：奇匠按键20（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey20Up`",
+     "说明": "键鼠：奇匠按键20（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey21Down`",
+     "说明": "键鼠：奇匠按键21（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey21Up`",
+     "说明": "键鼠：奇匠按键21（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey22Down`",
+     "说明": "键鼠：奇匠按键22（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey22Up`",
+     "说明": "键鼠：奇匠按键22（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey23Down`",
+     "说明": "键鼠：奇匠按键23（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey23Up`",
+     "说明": "键鼠：奇匠按键23（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey24Down`",
+     "说明": "键鼠：奇匠按键24（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey24Up`",
+     "说明": "键鼠：奇匠按键24（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey25Down`",
+     "说明": "键鼠：奇匠按键25（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey25Up`",
+     "说明": "键鼠：奇匠按键25（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey26Down`",
+     "说明": "键鼠：奇匠按键26（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey26Up`",
+     "说明": "键鼠：奇匠按键26（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey27Down`",
+     "说明": "键鼠：奇匠按键27（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey27Up`",
+     "说明": "键鼠：奇匠按键27（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey28Down`",
+     "说明": "键鼠：奇匠按键28（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey28Up`",
+     "说明": "键鼠：奇匠按键28（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey29Down`",
+     "说明": "键鼠：奇匠按键29（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey29Up`",
+     "说明": "键鼠：奇匠按键29（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey30Down`",
+     "说明": "键鼠：奇匠按键30（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey30Up`",
+     "说明": "键鼠：奇匠按键30（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey31Down`",
+     "说明": "键鼠：奇匠按键31（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey31Up`",
+     "说明": "键鼠：奇匠按键31（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey32Down`",
+     "说明": "键鼠：奇匠按键32（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey32Up`",
+     "说明": "键鼠：奇匠按键32（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey33Down`",
+     "说明": "键鼠：奇匠按键33（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey33Up`",
+     "说明": "键鼠：奇匠按键33（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey34Down`",
+     "说明": "键鼠：奇匠按键34（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey34Up`",
+     "说明": "键鼠：奇匠按键34（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey35Down`",
+     "说明": "键鼠：奇匠按键35（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey35Up`",
+     "说明": "键鼠：奇匠按键35（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey36Down`",
+     "说明": "键鼠：奇匠按键36（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey36Up`",
+     "说明": "键鼠：奇匠按键36（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey37Down`",
+     "说明": "键鼠：奇匠按键37（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey37Up`",
+     "说明": "键鼠：奇匠按键37（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey38Down`",
+     "说明": "键鼠：奇匠按键38（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey38Up`",
+     "说明": "键鼠：奇匠按键38（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey39Down`",
+     "说明": "键鼠：奇匠按键39（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey39Up`",
+     "说明": "键鼠：奇匠按键39（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey40Down`",
+     "说明": "键鼠：奇匠按键40（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey40Up`",
+     "说明": "键鼠：奇匠按键40（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey41Down`",
+     "说明": "键鼠：奇匠按键41（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey41Up`",
+     "说明": "键鼠：奇匠按键41（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey42Down`",
+     "说明": "键鼠：奇匠按键42（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey42Up`",
+     "说明": "键鼠：奇匠按键42（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey43Down`",
+     "说明": "键鼠：奇匠按键43（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCraftspersonKey43Up`",
+     "说明": "键鼠：奇匠按键43（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveForwardKeyDown`",
+     "说明": "键鼠：向前移动（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveForwardKeyUp`",
+     "说明": "键鼠：向前移动（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveBackwardKeyDown`",
+     "说明": "键鼠：向后移动（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveBackwardKeyUp`",
+     "说明": "键鼠：向后移动（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveLeftKeyDown`",
+     "说明": "键鼠：向左移动（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveLeftKeyUp`",
+     "说明": "键鼠：向左移动（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveRightKeyDown`",
+     "说明": "键鼠：向右移动（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardMoveRightKeyUp`",
+     "说明": "键鼠：向右移动（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardSwitchToWalkOrRunKeyDown`",
+     "说明": "键鼠：切换行走/奔跑状态（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardSwitchToWalkOrRunKeyUp`",
+     "说明": "键鼠：切换行走/奔跑状态（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardSprintKeyDown`",
+     "说明": "键鼠：冲刺（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardSprintKeyUp`",
+     "说明": "键鼠：冲刺（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardJumpKeyDown`",
+     "说明": "键鼠：跳跃（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardJumpKeyUp`",
+     "说明": "键鼠：跳跃（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardDropKeyDown`",
+     "说明": "键鼠：落下（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardDropKeyUp`",
+     "说明": "键鼠：落下（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardOpenShortcutWheelKeyDown`",
+     "说明": "键鼠：呼出快捷轮盘（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardOpenShortcutWheelKeyUp`",
+     "说明": "键鼠：呼出快捷轮盘（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardInteractKeyDown`",
+     "说明": "键鼠：拾取/交互（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardInteractKeyUp`",
+     "说明": "键鼠：拾取/交互（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardNormalAttackKeyDown`",
+     "说明": "键鼠：普通攻击（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardNormalAttackKeyUp`",
+     "说明": "键鼠：普通攻击（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill1KeyDown`",
+     "说明": "键鼠：角色技能1（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill1KeyUp`",
+     "说明": "键鼠：角色技能1（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill2KeyDown`",
+     "说明": "键鼠：角色技能2（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill2KeyUp`",
+     "说明": "键鼠：角色技能2（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill3KeyDown`",
+     "说明": "键鼠：角色技能3（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill3KeyUp`",
+     "说明": "键鼠：角色技能3（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill4KeyDown`",
+     "说明": "键鼠：角色技能4（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeKeyboardCharacterSkill4KeyUp`",
+     "说明": "键鼠：角色技能4（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey1Down`",
+     "说明": "手柄：奇匠按键1（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey1Up`",
+     "说明": "手柄：奇匠按键1（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey2Down`",
+     "说明": "手柄：奇匠按键2（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey2Up`",
+     "说明": "手柄：奇匠按键2（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey3Down`",
+     "说明": "手柄：奇匠按键3（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey3Up`",
+     "说明": "手柄：奇匠按键3（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey4Down`",
+     "说明": "手柄：奇匠按键4（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey4Up`",
+     "说明": "手柄：奇匠按键4（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey5Down`",
+     "说明": "手柄：奇匠按键5（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey5Up`",
+     "说明": "手柄：奇匠按键5（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey6Down`",
+     "说明": "手柄：奇匠按键6（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey6Up`",
+     "说明": "手柄：奇匠按键6（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey7Down`",
+     "说明": "手柄：奇匠按键7（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey7Up`",
+     "说明": "手柄：奇匠按键7（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey8Down`",
+     "说明": "手柄：奇匠按键8（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey8Up`",
+     "说明": "手柄：奇匠按键8（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey9Down`",
+     "说明": "手柄：奇匠按键9（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey9Up`",
+     "说明": "手柄：奇匠按键9（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey10Down`",
+     "说明": "手柄：奇匠按键10（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey10Up`",
+     "说明": "手柄：奇匠按键10（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey11Down`",
+     "说明": "手柄：奇匠按键11（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey11Up`",
+     "说明": "手柄：奇匠按键11（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey12Down`",
+     "说明": "手柄：奇匠按键12（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey12Up`",
+     "说明": "手柄：奇匠按键12（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey13Down`",
+     "说明": "手柄：奇匠按键13（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey13Up`",
+     "说明": "手柄：奇匠按键13（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey14Down`",
+     "说明": "手柄：奇匠按键14（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCraftspersonKey14Up`",
+     "说明": "手柄：奇匠按键14（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerSprintKeyDown`",
+     "说明": "手柄：冲刺（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerSprintKeyUp`",
+     "说明": "手柄：冲刺（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerJumpKeyDown`",
+     "说明": "手柄：跳跃（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerJumpKeyUp`",
+     "说明": "手柄：跳跃（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerInteractKeyDown`",
+     "说明": "手柄：拾取/交互（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerInteractKeyUp`",
+     "说明": "手柄：拾取/交互（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerNormalAttackKeyDown`",
+     "说明": "手柄：普通攻击（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerNormalAttackKeyUp`",
+     "说明": "手柄：普通攻击（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill1KeyDown`",
+     "说明": "手柄：角色技能1（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill1KeyUp`",
+     "说明": "手柄：角色技能1（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill2KeyDown`",
+     "说明": "手柄：角色技能2（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill2KeyUp`",
+     "说明": "手柄：角色技能2（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill3KeyDown`",
+     "说明": "手柄：角色技能3（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill3KeyUp`",
+     "说明": "手柄：角色技能3（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill4KeyDown`",
+     "说明": "手柄：角色技能4（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerCharacterSkill4KeyUp`",
+     "说明": "手柄：角色技能4（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerMenuConfirmKeyDown`",
+     "说明": "手柄：菜单确认（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerMenuConfirmKeyUp`",
+     "说明": "手柄：菜单确认（抬起）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerMenuBackKeyDown`",
+     "说明": "手柄：菜单返回（按下）"
+    },
+    {
+     "枚举名": "`Enum.KeyEventTypeControllerMenuBackKeyUp`",
+     "说明": "手柄：菜单返回（抬起）"
+    }
+   ],
+   "path": [
+    "四、具体介绍",
+    "26. 按键输入",
+    "(3) `Enum.KeyEventType`"
+   ]
+  }
+ ]
+}
