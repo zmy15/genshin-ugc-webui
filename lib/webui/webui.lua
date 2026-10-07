@@ -36,6 +36,7 @@ local style  = require('webui_style')
 local layout = require('webui_layout')
 local render = require('webui_render')
 local clip   = require('webui_clip')
+local sprite = require('webui_sprite')
 local event  = require('webui_event')
 
 local M = {}
@@ -52,6 +53,7 @@ M.style  = style
 M.layout = layout
 M.render = render
 M.clip   = clip
+M.sprite = sprite
 M.event  = event
 
 --[[----------------------------------------------------------------------------

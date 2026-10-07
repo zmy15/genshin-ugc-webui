@@ -41,22 +41,44 @@ local function makeEnv()
   E.setRoots({ root })
   script = { object=root, EnableUpdate=function() end, GetParam=function() return nil end }
   printerr = function(...) io.stderr:write("[printerr] ", ...) end
+
+  --[[ ★ TweenSequence 桩。
+
+       ⚠️ 不能做成"同步立即执行回调" —— perf 模块靠 [回调里再次
+          AppendCallback] 递归驱动 480 帧（4 档 x 120 帧），
+          同步执行会【无限递归爆栈】。
+
+       这里改成【入队】：Play() 把回调放进 pending，
+       由测试显式 step() 逐步驱动，既能控制帧数，也不会爆栈。 ]]
+  pendingCallbacks = {}
   game.TweenSequence = function()
-    local s = {}
-    function s:AppendCallback() return s end
+    local s = { cb = nil }
+    function s:AppendCallback(cb) s.cb = cb; return s end
     function s:AppendInterval() return s end
-    function s:Play() return s end
+    function s:Play()
+      if s.cb then pendingCallbacks[#pendingCallbacks + 1] = s.cb end
+      return s
+    end
     function s:Kill() return s end
     return s
   end
   return E
 end
 
+--[[ 驱动 N 帧：把当前队列里的回调各跑一次（回调内可能再入队） ]]--
+local function stepFrames(n)
+  for _ = 1, n do
+    local batch = pendingCallbacks
+    pendingCallbacks = {}
+    for _, cb in ipairs(batch) do cb() end
+  end
+end
+
 local src = io.open("deploy/probe.lua", "r"):read("*a")
 
---[[ ★ 当前 probe.lua 只有 key 一个模块（text/mask/glyph/clip/mount 已移除，
+--[[ ★ 当前 probe.lua 有 key / perf 两个模块（text/mask/glyph/clip/mount 已移除，
      归档在 docs/探针模块归档.md）。将来加了新模块，往这个列表里补名字。 ]]--
-for _, mod in ipairs({ "key" }) do
+for _, mod in ipairs({ "key", "perf" }) do
   -- 把 ACTIVE 替换成当前模块
   local patched, n = src:gsub('local ACTIVE = "%w+"', 'local ACTIVE = "' .. mod .. '"')
   if n == 0 then error("ACTIVE 替换失败: " .. mod) end
@@ -103,6 +125,59 @@ for _, mod in ipairs({ "key" }) do
 
       -- 判读表已把统计打到日志里（见上面的【判读表】段落）
       print("  >> 按键回调未被吞，符合预期")
+    end
+
+    --[[ ★ perf 模块必须【真的把 4 档跑完】才算跑通 ——
+         否则"没崩溃"毫无意义（它本来就是个异步循环）。
+
+         4 档 x 120 帧 = 480 帧，再留点余量。 ]]--
+    if mod == "perf" then
+      local before = E.createdCount()
+      print(string.format("  >> 压测前控件数: %d", before))
+
+      --[[ ★ 捕获 perf 的日志输出，断言【4 档真的都跑完了】。
+
+           只断言"控件数"是不够的 —— 曾有个 bug 让 li 从 0 开始
+           （Lua 表 1-based），结果第一帧就"以为跑完了"，
+           打印一张空判读表，而控件数照样是 165，测试照样通过。
+           所以必须断言【每档都记录到了结果】。 ]]--
+      local logs = {}
+      local realPrint = print
+      print = function(...)
+        local parts = {}
+        for i = 1, select('#', ...) do parts[#parts+1] = tostring((select(i, ...))) end
+        logs[#logs+1] = table.concat(parts, " ")
+      end
+      stepFrames(600)
+      print = realPrint
+
+      local joined = table.concat(logs, "\n")
+      local lvCount = 0
+      for _ in joined:gmatch("%[L%d[^%]]*%]") do lvCount = lvCount + 1 end
+      print(string.format("  >> 记录的档位结果数: %d（应为 4）", lvCount))
+      if lvCount ~= 4 then
+        error(string.format(
+          "perf 没有跑完 4 档（实际记录 %d 档）—— 判读表是空的", lvCount))
+      end
+
+      -- 判读表必须有 4 行数据（L1..L4）
+      local hasVerdict = joined:find("✅") ~= nil or joined:find("⚠️") ~= nil
+                     or joined:find("❌") ~= nil
+      if not hasVerdict then
+        error("perf 判读表没有产出任何判定")
+      end
+
+      print(string.format("  >> 驱动 600 帧后控件数: %d", E.createdCount()))
+      if E.createdCount() < 100 then
+        error("perf 模块没有真的建出压测方块（期望 >=100，实际 "
+              .. E.createdCount() .. "）")
+      end
+      print(string.format("  >> 剩余待执行回调: %d（应为 0，说明循环已自然结束）",
+          #pendingCallbacks))
+      if #pendingCallbacks > 0 then
+        error("perf 循环没有自然结束，仍在续期（剩余 "
+              .. #pendingCallbacks .. "）")
+      end
     end
 
     OnDestroy()

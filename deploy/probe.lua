@@ -10,6 +10,8 @@
 
     "key"     ★ 键盘事件          —— 跳跃键能否捕获（做小恐龙游戏的前提）
                                     Down/Up 成对？哪个控件能收到？
+    "perf"    ★ 逐帧写入上限      —— 用图片拼恐龙(34控件)真机扛得住吗？
+                                    测每帧能写多少次字段 / 掉帧 / 显存
 
   ══════════════════════════════════════════════════════════════════════════
   ⚠️ 已移除的模块（text / mask / glyph / clip / mount）
@@ -48,8 +50,34 @@
          ★★ 同一事件会被【每个绑定它的控件】各收一遍
             -> 一个按键只能绑一个挂载点，否则按一次跳 3 次
          ⚠️ 按键回调的 data.type 读回为空（取值方式与光标事件不同）
+    R22  ★★ 逐帧写入成本模型（2026-10-08，模块 perf，两轮）
 
-    ⚠️ R15~R18 的复现模块已移除，见上面「已移除的模块」。
+         第一轮（含等待计时）: 4 档全 38~45ms —— ★ 探针缺陷，
+           量到的是 TweenSequence 的 1/30 间隔，不是性能。
+           教训：计时必须【把等待和干活分开】。
+
+         第二轮（纯工作计时，干净数字）:
+           档位   控件  写入/帧  纯工作ms
+           L1      10      20    13.03
+           L2      40      80    15.32
+           L3      80     160    19.01
+           L4     160     320    26.38
+
+         ★ 线性拟合（误差 < 0.21ms，非常可信）:
+             每帧耗时 = 11.92ms + 0.0449ms x 写入次数
+           - 固定开销 11.92 ms/帧  （style.apply + layout + 控件遍历）
+           - 每次写入 44.9 微秒
+
+         ★ 结论:
+           1. 写入【极便宜】（45 微秒/次）—— 34 个矩形全量更新
+              ≈ 1.5ms，性能上毫无压力
+           2. 真正的开销是【固定 11.9ms】，与 DOM 节点数正相关
+              -> 优化方向是【减节点】，不是"少写字段"
+           3. 30fps 预算 33.3ms：L4(320 写入) 实测 26.38ms，仍在预算内
+           4. ⚠️ 固定开销 11.9ms 已占预算的 36%，
+              真机 TweenSequence 调度还有 5~9ms 抖动（见第一轮）
+
+    R15~R18 的复现模块已移除，见上面「已移除的模块」。
        结论本身仍有效（来自真机实测），只是当前无现成复现手段。
 
   ══════════════════════════════════════════════════════════════════════════
@@ -69,7 +97,7 @@
 -- ★★ 选择要跑的模块（改这里）
 --=============================================================================
 
-local ACTIVE = "key"
+local ACTIVE = "perf"
 
 --=============================================================================
 -- 通用配置
@@ -124,6 +152,13 @@ end
 local function safeCall(fn)
   local ok, v = pcall(fn)
   return ok and v or nil
+end
+
+-- ★ 吞掉错误的执行（探针里各处都要用，避免一处失败打断整轮压测）
+local function util_probe_try(fn)
+  local ok, err = pcall(fn)
+  if not ok then warn("执行失败: " .. tostring(err)) end
+  return ok
 end
 
 -- ★ 所有探针模块挂在这个表上（M.key / 将来 M.xxx）
@@ -541,6 +576,370 @@ M.key.report = function(ui, items)
 end
 
 --=============================================================================
+-- 模块：逐帧写入上限（★ 决定"用图片拼恐龙"是否可行）
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   为什么测这个：
+--
+--     原版小恐龙的身体是不规则轮廓。引擎不能导入外部图像，
+--     所以只能用【多张/多个矩形图片控件】拼出来：
+--
+--       44x47 逻辑格 -> 贪心矩形分解 -> 34 个矩形
+--       每个矩形 = 1 个 image 控件
+--
+--     ★ 34 个控件【每帧都要更新坐标】（恐龙要跑、要跳），
+--       再加障碍/云/分数 -> 每帧 100+ 次字段写入。
+--
+--     而现在的 demo 每帧只写 6 次。真机扛不扛得住【完全未知】——
+--     这就是本模块要回答的唯一问题。
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   设计：4 档逐级加压，每档跑固定帧数，量三个指标
+--
+--     档位    控件数   每帧写入      对应场景
+--     L1       10       20 次      现状 demo
+--     L2       40       80 次      拼一只恐龙
+--     L3       80      160 次      恐龙 + 障碍 + 云
+--     L4      160      320 次      最坏情况（双倍冗余）
+--
+--     指标：
+--       ① 实际帧间隔（用 os.clock 量）—— 掉帧没有？
+--       ② 每档耗时 / 帧
+--       ③ 内存或句柄是否异常增长
+--
+--   ══════════════════════════════════════════════════════════════════════
+--   判读（★ 只认真机数字）：
+--     L3 每帧仍 < 33ms  -> ✅ 34 控件拼恐龙可行
+--     L3 偏慢(33~66ms)   -> ⚠️ 降级：只在姿态切换时更新矩形
+--                          （中间帧只移动整只恐龙的父容器，1 次写入）
+--     L3 明显卡(>66ms)   -> ❌ 放弃拼接，用少控件方案
+--
+--   ⚠️ 本地 mock 跑出来的数字【只能验证探针本身没写错】，
+--      【不能】当作真机性能结论 —— mock 的字段写入是纯 Lua 表操作，
+--      而真机要过引擎的控件系统。必须在真机上跑这一轮。
+--
+--   ⚠️ 探针会自己起一条 TweenSequence 循环，跑完自动停并打印结果。
+--      屏幕上会看到方块在动 —— 那是正常的，代表正在压测。
+--=============================================================================
+
+M.perf = {}
+
+M.perf.CSS = [[
+<style>
+  .stage { width: 1600px; height: 900px; background-color: #f7f7f7;
+           overflow: hidden; }
+  .scene { width: 1600px; height: 900px; background-color: #f7f7f7; }
+  .hdr { position: absolute; left: 40px; top: 20px;
+         width: 1000px; height: 40px;
+         font-size: 20px; color: #535353;
+         background-color: #f7f7f7; text-align: left; }
+  .st  { position: absolute; left: 40px; top: 64px;
+         width: 1200px; height: 34px;
+         font-size: 16px; color: #6a6a6a;
+         background-color: #f7f7f7; text-align: left; }
+
+  /* ★ 被压测的"像素块"：全部用方形图 100001，尺寸各异 */
+  .px  { position: absolute; left: 0px; top: 0px;
+         width: 8px; height: 8px; }
+</style>
+]]
+
+--[[ ★ 生成"恐龙形状"的矩形表。
+
+     这里用【真实的贪心矩形分解结果】的近似：一个大躯干 + 头 + 腿 + 尾。
+     重点不是形状好看，而是【矩形数量与每帧写入量】要真实。
+]]--
+M.perf.RECTS = {
+  -- {x, y, w, h}  —— 以逻辑格为单位（每格 8px）
+  { 24,  0, 18, 12},   -- 头
+  { 26,  3,  4,  4},   -- 眼（留空效果）
+  { 22, 12, 11,  4},   -- 颈
+  { 22, 14, 18,  2},   -- 上颚
+  {  0, 16,  2,  6},   -- 尾尖
+  {  2, 21,  2,  4},   -- 尾
+  {  4, 22,  8,  7},   -- 臀
+  { 12, 25, 15,  4},   -- 躯干
+  { 13, 29, 13,  2},   -- 腹
+  { 16, 31,  8,  4},   -- 后腿
+  { 18, 36, 12,  2},   -- 脚
+  {  6, 33, 10,  2},   -- 前腿
+  { 11, 39,  4,  2},   -- 爪
+  { 11, 41,  4,  2},
+  { 27, 38,  4,  2},
+  { 27, 41,  4,  2},
+}
+
+M.perf.build = function()
+  local out = { M.perf.CSS, '<div class="stage"><div class="scene">\n' }
+  out[#out+1] = '<div class="hdr">逐帧写入上限压测</div>\n'
+  out[#out+1] = '<div class="st" id="perf-status">准备中…</div>\n'
+
+  -- 生成 160 个方块（L4 档位用满，其余档位按需隐藏）
+  for i = 1, 160 do
+    local r = M.perf.RECTS[((i - 1) % #M.perf.RECTS) + 1]
+    out[#out+1] = string.format(
+      '<div class="px" id="px%d" data-image="1" style="left:%dpx;top:%dpx;width:%dpx;height:%dpx"></div>\n',
+      i, r[1]*8, 120 + r[2]*8, r[3]*8, r[4]*8)
+  end
+
+  out[#out+1] = '</div></div>\n'
+  return table.concat(out)
+end
+
+M.perf.classes = { px = true, hdr = true, st = true }
+
+M.perf.after = function(ui)
+  log("")
+  log("============================================================")
+  log("  逐帧写入上限压测：4 档逐级加压")
+  log("============================================================")
+  log("")
+  log("  目的：回答『用 34 个图片控件拼恐龙，每帧更新坐标，")
+  log("        真机扛得住吗？』")
+  log("  方法：用 os.clock 量每档的实际帧间隔与耗时")
+  log("")
+
+  -- 收集方块控件
+  local pxNodes = {}
+  for i = 1, 160 do
+    local node = nil
+    require('webui').dom.walk(ui.doc, function(n)
+      if not node and n:isElement() and n.id == ("px" .. i) then node = n end
+    end)
+    pxNodes[i] = node
+  end
+  local have = 0
+  for i = 1, 160 do if pxNodes[i] then have = have + 1 end end
+  log(string.format("  已建方块控件: %d / 160", have))
+
+  -- 状态栏节点
+  local stNode = nil
+  require('webui').dom.walk(ui.doc, function(n)
+    if not stNode and n:isElement() and n.id == "perf-status" then stNode = n end
+  end)
+
+  --===========================================================================
+  -- 档位定义：{控件数, 每帧写入次数, 帧数}
+  --===========================================================================
+  local LEVELS = {
+    { name = "L1 现状demo",   ctrls = 10,  writes = 20,  frames = 120 },
+    { name = "L2 拼一只恐龙", ctrls = 40,  writes = 80,  frames = 120 },
+    { name = "L3 恐龙+障碍",  ctrls = 80,  writes = 160, frames = 120 },
+    { name = "L4 最坏情况",   ctrls = 160, writes = 320, frames = 120 },
+  }
+
+  local results = {}
+
+  --[[ ★ 用一条递归 TweenSequence 驱动（真机唯一可靠的逐帧手段）。
+
+       每"帧"里做 `writes` 次 setStyle 写入 —— 用 setStyle 而不是直接
+       写控件字段，因为它走的是完整渲染通路（含 diff），
+       更接近真实游戏的开销。 ]]
+  --[[ ★ li 从 1 开始 —— Lua 表是 1-based。
+        从 0 开始会让 LEVELS[li] 恒为 nil，第一帧就"以为跑完了"，
+        打印一张【空判读表】。（这个 bug 真出现过，
+        tests/test_probe.lua 有断言守着：必须记录到 4 档结果。） ]]--
+  local li = 1
+  local frameInLevel = 0
+  local tStart = 0
+  local curWrites = 0
+
+  --[[ ★★ 关键修正（R22 第一轮真机数据暴露的探针缺陷）：
+
+       第一轮我用 [进入档位时记 os.clock，跑完 120 帧再记] 来算速度。
+       结果 4 档全是 38~45ms/帧，【与负载完全无关】：
+         L1  20 写入 = 42.20 ms
+         L4 320 写入 = 45.48 ms   （负载放大 16 倍，耗时只差 7.8%）
+
+       原因：循环里 AppendInterval(1/30) = 33.3ms 是【每帧的等待时间】，
+       而 os.clock 量的是【真实经过时间】—— 量到的主要是"等下一帧"，
+       不是"干活"。
+
+       ★ 正确做法：把【等待】和【干活】分开计时。
+         下面 workTime 只累加"本帧实际执行的工作"耗时，
+         不含任何等待 —— 这才是真正要看的数字。
+  ]]--
+  local workTime = 0        -- 本档累计的纯工作耗时
+  local frameWork = 0       -- 本帧的纯工作耗时
+
+  local function finishLevel(elapsed)
+    local lv = LEVELS[li]
+    local totalMs = (elapsed / lv.frames) * 1000        -- 含等待（旧指标）
+    local workMs  = (workTime / lv.frames) * 1000       -- ★ 纯工作
+    results[#results+1] = {
+      name = lv.name, ctrls = lv.ctrls, writes = lv.writes,
+      ms = workMs, totalMs = totalMs, elapsed = elapsed,
+    }
+    log(string.format(
+        "  [%s] %d 控件 x %d 写入/帧 -> 纯工作 %.2f ms/帧（含等待 %.2f ms/帧）",
+        lv.name, lv.ctrls, lv.writes, workMs, totalMs))
+  end
+
+  local tick
+  tick = function()
+    local lv = LEVELS[li]
+    if not lv then
+      -- 全部跑完 -> 打印判读表
+      M.perf.printResults(results, stNode)
+      return
+    end
+
+    if frameInLevel == 0 then
+      tStart = os.clock()
+      workTime = 0
+      -- 进入本档：按档位数量显示/隐藏方块
+      for i = 1, 160 do
+        local n = pxNodes[i]
+        if n then
+          if i <= lv.ctrls then n:show() else n:hide() end
+        end
+      end
+      if stNode then
+        stNode:setText(string.format("压测中：%s（%d 控件 x %d 写入/帧）",
+            lv.name, lv.ctrls, lv.writes))
+      end
+    end
+
+    -- ★ 开始计"纯工作"耗时（不含任何等待）
+    frameWork = os.clock()
+
+    -- ── 本帧的写入负载 ──
+    curWrites = 0
+    local n = lv.ctrls
+    local perCtrl = math.max(1, math.floor(lv.writes / n))
+    local phase = frameInLevel * 0.15
+    for i = 1, n do
+      local node = pxNodes[i]
+      if node then
+        -- 每个控件写 perCtrl 次（模拟位置/尺寸更新）
+        for k = 1, perCtrl do
+          if k == 1 then
+            node:setStyle("transform", string.format("translateX(%.1fpx)",
+                math.sin(phase + i) * 30))
+          elseif k == 2 then
+            node:setStyle("transform", string.format("translateY(%.1fpx)",
+                math.cos(phase + i) * 10))
+          else
+            node:setStyle("width", string.format("%dpx", 8 + (i % 3)))
+          end
+          curWrites = curWrites + 1
+        end
+      end
+    end
+
+    -- 渲染（这一步才是真正写进引擎控件）
+    util_probe_try(function() ui:flush() end)
+
+    -- ★ 累计本帧纯工作耗时
+    workTime = workTime + (os.clock() - frameWork)
+
+    frameInLevel = frameInLevel + 1
+    if frameInLevel >= lv.frames then
+      finishLevel(os.clock() - tStart)
+      li = li + 1
+      frameInLevel = 0
+    end
+
+    -- 续期
+    util_probe_try(function()
+      local seq = game.TweenSequence()
+      if seq then
+        seq:AppendInterval(1.0 / 30)
+        seq:AppendCallback(tick)
+        seq:Play()
+      end
+    end)
+  end
+
+  -- 起跑（延一帧，让渲染先落地）
+  util_probe_try(function()
+    local seq = game.TweenSequence()
+    if seq then
+      seq:AppendInterval(1.0 / 30)
+      seq:AppendCallback(tick)
+      seq:Play()
+    else
+      tick()
+    end
+  end)
+
+  log("  ★ 压测已启动，约 16 秒后打印结果（4 档 x 120 帧）")
+  log("    屏幕上会看到方块在动 —— 正常现象")
+end
+
+--[[ 打印判读表 ]]--
+M.perf.printResults = function(results, stNode)
+  hr("【判读表】逐帧写入上限")
+  log("  ★ 看【纯工作】列 —— 那才是写入开销；")
+  log("     【含等待】列被 TweenSequence 的 1/30 间隔主导，不代表性能。")
+  log("")
+  log(string.format("  %-18s %-8s %-10s %-12s %-12s %s",
+      "档位", "控件数", "写入/帧", "纯工作ms", "含等待ms", "判定"))
+  log("  " .. string.rep("-", 82))
+
+  for _, r in ipairs(results) do
+    local verdict
+    if r.ms < 8 then verdict = "✅ 很轻松"
+    elseif r.ms < 16 then verdict = "✅ 够用（>60fps 有余量）"
+    elseif r.ms < 33 then verdict = "✅ 可用（>=30fps）"
+    elseif r.ms < 66 then verdict = "⚠️ 偏慢"
+    else verdict = "❌ 卡" end
+    log(string.format("  %-18s %-8d %-10d %-12.2f %-12.2f %s",
+        r.name, r.ctrls, r.writes, r.ms, r.totalMs or 0, verdict))
+  end
+
+  log("")
+  hr("【结论】")
+  local l3 = nil
+  for _, r in ipairs(results) do
+    if r.name:find("L3") then l3 = r end
+  end
+
+  if not l3 then
+    log("  L3 档未跑完，无法判定。")
+  elseif l3.ms < 16 then
+    log("  ✅ L3（80 控件 / 160 写入/帧）纯工作 " .. string.format("%.2f", l3.ms)
+        .. " ms/帧 —— 远低于 33ms 预算")
+    log("     -> 【34 个图片控件拼恐龙】方案可行，每帧全量更新没问题。")
+  elseif l3.ms < 33 then
+    log("  ✅ L3 纯工作 " .. string.format("%.2f", l3.ms) .. " ms/帧 < 33ms")
+    log("     -> 拼恐龙可行，但余量不多，建议配合下面的优化。")
+  elseif l3.ms < 66 then
+    log("  ⚠️ L3 纯工作 " .. string.format("%.2f", l3.ms) .. " ms/帧")
+    log("     -> 拼恐龙可行，但【不能每帧更新全部矩形】。")
+    log("     -> 降级方案：只在恐龙姿态切换时更新（约每 6 帧一次），")
+    log("        中间帧只更新整只恐龙的偏移（一个父容器一起移动）。")
+  else
+    log("  ❌ L3 纯工作 " .. string.format("%.2f", l3.ms) .. " ms/帧，太慢。")
+    log("     -> 放弃多控件拼接，改用单一色块/少控件方案。")
+  end
+
+  --[[ ★ 诚实提示：本模块常在本地 mock 上试跑（test_probe.lua）。
+        mock 的字段写入是纯 Lua 表操作，没有引擎开销，
+        跑出来必然"很轻松" —— 那不是真机结论。 ]]
+  log("")
+  log("  ⚠️ 若这些数字来自本地 mock（test_probe.lua），")
+  log("     【不构成真机性能结论】—— mock 无引擎开销。")
+  log("     方案取舍必须看真机跑出来的数字。")
+
+  log("")
+  log("  ★ 别忘了把结论追加到本文件头部的「历史结论索引」（R22）。")
+  log("")
+
+  if stNode then
+    local msg = "压测完成"
+    if l3 then msg = msg .. string.format("：L3 = %.2f ms/帧", l3.ms) end
+    stNode:setText(msg)
+  end
+  log("============================================================")
+end
+
+M.perf.report = function(ui, items)
+  -- 结果在压测跑完后由 printResults 打印，这里不重复
+  log(string.format("  （本模块共 %d 个方块控件）", #items))
+end
+
+--=============================================================================
 -- 主流程
 --=============================================================================
 
@@ -549,7 +948,7 @@ end
      ⚠️ 已移除：text / mask / glyph / clip / mount
         —— 归档在 docs/探针模块归档.md，需要时按那里重建。
   ]]--
-local MODULES = { key = M.key }
+local MODULES = { key = M.key, perf = M.perf }
 
 local root, ui, bound, retryCount = nil, nil, false, 0
 

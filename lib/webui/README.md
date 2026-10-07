@@ -81,6 +81,8 @@ webui_style.lua
 webui_transition.lua
 webui_layout.lua
 webui_render.lua
+webui_clip.lua
+webui_sprite.lua
 webui_event.lua
 ```
 
@@ -328,6 +330,7 @@ lib/webui/                （文件名即真机部署名，可直接整目录拷
 ├── webui_layout.lua     604 行   盒模型 + flex（含 wrap）
 ├── webui_render.lua     867 行   控件池 + diff 渲染 + 双层架构
 ├── webui_clip.lua       175 行   图片控件（遮罩 / 换图 / 染色）
+├── webui_sprite.lua     — 行     ★ 像素图形：点阵 -> 矩形分解 -> 多控件拼接
 ├── webui_event.lua      198 行   事件绑定 + 伪类状态 + 坐标换算
 └── webui.lua            374 行   对外 API（入口）
 ```

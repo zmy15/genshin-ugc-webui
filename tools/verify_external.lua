@@ -73,6 +73,7 @@ local function checkGilSync()
     layout     = "flex-wrap",
     render     = "chooseKind",
     clip       = "C.SHAPES",
+    sprite     = "DINO_ROWS",
     event      = "PSEUDO_EVENTS",
     init       = "Instance:render",
   }
@@ -219,7 +220,7 @@ print("  版本: " .. tostring(webui.VERSION))
 print()
 
 -- 逐个模块检查
-local MODS = {"util","dom","html","css","color","style","layout","render","clip","event"}
+local MODS = {"util","dom","html","css","color","style","layout","render","clip","sprite","event"}
 for _, m in ipairs(MODS) do
   local key = m
   print(string.format("    webui.%-8s = %s", key, type(webui[key])))

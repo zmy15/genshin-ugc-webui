@@ -11,7 +11,7 @@ lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md 是权威版）
-tests/       32 个测试套件
+tests/       33 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -41,6 +41,10 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **文字框高 ≥ 字号 × 1.9** | 框太矮 → 引擎字号自适应把字压没，**文字凭空消失** |
 | **文本框必须显式写 `background-color`** | 不写 → 引擎给**默认深色底**；字色若也是深色 → **文字看不见**（实测对比度 3） |
 | **要居中必须写 `text-align`** | 默认 `left` → 文字贴框左边（实测左右边距差 470px） |
+| **多控件拼图：矩形必须 `position:absolute`** | 否则 inline 的 `left/top` 无效 → 全堆成一列（实测宽 47px，应为 176px） |
+| **多控件拼图：相邻矩形要外扩 1px** | 真机色块实际宽比声明值略小 → 相邻块之间露 1.25~4.38px 背景缝 |
+| **★★ 文本框模板自带圆角（半径 ≥8px）** | 8px 的色块被画成**圆形**；33 个矩形里 **88% 变形**。圆角来自模板，代码改不了（6 个 radius 字段写入全失败）→ **拼像素图必须用 `image` 控件**（模板是方的） |
+| **拼图用 image 时不能写 `background-color`** | 写了会被 `chooseKind` 选回 **textbox** → 圆角又回来 |
 | **裁剪容器不设 `background-color`** | 填充不受自身遮罩约束 → 溢出到裁剪区外 |
 | **容器高度要装得下内容** | 溢出内容**仍可见但失去父背景** → "背景颜色不同" |
 | **新控件 `active` 默认 `false`** | 必须 `SetActive(true)`，否则不可见但字段写入成功 |
@@ -66,7 +70,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-32 个套件，路径自包含（任何目录可跑）。关键回归：
+33 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -77,10 +81,11 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ```bash
 # 改 deploy/probe.lua 顶部一行：
-local ACTIVE = "key"   -- ★ 当前只有 key 一个模块
+local ACTIVE = "perf"   -- key / perf
 ```
 
-`key` = 键盘事件验证（`AddKeyEventListener` 能否用）。
+- `key` = 键盘事件验证（`AddKeyEventListener` 能否用）
+- `perf` = 逐帧写入上限压测（4 档：10/40/80/160 控件）
 
 历史上还有 `text` / `mask` / `glyph` / `clip` / `mount` 五个模块，
 2026-10-07 精简时移除 —— 它们的**结论、设计意图与重建要点**归档在

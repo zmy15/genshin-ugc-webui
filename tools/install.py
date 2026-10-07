@@ -45,7 +45,8 @@ LIB_FILES = [
     "webui.lua",
     "webui_util.lua", "webui_dom.lua", "webui_html.lua", "webui_css.lua",
     "webui_color.lua", "webui_style.lua", "webui_transition.lua",
-    "webui_layout.lua", "webui_render.lua", "webui_clip.lua", "webui_event.lua",
+    "webui_layout.lua", "webui_render.lua", "webui_clip.lua",
+    "webui_sprite.lua", "webui_event.lua",
 ]
 
 SAMPLE_SRC = os.path.join(REPO_ROOT, "deploy", "my_page.lua")
