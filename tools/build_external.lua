@@ -34,7 +34,7 @@ if not OUT_DIR or OUT_DIR == "" then
   print("用法: lua build_external.lua \"<external_lua_file 目录>\"")
   print()
   print("例如:")
-  print([[  lua build_external.lua "<path>\external_lua_file"]])
+  print([[  lua tools/build_external.lua "<游戏关卡目录>/external_lua_file"]])
   return
 end
 
