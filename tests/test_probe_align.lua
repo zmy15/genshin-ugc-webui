@@ -86,15 +86,21 @@ for _, c in ipairs(checks) do
   else fail = fail + 1; print("  [XX] " .. c[1]) end
 end
 
--- 统计读回表里是否全部判定为 ✅（mock 应当全部相符）
-local okCount, badCount = 0, 0
+--[[ 统计读回表里的判定行。
+
+     ⚠️ 只数"✅ 相符 / ❌ / ⚠️"这三种【读回表】的判定，
+        不要把枚举实验的"✅ 生效"也算进来（那是另一段）。
+        判据用行首的 id（al-xxx）来锚定。 ]]
+local okCount, badCount, skipCount = 0, 0, 0
 for _, l in ipairs(captured) do
-  if l:find("✅ 相符", 1, true) then okCount = okCount + 1 end
-  if l:find("❌", 1, true) or l:find("⚠️ 宽度不符", 1, true) then
-    badCount = badCount + 1
+  if l:find("al%-") and (l:find("✅") or l:find("❌") or l:find("跳过")) then
+    if l:find("✅ 相符", 1, true) then okCount = okCount + 1
+    elseif l:find("跳过", 1, true) then skipCount = skipCount + 1
+    else badCount = badCount + 1 end
   end
 end
-print(string.format("  读回表: %d 行相符, %d 行不符", okCount, badCount))
+print(string.format("  读回表: %d 行相符, %d 行跳过, %d 行不符",
+    okCount, skipCount, badCount))
 if okCount >= 6 and badCount == 0 then pass = pass + 1
   print("  [OK] 六组对照在 mock 下全部相符（库写入正确）")
 else fail = fail + 1

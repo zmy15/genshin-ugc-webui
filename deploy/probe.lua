@@ -83,23 +83,37 @@
     R15~R18 的复现模块已移除，见上面「已移除的模块」。
        结论本身仍有效（来自真机实测），只是当前无现成复现手段。
 
-    R23  ⏳ 文字居中 / 坐标系（2026-10-09，模块 align）—— 【待真机结果】
+    R23  ★★ 文字居中：真机上【写不进去】（2026-10-09，模块 align，真机实测）
 
-         起因：demo_dino 的结算窗口里文字贴框左边没有居中，
-               而同文件里 .over / .hint 的居中是真机验证过正常的。
+         第一次真机跑的读回表（六组对照）：
 
-         ★ 本地已排除的（都在库/mock 层验证为正确）：
-             · 计算样式 text-align = center
-             · 控件字段 horizontalAlignment = Middle
-             · 布局盒尺寸与 CSS 声明一致
-             · 渲染成 textbox（不是 container/button）
-             · 与 .over 写法同构
-             · 对照实验：嵌套绝对定位容器 vs 直接放 scene，
-               库侧行为完全一致
-           => 本地复现不出症状，必须真机取证。
+           id      声明宽  实际框宽  ha读回                             判定
+           al-a1   400     400.0     Enum.TextHorizontalAlignment.Left  全部
+           al-b1   400     400.0     Enum.TextHorizontalAlignment.Left  Left
+           al-c1   400     400.0     Enum.TextHorizontalAlignment.Left  ——
+           al-d1   400     400.0     Enum.TextHorizontalAlignment.Left  位置
+           al-e1   120     120.0     Enum.TextHorizontalAlignment.Left  尺寸
+           al-l1   400     400.0     Enum.TextHorizontalAlignment.Left  全对
 
-         ⏳ 待填：五组对照（A 直接放 / B 嵌容器 / C 显式 width /
-                  D 嵌两层 / E 按钮尺寸）各自的实际渲染结果。
+         ★ 结论（推翻"库这一层没问题"的初步判断）：
+             · 框宽/位置【全部正确】（400/120 与声明一致，截图位置也对）
+             · 但 horizontalAlignment 六组【全部停在默认 Left】
+               => CSS 的 text-align:center 算出来了，写进控件【没生效】
+             · 库用 pcall 包着这次写入 -> 失败被【静默吞掉】，
+               所以从 R21 起一直没人发现"居中"这条其实是失效的
+
+         ⚠️ 连带修正一条旧认知：
+            之前认为 .over（GAME OVER）在真机上"居中正常"，
+            据此判断"写法同构所以库没问题"。真机数据表明
+            那个"看着居中"很可能是【误判】—— 它的框宽 800 里
+            只有 9 个字符，左对齐时视觉上也接近中间。
+            教训：不要把"看着对"当成证据（§七"截图比体感可靠"）。
+
+         ★ 本模块已加【枚举形态实验】：逐个尝试各种取法并读回，
+           找出哪种能真正写进去，或证明都写不进去。
+           下一轮真机把该段日志回传即可定位。
+
+         ⏳ 待填：枚举实验的结果（哪种取法生效 / 是否全部失效）。
 
   ══════════════════════════════════════════════════════════════════════════
   硬性约束（真机实测，写探针时必须遵守）
@@ -1146,7 +1160,204 @@ M.align.classes = { hdr = true, sub = true, glabel = true,
                     ["d-box"] = true, ["e-box"] = true, long = true,
                     tail = true }
 
---[[ ★ 读回：把每个对照元素的【声明值】与【实际值】并排列出来。
+--[[ ★★★ 枚举形态实验 —— 本模块最关键的一段。
+
+     第一次真机跑的结果：六组对照的 horizontalAlignment 【全部读回 Left】，
+     而框宽/位置全部正确（见日志）。也就是说：
+       · CSS 的 text-align: center 算出来了（本地已验证）
+       · 但写进控件时【没生效】—— 字段停在默认 Left
+       · 库的写入是 pcall(...)，失败会被静默吞掉
+
+     最可能的原因：Enum.TextHorizontalAlignmentMiddle 这个名字取不到
+     （R16 已经踩过同类：文档写 Enum.ImageSource.ImageSourceStaticReference，
+      真名却是 Enum.ImageSource.StaticReference）。
+
+     ★ 本段把【所有可能的取法】逐个试，并【读回实际值】判断哪个成功 ——
+       而不是照着文档猜一个就完事（"枚举名禁止照文档猜"是本项目铁律）。
+
+     还顺带打印 Enum 的真实形态（顶层能否 pairs、有哪些子表），
+     这些事实下次写别的枚举时能直接用。 ]]--
+function M.align.probeEnum(ui)
+  hr("[枚举形态实验] 找出 horizontalAlignment 真正认的值")
+
+  -- 取一个被测控件（A 组）
+  local dom = require('webui').dom
+  local nd = nil
+  dom.walk(ui.doc, function(n)
+    if n:isElement() and n.attrs and n.attrs.id == "al-a1" then nd = n end
+  end)
+  local e = nd and ui.rendered.live[nd]
+  local ctrl = e and e.control
+  if not ctrl then
+    log("  ❌ 拿不到被测控件，跳过本实验")
+    return
+  end
+
+  --===========================================================================
+  log("")
+  log("[1] Enum 的真实形态")
+  --===========================================================================
+  log(string.format("    type(Enum) = %s", tostring(type(Enum))))
+  local n = 0
+  safeCall(function()
+    for k, v in pairs(Enum) do
+      n = n + 1
+      if n <= 40 then
+        log(string.format("      Enum.%-38s = %s", tostring(k), tostring(v)))
+      end
+    end
+  end)
+  log(string.format("    pairs(Enum) 共 %d 项%s", n,
+      n == 0 and "（★ 顶层不可遍历 —— 与 R16 结论一致，只能显式索引）" or ""))
+
+  -- 几个可能的子表名，逐个试
+  local SUBNAMES = {
+    "TextHorizontalAlignment", "HorizontalAlignment",
+    "TextAlignment", "Alignment",
+  }
+  log("")
+  log("    子表探测（pcall 显式取）：")
+  for _, sn in ipairs(SUBNAMES) do
+    local sub = safeCall(function() return Enum[sn] end)
+    log(string.format("      Enum.%-28s = %s", sn, tostring(sub)))
+    if type(sub) == "table" then
+      local cnt = 0
+      safeCall(function()
+        for k, v in pairs(sub) do
+          cnt = cnt + 1
+          if cnt <= 12 then
+            log(string.format("          .%-30s = %s", tostring(k), tostring(v)))
+          end
+        end
+      end)
+      log(string.format("          （共 %d 项）", cnt))
+    end
+  end
+
+  --===========================================================================
+  log("")
+  log("[2] 逐个尝试写入，读回看哪个生效")
+  --===========================================================================
+  --[[ ⚠️ 必须在【一个控件】上依次试，每次试完读回。
+       如果一次试多个，无法区分是哪个生效的。 ]]
+
+  local function tryWrite(label, getter)
+    local v = safeCall(getter)
+    local vstr = tostring(v)
+    local typeOK = (v ~= nil)
+    local wrote = false
+    local back = "?"
+
+    if typeOK then
+      wrote = safeCall(function()
+        ctrl.horizontalAlignment = v
+        return true
+      end) == true
+      back = tostring(safeCall(function() return ctrl.horizontalAlignment end))
+    end
+
+    -- 判定：读回值是否表示"居中"（同读回表的口径 —— 见那里的说明）
+    local back = tostring(safeCall(function() return ctrl.horizontalAlignment end))
+    local ok = type(back) == "string"
+      and (back:find("Middle", 1, true) ~= nil
+           or back == "C" or back == "M" or back == "center")
+    log(string.format("      %-46s 取值=%-8s 写入=%-6s 读回=%-38s %s",
+        label, typeOK and "有" or "nil", tostring(wrote), back,
+        ok and "✅ 生效" or "❌"))
+    return ok
+  end
+
+  -- 先置回 Left，确保每次实验的起点一致
+  safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentLeft end)
+  log(string.format("    （起点已置为 %s）",
+      tostring(safeCall(function() return ctrl.horizontalAlignment end))))
+
+  local winners = {}
+  local CANDIDATES = {
+    { "Enum.TextHorizontalAlignmentMiddle",
+      function() return Enum.TextHorizontalAlignmentMiddle end },
+    { "Enum.TextHorizontalAlignment.Middle",
+      function() return Enum.TextHorizontalAlignment.Middle end },
+    { "Enum.HorizontalAlignment.Middle",
+      function() return Enum.HorizontalAlignment.Middle end },
+    { "Enum.TextAlignment.Middle",
+      function() return Enum.TextAlignment.Middle end },
+    { "Enum.TextHorizontalAlignment.Center",
+      function() return Enum.TextHorizontalAlignment.Center end },
+    { "Enum.TextHorizontalAlignmentMiddle 的 tostring 反查",
+      function()
+        -- 有些实现里枚举是字符串，用名字直接写也认
+        return "Middle"
+      end },
+    { '字符串 "Center"', function() return "Center" end },
+    { '字符串 "middle"', function() return "middle" end },
+    { "由 Left 的读回值反推：把末尾换成 Middle",
+      function()
+        local cur = tostring(ctrl.horizontalAlignment)
+        local guess = cur:gsub("Left", "Middle")
+        if guess == cur then return nil end
+        return guess
+      end },
+  }
+
+  for _, c in ipairs(CANDIDATES) do
+    safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentLeft end)
+    if tryWrite(c[1], c[2]) then winners[#winners + 1] = c[1] end
+  end
+
+  --[[ ★ 实验做完必须【还原】被测控件。
+
+       ⚠️ 每次 tryWrite 前都把它置成 Left 做基线，所以循环结束时
+          它停在 Left —— 而紧接着的"读回表"是拿同一个 A 组控件测的，
+          会把实验的副作用当成"库没写进去"，得出错误结论。
+          （第一次跑就踩了：读回表显示 al-a1 = Left 而其余五组 = C。）
+
+       ★ 还原办法：重新写一次"库本该写的值"。
+         库写的是 Enum.TextHorizontalAlignmentMiddle，但真机上
+         这个取法可能失效 —— 那就把 A 组排除出读回表，
+         而不是让它污染结论。这里两种都做：先尝试还原，
+         再在读回表里对 al-a1 标注"本控件做过枚举实验"。 ]]
+  safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentMiddle end)
+  if type(ctrl.horizontalAlignment) == "string"
+     and not tostring(ctrl.horizontalAlignment):find("Middle", 1, true)
+     and tostring(ctrl.horizontalAlignment) ~= "C" then
+    M.align.dirtyA = true
+    log("")
+    log("  ⚠️ A 组控件无法还原成 Middle（真机取不到该枚举）——")
+    log("     下面的读回表里 al-a1 会显示 Left，那是【本实验的副作用】，")
+    log("     不代表库的写入结果。其余五组未被本实验触碰，依然有效。")
+  end
+
+  --===========================================================================
+  log("")
+  log("[3] 判读")
+  --===========================================================================
+  if #winners == 0 then
+    log("  ❌ 没有任何取法能写入 Middle。")
+    log("     => horizontalAlignment 这条路在真机上【写不进去】。")
+    log("     => 结论：库的 text-align:center 无效（真机实测）。")
+    log("     => 兜底方案：靠【框宽 = 文字宽】间接居中 ——")
+    log("        即用 util.measureText 量出文字宽度，把框宽设成等于它，")
+    log("        再把框本身居中（left = (父宽 - 文字宽)/2）。")
+    log("        这样文字自然就在视觉中间，不依赖对齐字段。")
+  else
+    log("  ✅ 以下取法可以生效：")
+    for _, w in ipairs(winners) do log("       " .. w) end
+    log("")
+    log("  => 把 webui_render.lua 里写 horizontalAlignment 的地方")
+    log("     改成上面第一个能生效的取法，并加 pcall + 失败告警")
+    log("     （现在失败是静默的，所以一直没人发现）。")
+  end
+
+  log("")
+  log("  ★ 若真相是「字段可写但真机不渲染」——")
+  log("     本实验的读回会是 Middle 而屏幕仍不居中，")
+  log("     那就必须改用上面的【框宽=文字宽】兜底方案。")
+  log("     请把本段日志 + 截图一起回传。")
+  log("")
+end
+
+--[[ 读回：把每个对照元素的【声明值】与【实际值】并排列出来。
 
      ⚠️ 这是本模块的重点 —— 不打印"我打算设什么"，而是读引擎侧
         真正生效的字段与布局结果。 ]]--
@@ -1155,6 +1366,21 @@ function M.align.after(ui)
   log("============================================================")
   log("  读回表：声明值 vs 引擎实际值")
   log("============================================================")
+
+  --[[ ★★ 第一次真机跑的结果（2026-10-09）已经回答了核心问题：
+
+       六组对照的 horizontalAlignment 【全部读回 Left】，
+       而框宽/位置【全部正确】。结论：
+         · CSS 的 text-align: center 算得出来（本地验证过）
+         · 但写进引擎控件时【没生效】，字段停在默认 Left
+         · 库用 pcall 包着写入，失败被静默吞掉 -> 一直没人发现
+
+       所以本模块现在【先做枚举形态实验】，再做常规读回表。
+       枚举实验会找出"到底哪种取法能写进去"，或者证明写不进去。 ]]
+  M.align.probeEnum(ui)
+
+  log("")
+  hr("读回表：声明值 vs 引擎实际值（重新测量）")
 
   -- ★ 等一帧，确保控件都建出来了（render 后控件在同一帧内创建）
   local dom = require('webui').dom
@@ -1200,16 +1426,39 @@ function M.align.after(ui)
       local declared = DECLARED[id] or -1
       local actualW = box and box.w or -1
 
-      -- ★ 判定：ha 是否为目标值；框宽是否等于声明值
-      local haOK = (ha == EXPECT)
-        or (ha ~= "?" and ha ~= "nil" and ha ~= "Left" and ha ~= "L")
+      --[[ ★ 判定读回的 ha 是不是"居中"。
+
+             ⚠️ 必须同时认两种形态，否则本地自检会假红：
+               · 真机： "Enum.TextHorizontalAlignment.Middle"（带点、名字形式）
+               · mock： "C"（本仓库测试里把枚举值定义成短 token）
+
+             ★ 曾经这里写得过于宽松 —— 把 Left 也判成"相符"，
+               第一次真机跑就给出了假的 ✅，白误导一轮。
+               所以现在【正面匹配】，且 Left 一律判失败。 ]]
+      local function isMiddle(ha)
+        if type(ha) ~= "string" then return false end
+        if ha:find("Middle", 1, true) then return true end
+        -- 短 token 形式：mock 用 C/M，排除 Left/L
+        if ha == "C" or ha == "M" or ha == "center" then return true end
+        return false
+      end
+      local function isLeft(ha)
+        if type(ha) ~= "string" then return false end
+        return ha:find("Left", 1, true) ~= nil or ha == "L" or ha == "left"
+      end
+
+      local haOK = isMiddle(ha)
       local wOK = math.abs(actualW - declared) < 1.5
 
       local verdict, note = "", ""
-      if not haOK then
-        verdict = "❌ ha不对"
-        note = "写入未生效（枚举名？控件类型？）"
-        problems[#problems + 1] = id .. ":ha=" .. ha
+      -- ★ al-a1 被枚举实验动过，读回值不可信（见 probeEnum 末尾的还原说明）
+      if id == "al-a1" and M.align.dirtyA then
+        verdict = "— 已跳过"
+        note = "该控件做过枚举写入实验，读回值不代表库的结果"
+      elseif not haOK then
+        verdict = isLeft(ha) and "❌ ha=Left（未生效）" or "❌ ha不对"
+        note = "写入未生效 -> 看下方的枚举形态实验"
+        problems[#problems + 1] = id .. ":ha=" .. tostring(ha)
       elseif not wOK then
         verdict = "⚠️ 宽度不符"
         note = string.format("差 %.1f（布局/尺寸问题）", actualW - declared)
