@@ -116,35 +116,60 @@ local function colorChanged(a, b)
 end
 
 --=============================================================================
--- 水平对齐枚举（★ R23 真机实证）
+-- 文本对齐枚举（★ R23 真机实证）—— 水平 + 垂直
 --
 --   ⚠️⚠️ 真名是【带点的子表形式】：
 --        Enum.TextHorizontalAlignment.Middle   ✅
 --        Enum.TextHorizontalAlignmentMiddle    ❌ nil（文档写的就是这个）
+--        Enum.TextVerticalAlignment.Middle    ✅（同理，垂直轴）
+--        Enum.TextVerticalAlignmentMiddle     ❌ nil
 --
 --   库原先用扁平名 + pcall -> 失败被静默吞掉 -> text-align:center
 --   从 R21 起一直是失效的，直到 R23 真机探针才逮到。
+--
+--   ★ 垂直轴（vertical-align）原先【根本没实现】：
+--     样式表里只有一个默认值 "middle"，解析、继承、写控件三处都没有。
+--     现在与水平轴共用同一套"运行时取枚举"的机制。
 --
 --   ★ 放在【模块级】而不是某个函数内部：有两个调用点
 --     （普通文本框、裁剪容器里的文字子控件），
 --     写在内部会让另一个调用点取不到（已踩：test_clip 直接崩）。
 --=============================================================================
 
-local ALIGN_KEYS = { "middle", "right", "left" }
-local alignCache = nil
-local alignWarnedMissing, alignWarnedReject = false, false
+--[[ 枚举表名 -> 候选成员名。
+     水平的 left/right/middle，垂直的 top/bottom/middle。 ]]--
+local ALIGN_SPEC = {
+  horizontal = {
+    field = "horizontalAlignment",
+    enumName = "TextHorizontalAlignment",
+    keys = { "middle", "right", "left" },
+    title = "水平",
+  },
+  vertical = {
+    field = "verticalAlignment",
+    enumName = "TextVerticalAlignment",
+    keys = { "middle", "top", "bottom" },
+    title = "垂直",
+  },
+}
 
---[[ 取水平对齐枚举值。按优先级尝试，返回 { middle=, right=, left=, _ok= }。 ]]--
-local function resolveAlign()
-  if alignCache ~= nil then return alignCache end
+local alignCache = {}
+local alignWarned = {}      -- [axis] = 是否已告警（缺枚举 / 被拒绝）
+
+--[[ 取某一轴的枚举值。
+     返回 { middle=, left=, ... , _ok=bool, _enum=子表 } ]]--
+local function resolveAlign(axis)
+  local spec = ALIGN_SPEC[axis]
+  if not spec then return nil end
+  if alignCache[axis] ~= nil then return alignCache[axis] end
 
   local tbl = nil
-  pcall(function() tbl = Enum.TextHorizontalAlignment end)
+  pcall(function() tbl = Enum[spec.enumName] end)
 
   local out = {}
   local ok = true
-  for i = 1, #ALIGN_KEYS do
-    local k = ALIGN_KEYS[i]
+  for i = 1, #spec.keys do
+    local k = spec.keys[i]
     local cap = k:sub(1, 1):upper() .. k:sub(2)   -- middle -> Middle
     local v = nil
 
@@ -154,7 +179,7 @@ local function resolveAlign()
     end
     -- ② 扁平形式（文档写法，保底：某些版本可能是这个）
     if v == nil then
-      pcall(function() v = Enum["TextHorizontalAlignment" .. cap] end)
+      pcall(function() v = Enum[spec.enumName .. cap] end)
     end
 
     if v == nil then ok = false end
@@ -162,32 +187,59 @@ local function resolveAlign()
   end
 
   out._ok = ok
-  alignCache = out
+  out._enum = tbl
+  alignCache[axis] = out
   return out
 end
 
---[[ 写一次水平对齐；失败时【告警】而不是静默吞掉。
+--[[ 写一次对齐；失败时【告警】而不是静默吞掉。
 
      ⚠️ 告警标记用独立 upvalue，不要挂在函数上 ——
         本文件因此抛过 "attempt to index a function value"。 ]]--
-local function setAlign(control, key)
-  local v = resolveAlign()[key]
+local function setAlign(control, axis, key)
+  local spec = ALIGN_SPEC[axis]
+  if not spec then return false end
+
+  local v = resolveAlign(axis)[key]
   if v == nil then
-    if not alignWarnedMissing then
-      alignWarnedMissing = true
-      util.warn("水平对齐枚举取不到（Enum.TextHorizontalAlignment.Middle 与 "
-          .. "Enum.TextHorizontalAlignmentMiddle 都是 nil）—— "
-          .. "文字将无法居中。请跑 deploy/probe.lua 的 align 模块取证。")
+    if not alignWarned[axis] then
+      alignWarned[axis] = true
+      util.warn(string.format(
+          "%s对齐枚举取不到（Enum.%s.Middle 与 Enum.%sMiddle 都是 nil）"
+          .. "—— 文字无法%s对齐。请跑 deploy/probe.lua 的 align 模块取证。",
+          spec.title, spec.enumName, spec.enumName, spec.title))
     end
     return false
   end
-  local ok = pcall(function() control.horizontalAlignment = v end)
-  if not ok and not alignWarnedReject then
-    alignWarnedReject = true
-    util.warn("写入 horizontalAlignment 失败（值取到了但控件拒绝）—— "
-        .. "文字将无法居中")
+
+  local ok = pcall(function() control[spec.field] = v end)
+  if not ok and not alignWarned[axis .. "_reject"] then
+    alignWarned[axis .. "_reject"] = true
+    util.warn(string.format("写入 %s 失败（值取到了但控件拒绝）—— 文字无法%s对齐",
+        spec.field, spec.title))
   end
   return ok
+end
+
+--[[ 把 CSS 的 text-align 值映射成候选键名。 ]]--
+local function hKeyOf(alignVal)
+  if alignVal == "middle" or alignVal == "center" then return "middle" end
+  if alignVal == "right" then return "right" end
+  return "left"
+end
+
+--[[ 把 CSS 的 vertical-align 值映射成候选键名。
+
+     ★ CSS 的取值与引擎不完全同名，这里做一层翻译：
+         top / text-top      -> top
+         bottom / text-bottom-> bottom
+         middle / center     -> middle
+       其余（baseline / sub / super…）引擎没有对应概念，退化为 middle。 ]]--
+local function vKeyOf(alignVal)
+  local s = tostring(alignVal or ""):lower():gsub("%s", "")
+  if s == "top" or s == "text-top" then return "top" end
+  if s == "bottom" or s == "text-bottom" then return "bottom" end
+  return "middle"
 end
 
 --=============================================================================
@@ -684,7 +736,8 @@ local function writeControl(control, node, dx, dy, last, kind)
   ]]--
   local SUPPORTS = {
     textbox   = { bgColor = true, text = true, fontColor = true,
-                  fontSize = true, horizontalAlignment = true },
+                  fontSize = true, horizontalAlignment = true,
+                  verticalAlignment = true },
     container = { },                       -- 只有公共变换字段
     button    = { },                       -- 同上，另有 interactable 等
     image     = { imageColor = true },
@@ -862,8 +915,23 @@ local function writeControl(control, node, dx, dy, last, kind)
         last.__align = alignVal
         -- ★ 走 resolveAlign（见上面的说明）—— 不再直接用扁平枚举名，
         --   那种写法在真机上是 nil，且失败被 pcall 静默吞掉。
-        setAlign(control, alignVal == "middle" and "middle"
-                 or (alignVal == "right" and "right" or "left"))
+        setAlign(control, "horizontal", hKeyOf(alignVal))
+      end
+
+      --[[ ★ 垂直对齐（verticalAlignment）。
+
+           ⚠️ 与水平轴分开判 diff（last.__valign），否则一轴变化会
+              连带把另一轴重写一遍。
+
+           ★ 默认 "middle"（见 webui_style 的默认样式表）：
+             保持与旧行为一致 —— 旧版从没写过这个字段，引擎默认
+             恰好也是垂直居中，所以"不写"与"写 middle"观感一致。
+             但【显式写】才能让 top/bottom 生效，也才能被测试观测。 ]]--
+      local va = st["vertical-align"] or "middle"
+      local vKey = vKeyOf(va)
+      if last.__valign ~= vKey then
+        last.__valign = vKey
+        setAlign(control, "vertical", vKey)
       end
     else
       -- 无文本：清掉，避免残留
@@ -1217,8 +1285,14 @@ function Renderer:update(root, domChanged)
             if tl.__align ~= alignVal then
               tl.__align = alignVal
               -- ★ 同上面：走 resolveAlign，不再用真机上为 nil 的扁平枚举名
-              setAlign(tc, alignVal == "middle" and "middle"
-                       or (alignVal == "right" and "right" or "left"))
+              setAlign(tc, "horizontal", hKeyOf(alignVal))
+            end
+
+            -- ★ 垂直对齐（同上面那个调用点，见那里的说明）
+            local vKey = vKeyOf(st2["vertical-align"] or "middle")
+            if tl.__valign ~= vKey then
+              tl.__valign = vKey
+              setAlign(tc, "vertical", vKey)
             end
           end
 

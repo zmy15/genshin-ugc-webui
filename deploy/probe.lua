@@ -990,57 +990,43 @@ end
   模块：文字居中 / 坐标系（align）
 
   ══════════════════════════════════════════════════════════════════════════
-  要回答的问题（一个真机现象，两种可能，必须一次分开）：
+  两组问题：
 
-    现象：demo_dino 的结算窗口里，文字【贴框左边】没有居中；
-          而同一个文件里 .over / .hint 的居中是【正常的】。
+   【水平】text-align 到底有没有生效？
+      （R23 已定位：库用错了枚举名，扁平名在真机上是 nil，
+        失败被 pcall 吞掉 -> 从来没生效过。已修并验证。）
 
-    两种可能，必须先排除一个：
-      ① horizontalAlignment 根本没写进去（或写错控件）
-      ② 写进去了，但【框的宽度/位置】与我以为的不一样
-         -> 文字其实已经在其框内居中，只是那个框不是我以为的那个
-
-    ⚠️ 只打印"我打算设 center"会误导好几轮（血泪教训）。
-      本模块【读回实际值】：控件的 horizontalAlignment 字段
-      + 布局盒 (x,w) + 与声明值的差值。
+   【垂直】vertical-align 到底有没有生效？
+      ⚠️ 垂直轴原先【根本没实现】—— webui_style 里只有一个默认值
+         "middle"，解析 / 继承 / 写控件三处都没有。
+         默认恰好等于引擎默认（垂直居中），所以"看着像对的"，
+         但写 top / bottom 完全没效果。已补上，本模块负责取证。
 
   ══════════════════════════════════════════════════════════════════════════
   ★★ 对照组设计（关键实验必须带对照组 —— docs/引擎能力与限制.md §七）
 
-     A. 直接放在 .stage 下（与已知可用的 .over 同构）
-        —— 基线。若 A 也不居中，问题在库/引擎层，与嵌套无关。
+     A. 直接放在 .stage 下（与已知可用的 .over 同构）—— 基线
 
-     B. 嵌在【绝对定位容器】里（复刻结算窗口的结构）
-        —— 若 A 居中而 B 不居中 -> 根因是嵌套。
+     B. 嵌在【绝对定位容器】里（复刻结算窗口结构）
+        —— 若 A 居而 B 不居 -> 根因是嵌套
 
      C. 同 B，但显式写 width 与 text-align（不依赖继承）
-        —— 若 B 不居中而 C 居中 -> 根因是【样式继承】。
+        —— 若 B 不居而 C 居 -> 根因是样式继承
 
-     D. 嵌两层（容器 > 容器 > 文字），显式 width
-        —— 若 C 居中而 D 不居中 -> 根因与嵌套【深度】有关。
+     D. 嵌两层（容器 > 容器 > 文字）
+        —— 若 C 居而 D 不居 -> 根因与嵌套深度有关
 
-     E. 退出按钮的复刻（宽 120 高 54，验证"渲染尺寸是否为声明的
-        1.6 倍"这个从截图上量到的疑点）
-        —— 独立问题：坐标系/尺寸换算。
+     E. 退出按钮的复刻（宽 120 高 54）
+        —— 验证尺寸/坐标系换算
 
-     ★ 每一组都放两个文本：一个短（"居中"）、一个长（"1234567890"）。
-       判据是【文字的左右留白是否相等】——
-       只看"看起来在中间"会被框本身的偏移骗到。
+     F. ★ 垂直对齐三连（三个【同尺寸】框，只有 vertical-align 不同）
+        top / middle / bottom —— 框高 120 / 字号 20 = 6.0，
+        三者文字的 y 位置应有肉眼可见的差别。
+        若三者看起来一样 -> 垂直对齐没生效。
 
   ══════════════════════════════════════════════════════════════════════════
-  屏幕上会看到 5 个横向色带（每组一条），每带里有文字。
-  请【截图】，然后看日志里的读回表。
-  ══════════════════════════════════════════════════════════════════════════
-
-  判读表（日志末尾会打印）：
-
-     ha=Middle 且 框宽符合预期  -> 引擎层没问题，去看截图里文字的实际位置
-     ha 为空/Left              -> 写入根本没生效（库或枚举名的问题）
-     框宽 != 声明值             -> 布局层的问题（尺寸没按 CSS 生效）
-
-  ⚠️ 还要看截图里的【文字左边界】：日志给不出文字的渲染位置
-     （引擎没有"文字实际 bbox"的 API），只能用截图像素量。
-     换算常数：截图像素 = 画布单位 x 1.6（2560 屏 / 1600 画布）。
+  判读：读回表同时给出 ha 与 va 两列，以及截图上文字的左右/上下留白。
+        引擎没有「文字实际 bbox」API，渲染位置只能靠截图量。
 =============================================================================]]
 
 M.align = {}
@@ -1111,6 +1097,25 @@ M.align.CSS = [[
            font-size: 18px; color: #535353; background-color: #e8e8e8;
            text-align: center; }
 
+  /* ---- F 组：垂直对齐对照（框比字高得多，差别肉眼可见）----
+     三个框尺寸完全相同，只有 vertical-align 不同。
+     框高 120 / 字号 20 = 6.0 —— 三者的文字 y 位置应有明显差别：
+       top    -> 贴框顶
+       middle -> 垂直居中（默认）
+       bottom -> 贴框底 */
+  .fv-top { position: absolute; left: 640px; top: 150px;
+            width: 400px; height: 120px;
+            font-size: 20px; color: #ffffff; background-color: #2a3550;
+            text-align: left; vertical-align: top; }
+  .fv-mid { position: absolute; left: 640px; top: 290px;
+            width: 400px; height: 120px;
+            font-size: 20px; color: #ffffff; background-color: #2a3550;
+            text-align: left; vertical-align: middle; }
+  .fv-bot { position: absolute; left: 640px; top: 430px;
+            width: 400px; height: 120px;
+            font-size: 20px; color: #ffffff; background-color: #2a3550;
+            text-align: left; vertical-align: bottom; }
+
   /* 长文本对照组：同样居中，但内容长，便于量左右留白是否相等 */
   .long { position: absolute; left: 40px; top: 730px;
           width: 400px; height: 50px;
@@ -1157,6 +1162,12 @@ function M.align.build()
   <!-- E：退出按钮复刻（验证尺寸是否为声明的 1.6 倍） -->
   <div class="glabel" id="al-gE">E 退出按钮复刻（宽 120 高 54）</div>
   <div class="e-box" id="al-e1">退出</div>
+
+  <!-- F：垂直对齐对照（三个同尺寸框，只有 vertical-align 不同） -->
+  <div class="glabel" id="al-gF">F 垂直对齐：top / middle / bottom（框高 120，字号 20）</div>
+  <div class="fv-top" id="al-ft">顶部 top</div>
+  <div class="fv-mid" id="al-fm">居中 middle</div>
+  <div class="fv-bot" id="al-fb">底部 bottom</div>
 
   <!-- 长文本：同 A，但内容长，便于量左右留白 -->
   <div class="glabel" id="al-gL">长文本对照组（同 A 的样式）</div>
@@ -1449,16 +1460,27 @@ function M.align.after(ui)
   local DECLARED = {
     ["al-a1"] = 400, ["al-b1"] = 400, ["al-c1"] = 400,
     ["al-d1"] = 400, ["al-e1"] = 120, ["al-l1"] = 400,
+    ["al-ft"] = 400, ["al-fm"] = 400, ["al-fb"] = 400,
   }
-  -- 期望的 ha（全部都是 center）
+  --[[ 期望的【垂直】对齐。
+       F 组三个框尺寸完全相同、只有 vertical-align 不同 ——
+       若三者读回都是同一个值，说明垂直对齐没有生效。 ]]--
+  local EXPECT_V = {
+    ["al-ft"] = "Top", ["al-fm"] = "Middle", ["al-fb"] = "Bottom",
+  }
+  -- 期望的 ha（全部都是 center / 或 F 组的 left）
   local EXPECT = "Middle"
+  local EXPECT_H = {
+    ["al-ft"] = "Left", ["al-fm"] = "Left", ["al-fb"] = "Left",
+  }
 
-  local order = { "al-a1", "al-b1", "al-c1", "al-d1", "al-e1", "al-l1" }
+  local order = { "al-a1", "al-b1", "al-c1", "al-d1", "al-e1", "al-l1",
+                  "al-ft", "al-fm", "al-fb" }
 
   log("")
-  log(string.format("  %-8s %-10s %-12s %-10s %-14s %s",
-      "id", "声明宽", "实际框宽", "ha读回", "对齐判定", "说明"))
-  log("  " .. string.rep("-", 86))
+  log(string.format("  %-8s %-10s %-12s %-10s %-12s %-14s %s",
+      "id", "声明宽", "实际框宽", "ha读回", "va读回", "对齐判定", "说明"))
+  log("  " .. string.rep("-", 100))
 
   local problems = {}
 
@@ -1477,10 +1499,11 @@ function M.align.after(ui)
       local box = nd.box
 
       local ha = "?"
+      local va = "?"
       local kind = e and e.kind or "?"
       if ctrl then
-        local v = safeCall(function() return ctrl.horizontalAlignment end)
-        ha = tostring(v)
+        ha = tostring(safeCall(function() return ctrl.horizontalAlignment end))
+        va = tostring(safeCall(function() return ctrl.verticalAlignment end))
       end
 
       local declared = DECLARED[id] or -1
@@ -1506,9 +1529,28 @@ function M.align.after(ui)
         if type(ha) ~= "string" then return false end
         return ha:find("Left", 1, true) ~= nil or ha == "L" or ha == "left"
       end
+      -- ★ 通用：读回值里是否含某个词（Top / Middle / Bottom）
+      local function has(ha, word)
+        return type(ha) == "string" and ha:find(word, 1, true) ~= nil
+      end
 
-      local haOK = isMiddle(ha)
+      -- ha 判定：F 组期望 Left，其余期望 Middle
+      local wantH = EXPECT_H[id]
+      local haOK
+      if wantH == "Left" then haOK = isLeft(ha) else haOK = isMiddle(ha) end
       local wOK = math.abs(actualW - declared) < 1.5
+
+      -- ★ 垂直判定（只有 F 组有期望值）
+      local wantV = EXPECT_V[id]
+      local vaOK = true
+      if wantV then
+        vaOK = has(va, wantV)
+        -- mock 的短 token 兼容
+        if not vaOK then
+          local short = { Top = "T", Middle = "M", Bottom = "B" }
+          vaOK = (va == short[wantV])
+        end
+      end
 
       local verdict, note = "", ""
       -- ★ al-a1 被枚举实验动过，读回值不可信（见 probeEnum 末尾的还原说明）
@@ -1519,6 +1561,11 @@ function M.align.after(ui)
         verdict = isLeft(ha) and "❌ ha=Left（未生效）" or "❌ ha不对"
         note = "写入未生效 -> 看下方的枚举形态实验"
         problems[#problems + 1] = id .. ":ha=" .. tostring(ha)
+      elseif not vaOK then
+        verdict = "❌ va不符"
+        note = string.format("期望 %s，读回 %s（垂直对齐没生效）",
+            wantV, tostring(va))
+        problems[#problems + 1] = string.format("%s:va=%s", id, tostring(va))
       elseif not wOK then
         verdict = "⚠️ 宽度不符"
         note = string.format("差 %.1f（布局/尺寸问题）", actualW - declared)
@@ -1529,8 +1576,8 @@ function M.align.after(ui)
         note = string.format("被测控件 kind=%s", kind)
       end
 
-      log(string.format("  %-8s %-10d %-12.1f %-10s %-14s %s",
-          id, declared, actualW, ha, verdict, note))
+      log(string.format("  %-8s %-10d %-12.1f %-10s %-12s %-14s %s",
+          id, declared, actualW, ha, va, verdict, note))
 
       -- 额外打印位置，便于与截图对照
       if box then

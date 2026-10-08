@@ -13,6 +13,7 @@ package.path = _root .. "/lib/webui/?.lua;" .. _root .. "/?.lua;"
              .. _root .. "/tests/?.lua;" .. _root .. "/tools/?.lua;" .. package.path
 
 local EngineMock = require('engine_mock')
+local enumkit    = require('enum_kit')
 local PREFABS = { container=1073741933, textbox=1073741934,
                   button=1073741935, image=1073741938 }
 local E = EngineMock.new(PREFABS)
@@ -20,7 +21,15 @@ local E = EngineMock.new(PREFABS)
 game = E.game
 Color = { FromRGBA=function(r,g,b,a) return {r=r,g=g,b=b,a=a} end,
           FromRGB=function(r,g,b) return {r=r,g=g,b=b} end }
-Enum = {
+--[[ ★★ 用 enum_kit 造 Enum —— 不要自己手写。
+
+     ⚠️ 本文件原先自己写了一张表，而且写的是【文档的扁平形式】
+        （TextHorizontalAlignmentMiddle="C"），也没有垂直轴。
+        于是探针里 F 组（垂直对齐）读回 nil、被判"没生效"，
+        而这个"失败"是【测试环境造得不像真机】造成的假阳性。
+        真机是子表形式（Enum.TextHorizontalAlignment.Middle），
+        扁平名是 nil —— 见 R23。 ]]--
+Enum = enumkit.build({
   EaseType={Linear="Linear"},
   CursorEventType={CursorClick="CursorClick",CursorDown="CursorDown",
                    CursorUp="CursorUp",CursorEnter="CursorEnter",
@@ -28,11 +37,7 @@ Enum = {
                    CursorDrag="CursorDrag",CursorEndDrag="CursorEndDrag"},
   ImageSource={StaticReference="SR"},
   KeyEventType={},
-  -- ★ 对齐枚举的真名（client_control_api.md 第 557-559 行）
-  TextHorizontalAlignmentLeft="L",
-  TextHorizontalAlignmentMiddle="C",
-  TextHorizontalAlignmentRight="R",
-}
+})
 
 local root = E.makeControl("container", nil)
 root.name = "Root"
@@ -101,8 +106,9 @@ for _, l in ipairs(captured) do
 end
 print(string.format("  读回表: %d 行相符, %d 行跳过, %d 行不符",
     okCount, skipCount, badCount))
-if okCount >= 6 and badCount == 0 then pass = pass + 1
-  print("  [OK] 六组对照在 mock 下全部相符（库写入正确）")
+-- ★ 9 行 = A/B/C/D/E/长文本（水平）+ F 组三连（垂直）
+if okCount >= 9 and badCount == 0 then pass = pass + 1
+  print("  [OK] 九组对照在 mock 下全部相符（水平 6 + 垂直 3）")
 else fail = fail + 1
   print("  [XX] 读回表有异常行") end
 

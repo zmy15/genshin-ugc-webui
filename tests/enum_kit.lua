@@ -50,6 +50,22 @@ function K.textHorizontalAlignment()
   })
 end
 
+--[[ 垂直对齐：同 R23 的形态（子表 + 带点字符串值）。
+
+     ★ 真机实测（R23）水平轴是子表形式；垂直轴与之同类，
+       按同样形态建模（Enum.TextVerticalAlignment.Middle ✅，
+       扁平名 Enum.TextVerticalAlignmentMiddle ❌ nil）。 ]]--
+function K.textVerticalAlignment()
+  local sub = {
+    Top    = "Enum.TextVerticalAlignment.Top",
+    Middle = "Enum.TextVerticalAlignment.Middle",
+    Bottom = "Enum.TextVerticalAlignment.Bottom",
+  }
+  return setmetatable(sub, {
+    __tostring = function() return "TextVerticalAlignment" end,
+  })
+end
+
 --[[ 构造一个"像真机那样"的 Enum。
      extra 里的键会被合并进去（用于各测试自带的枚举）。 ]]--
 function K.build(extra)
@@ -61,6 +77,7 @@ function K.build(extra)
           这里用 back 表模拟同样的"能索引、但 pairs 不到"效果。 ]]--
   local back = {
     TextHorizontalAlignment = K.textHorizontalAlignment(),
+    TextVerticalAlignment   = K.textVerticalAlignment(),
   }
   if extra then
     for k, v in pairs(extra) do back[k] = v end

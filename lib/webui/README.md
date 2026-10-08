@@ -127,6 +127,7 @@ lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 | 特指度、层叠、继承 | ✅ |
 | `background-color` / `color` / `font-size` / `opacity` | ✅ |
 | `text-align` | ✅ |
+| `vertical-align`（`top` / `middle` / `bottom`） | ✅ |
 | **`transform: translate / scale / rotate`** | ✅ |
 | **`transition`**（映射到 `game.Tween`） | ✅ |
 | **`z-index`**（映射到 `SetSiblingIndex`） | ✅ |
@@ -459,6 +460,7 @@ ui:render(html)
 | **★ 文字框高 ≥ 字号 × 1.9** | ★ R19 实证：框太矮时引擎的**字号自适应会把字压没** —— 症状是"文字凭空消失"，而日志全对 |
 | **★ 文本框必须显式 `background-color`** | ★ R21 实证：不写时引擎给**默认深色底**，字色若也是深色 → **文字看不见**（实测底 48 / 字 45，对比度 3） |
 | **★ 居中必须写 `text-align`** | ★ R21 实证：默认 `left`，文字贴框左边（实测左右边距差 470px）。**框居中 ≠ 文字居中** |
+| **★ 垂直位置写 `vertical-align`** | 默认 `middle`。★ 本库文字框**普遍比字高得多**（框高 ≥ 字号 × 1.9），所以垂直位置错了**肉眼很明显**（demo 里框高/字号达 2.1~3.9）。`top` / `bottom` 现已支持（R23 之前**根本没实现**） |
 | **★ 裁剪容器不设 `background-color`** | 它的填充不受自身遮罩约束，会溢出到裁剪区外 |
 | **★ 容器高度要装得下内容** | 元素无 `overflow:hidden` 时，溢出内容**仍可见但失去父背景** → 表现为"某块背景颜色不同" |
 

@@ -41,6 +41,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **文字框高 ≥ 字号 × 1.9** | 框太矮 → 引擎字号自适应把字压没，**文字凭空消失** |
 | **文本框必须显式写 `background-color`** | 不写 → 引擎给**默认深色底**；字色若也是深色 → **文字看不见**（实测对比度 3） |
 | **要居中必须写 `text-align`** | 默认 `left` → 文字贴框左边（实测左右边距差 470px） |
+| **垂直居中写 `vertical-align`** | `top` / `middle`（默认）/ `bottom`。★ 本库文字框**普遍比字高得多**（框高 ≥ 字号 × 1.9），所以垂直位置错了**肉眼很明显** |
 | **★★ 枚举名一律运行时取，禁止照文档写死** | 已踩三例：`Enum.ImageSource.StaticReference`（R16）、**`Enum.TextHorizontalAlignment.Middle` —— 文档写的扁平名 `…AlignmentMiddle` 在真机上是 `nil`**（R23，已修并真机验证）。配上 `pcall` 就成了「写入失败但静默」，`text-align:center` 因此失效好几轮。**必须显式取 + 取不到就 `warn`**。测试替身也要照**真机形态**造（见 `tests/enum_kit.lua`） |
 | **多控件拼图：矩形必须 `position:absolute`** | 否则 inline 的 `left/top` 无效 → 全堆成一列（实测宽 47px，应为 176px） |
 | **多控件拼图：相邻矩形要外扩 1px** | 真机色块实际宽比声明值略小 → 相邻块之间露 1.25~4.38px 背景缝 |
@@ -101,7 +102,7 @@ local ACTIVE = "perf"   -- key / perf / align
 
 - `key` = 键盘事件验证（`AddKeyEventListener` 能否用）
 - `perf` = 逐帧写入上限压测（4 档：10/40/80/160 控件）
-- `align` = 文字居中 / 坐标系（五组对照，用于定位"文字不居中"）
+- `align` = 文字居中 / 坐标系（**水平 A~E + 垂直 F 组**对照，用于定位"文字不居中"）
 
 历史上还有 `text` / `mask` / `glyph` / `clip` / `mount` 五个模块，
 2026-10-07 精简时移除 —— 它们的**结论、设计意图与重建要点**归档在

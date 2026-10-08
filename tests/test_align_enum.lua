@@ -64,6 +64,15 @@ check("pairs(Enum) 为空（顶层不可遍历，同真机）", (function()
   for _ in pairs(Enum) do n = n + 1 end
   return n == 0
 end)())
+-- ★ 垂直轴同构
+check("Enum.TextVerticalAlignment 是子表",
+    type(Enum.TextVerticalAlignment) == "table")
+check("★ 扁平名 TextVerticalAlignmentMiddle 为 nil（真机如此）",
+    Enum.TextVerticalAlignmentMiddle == nil,
+    tostring(Enum.TextVerticalAlignmentMiddle))
+check("垂直子表取值可用",
+    Enum.TextVerticalAlignment.Middle == "Enum.TextVerticalAlignment.Middle",
+    tostring(Enum.TextVerticalAlignment.Middle))
 
 --=============================================================================
 print("\n=== 1. ★ text-align:center 必须真的写进控件 ===")
@@ -84,10 +93,19 @@ ui:render([[
 .lft { position:absolute; left:40px; top:200px; width:400px; height:50px;
        font-size:20px; color:#ffffff; background-color:#2a3550;
        text-align:left; }
+/* 垂直对照：框比字高得多，便于肉眼看出 top / middle / bottom 的差别 */
+.vtop { position:absolute; left:40px; top:280px; width:400px; height:120px;
+        font-size:20px; color:#ffffff; background-color:#2a3550;
+        text-align:left; vertical-align:top; }
+.vbot { position:absolute; left:40px; top:420px; width:400px; height:120px;
+        font-size:20px; color:#ffffff; background-color:#2a3550;
+        text-align:left; vertical-align:bottom; }
 </style>
 <div class="ctr" id="c">居中</div>
 <div class="rgt" id="r">右对齐</div>
 <div class="lft" id="l">左对齐</div>
+<div class="vtop" id="t">顶部</div>
+<div class="vbot" id="bt">底部</div>
 ]])
 
 local function ctrlOf(id)
@@ -97,6 +115,14 @@ local function ctrlOf(id)
   end)
   local e = nd and ui.rendered.live[nd]
   return e and e.control
+end
+
+local function nodeOf(id)
+  local nd = nil
+  require('webui_dom').walk(ui.doc, function(n)
+    if n:isElement() and n.attrs and n.attrs.id == id then nd = n end
+  end)
+  return nd
 end
 
 local C, R, L = ctrlOf("c"), ctrlOf("r"), ctrlOf("l")
@@ -114,6 +140,34 @@ check("text-align:right -> Right",
 check("text-align:left -> Left",
     L and tostring(L.horizontalAlignment):find("Left", 1, true) ~= nil,
     L and tostring(L.horizontalAlignment))
+
+--=============================================================================
+print("\n=== 1b. ★ 垂直对齐（vertical-align）也要真的写进去 ===")
+--=============================================================================
+--[[ ⚠️ 垂直轴原先【根本没实现】—— 样式表里只有一个默认值 "middle"，
+     解析 / 继承 / 写控件三处都没有。默认恰好等于引擎默认（垂直居中），
+     所以"看着是对的"，但 top / bottom 完全没效果。
+     本段守住：垂直与水平一样，必须真的写到控件字段上。 ]]--
+local function vOf(ctrl)
+  if not ctrl then return nil end
+  return tostring(ctrl.verticalAlignment)
+end
+
+check("★ 默认 -> verticalAlignment = Middle（与引擎默认一致）",
+    vOf(C):find("Middle", 1, true) ~= nil, vOf(C))
+
+-- 显式写 top / bottom 必须生效
+local topNode = nodeOf("t")
+local botNode = nodeOf("bt")
+check("拿到 top/bottom 控件", topNode ~= nil and botNode ~= nil)
+if topNode and botNode then
+  local TC = ctrlOf("t")
+  local BC = ctrlOf("bt")
+  check("★ vertical-align:top -> Top",
+      vOf(TC):find("Top", 1, true) ~= nil, vOf(TC))
+  check("★ vertical-align:bottom -> Bottom",
+      vOf(BC):find("Bottom", 1, true) ~= nil, vOf(BC))
+end
 
 --=============================================================================
 print("\n=== 2. ★ 换帧后仍保持（不能被 diff 缓存吃掉） ===")
