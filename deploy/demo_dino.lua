@@ -309,6 +309,39 @@ local HTML = ([[
 
     <div class="score" id="score">HI 00000  00000</div>
 
+    <!-- ★ 退出按钮（左上角）：点击弹出结算窗口 -->
+    <div class="quit-btn" id="quitBtn" onclick="openQuit"
+         onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">退出</div>
+
+    <!--=========================================================================
+        ★ 结算窗口（默认隐藏，点退出才显示）
+
+        ⚠️ 放在最后 = 在 DOM 顺序里最靠上，会盖住场上的恐龙与障碍。
+           引擎没有全局 z-index，只能靠同父内的顺序（见库 README）。
+    ==========================================================================-->
+    <div class="modal off" id="modal">
+      <!-- 半透明遮罩层：压暗底下的游戏画面。
+           ★ 容器没有 bgColor，所以这里必须用一个有背景色的色块来铺 -->
+      <div class="modal-mask" id="modalMask"></div>
+
+      <div class="modal-panel" id="modalPanel">
+        <!-- ★ 面板底色层：面板本体是容器（无 bgColor），
+             底色必须由一个铺满的色块承载 -->
+        <div class="modal-bg" id="modalBg"></div>
+
+        <div class="modal-title"  id="modalTitle">结算</div>
+        <div class="modal-time"   id="modalTime">本局时间 00:00</div>
+        <div class="modal-warn"   id="modalWarn">不足 2 分钟，结算将判定为失败</div>
+
+        <div class="modal-row">
+          <div class="modal-btn ok" id="btnSettle" onclick="doSettle"
+               onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">结算</div>
+          <div class="modal-btn" id="btnResume" onclick="doResume"
+               onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">继续</div>
+        </div>
+      </div>
+    </div>
+
     <div class="ground" id="ground"></div>
 
     <!-- 地面装饰：3 个点缀（石子/草丛/小簇），随场景滚动 -->
@@ -486,6 +519,116 @@ local CSS = [[
   background-color: #f7f7f7;
   text-align: center;
 }
+
+/* ==========================================================================
+   ★★ 退出按钮 + 结算窗口
+
+   ⚠️ 每一个文字框都遵守三条硬性约束（违反 = 静默失效）：
+      ① 框高 >= 字号 x 1.9（否则引擎的字号自适应把字压没）
+      ② 必须显式写 background-color（不写会给默认深色底）
+      ③ 要居中必须写 text-align（默认 left，字会贴左边）
+   ========================================================================== */
+
+/* 退出按钮：左上角。框高 54 >= 字号 18 x 1.9 = 34.2 ✓ */
+.quit-btn {
+  position: absolute; left: 24px; top: 20px;
+  width: 120px; height: 54px;
+  background-color: #e8e8e8;
+  font-size: 18px; color: #535353;
+  text-align: center;
+  /* ★ z-index 只保证同父内靠前；这里主要靠它在 DOM 里排在场景内容之后 */
+  z-index: 10;
+}
+.quit-btn:hover { background-color: #d0d0d0; }
+
+/* --- 弹窗整体 ---
+
+   ⚠️⚠️ 这里【绝不能】写 display:none 来隐藏。
+
+      实测（tests/test_demo_dino_quit.lua 的成因）：
+        display:none 的子树会被布局器与渲染器【完全跳过】
+        -> 里面的按钮根本不会建出控件，也就【不会被绑定点击事件】。
+        结果：窗口显示出来之后，点"结算"毫无反应（且不报错）。
+
+      同理不能用 node:hide() —— 它也是 display:none。
+
+      ★ 正确做法：弹窗【始终渲染】，用 class 把它移出画布之外来"隐藏"。
+        移到画布外 = 看不见，但控件在、事件在，一移回来立刻可点。
+
+   ★ 初始状态：带 .off（移出画布）。
+     由 onReady 里的 openQuit/closeQuit 管这个 class。 */
+.modal { position: absolute; left: 0; top: 0; width: 1600px; height: 900px; }
+
+/* 隐藏态：整组推到画布右侧之外（画布 1600 宽，推到 3000 处） */
+.modal.off { left: 3000px; }
+
+/* 遮罩：铺满全屏压暗背景。
+   ⚠️ 这是【容器】，容器没有 bgColor —— 所以用一个同级色块来承载颜色。
+      这里直接给 .modal-mask 设 background-color，
+      它被渲染成 textbox 才有底色（空 div 会被 chooseKind 选成 textbox）。 */
+.modal-mask {
+  position: absolute; left: 0; top: 0;
+  width: 1600px; height: 900px;
+  background-color: #2b2b2b;
+}
+
+/* 面板：框内元素全部绝对定位（多控件拼图必须如此，否则 left/top 无效）
+   面板本体是容器，不设背景色 —— 底色由内部的 .modal-bg 承载
+   （裁剪容器不设背景色那条约束的同理：容器底色会盖住子元素） */
+.modal-panel {
+  position: absolute; left: 500px; top: 250px;
+  width: 600px; height: 400px;
+}
+.modal-bg {
+  position: absolute; left: 0; top: 0;
+  width: 600px; height: 400px;
+  background-color: #1b1e2a;
+}
+
+/* 标题：框高 50 >= 40 x 1.9 = 76 ✗ -> 用字号 24，50 >= 45.6 ✓ */
+.modal-title {
+  position: absolute; left: 40px; top: 30px;
+  width: 520px; height: 50px;
+  font-size: 24px; color: #ffffff;
+  background-color: #1b1e2a;
+  text-align: center;
+}
+/* 局时：框高 44 >= 20 x 1.9 = 38 ✓ */
+.modal-time {
+  position: absolute; left: 40px; top: 100px;
+  width: 520px; height: 44px;
+  font-size: 20px; color: #7fd1ff;
+  background-color: #1b1e2a;
+  text-align: center;
+}
+/* 警告：框高 38 >= 16 x 1.9 = 30.4 ✓
+   ⚠️ 字色不能太浅：深色底 #1b1e2a 上用 #ffd479，对比度够 */
+.modal-warn {
+  position: absolute; left: 40px; top: 152px;
+  width: 520px; height: 38px;
+  font-size: 16px; color: #ffd479;
+  background-color: #1b1e2a;
+  text-align: center;
+}
+
+/* 按钮行：两个按钮并排（绝对定位，避免 inline 的 left/top 失效） */
+.modal-row {
+  position: absolute; left: 60px; top: 250px;
+  width: 480px; height: 70px;
+}
+/* 按钮：宽 220 高 70 >= 18 x 1.9 = 34.2 ✓ */
+.modal-btn {
+  position: absolute; top: 0;
+  width: 220px; height: 70px;
+  background-color: #3a4055;
+  font-size: 18px; color: #ffffff;
+  text-align: center;
+}
+.modal-btn:hover { background-color: #4a5268; }
+.modal-btn.ok { left: 0; background-color: #3a7bd5; }
+.modal-btn.ok:hover { background-color: #2f6ab8; }
+/* 注意：不能用 .modal-btn + .modal-btn 这类相邻选择器（不支持，整条规则作废） */
+#btnResume { left: 260px; }
 ]]
 
 --=============================================================================
@@ -774,6 +917,21 @@ local S = {
   runPhase = 1,         -- 1 或 2：当前用哪个跑动姿态
   runTimer = 0,
   seed    = 20261008,   -- ★ 自带的伪随机种子（不用 math.random，见下）
+
+  --[[ ★★ 本局游玩时间（秒）—— 结算窗口要显示，结算信号要上报。
+
+       ★ 用【累加 dt】而不是 os.clock()/os.time() 的差值：
+         · dt 是固定步长 1/fps，累加结果可复现（与物理一致）
+         · 弹窗打开时我们【暂停累加】—— 看结算窗口的时间不该算进
+           "游玩时间"，否则玩家开着窗口发呆就能凑够 2 分钟，
+           而需求是"小于 2 分钟结算判失败"，那等于给了个漏洞。
+         · os.clock 在真机沙箱里可用但语义是 CPU 时间，不适合计时长
+
+       ⚠️ 只在 S.started 且未结束且未暂停时累加。 ]]
+  playTime = 0,
+
+  -- 结算窗口是否打开（打开时暂停游戏逻辑 + 停止计时）
+  paused  = false,
 }
 
 local nodes = {}       -- id -> DOM 节点
@@ -914,6 +1072,10 @@ local function reset()
   S.dist, S.score = 0, 0
   S.over, S.started = false, false
   S.runPhase, S.runTimer = 1, 0
+  -- ★ 新的一局：计时归零、关掉弹窗、清掉结算标记
+  --   （settleSent/settled 必须清 —— 否则下一局点结算会被当成"已发过"而不上报）
+  S.playTime, S.paused = 0, false
+  S.settleSent, S.settled = false, false
   --[[ ★ 下一波的生成距离。reset 必须清掉 ——
        否则重开一局时会沿用上一局的进度，第一波延迟出场。 ]]--
   S.nextSpawnDist = G.STAGE_RULES[1].waveGap
@@ -1304,6 +1466,22 @@ local function tick(dt)
     return
   end
 
+  --[[ ★★ 结算窗口打开时【暂停游戏逻辑与计时】。
+
+       ⚠️ 停在这儿而不是更前面：上面的 reassertSprites / 分数栏是
+          "维持画面正确"的，暂停时也要继续跑（否则弹窗期间
+          控件池换手会把精灵染回透明，露出白块）。
+
+       ★ 暂停必须在计时【之前】—— 否则看着结算窗口发呆也算游玩时间。 ]]--
+  if S.paused then
+    return
+  end
+
+  -- ★ 本局游玩时间（只在真正跑着的时候累加）
+  if not S.over then
+    S.playTime = S.playTime + dt
+  end
+
   --===========================================================================
   -- 已结束：摆死亡姿态，不再跑逻辑
   --===========================================================================
@@ -1588,6 +1766,180 @@ end
 -- 跳跃 / 重开
 --=============================================================================
 
+--=============================================================================
+-- 退出 / 结算窗口
+--=============================================================================
+
+--[[ ★★ 这里必须先声明 app（而不是留到 mount 那里再 local）。
+
+     ⚠️ Lua 的 local 只对【它之后】的函数体可见。doSettle 里要调
+        app:emit(...)，若 app 在文件后面才 local，那么 doSettle 里的
+        `app` 会被当成【全局变量】（nil）——
+        一调用就 "attempt to call a nil value"，而且【只在点结算时炸】，
+        平时完全看不出来（本文件已经因为同类问题踩过一次）。
+
+     ★ 前向声明 + 后面赋值，是 Lua 里跨函数共享句柄的标准写法。 ]]--
+local app
+
+--[[ 把秒数格式化成 mm:ss ]]--
+local function fmtTime(sec)
+  sec = math.max(0, math.floor(sec))
+  return string.format("%02d:%02d", math.floor(sec / 60), sec % 60)
+end
+
+--[[ 结算阈值：小于这个时长结算 -> 判定为失败。
+
+     ★ 与服务端必须一致 —— 这里只是"提前告知玩家"，
+       真正的判定在服务端（客户端说了不算）。
+       所以这个常量改动时，服务端那份也要同步改。
+       信号里同时上报【秒数】而不是只报"成功/失败"，
+       就是为了让服务端自己判，避免两边阈值不一致。 ]]--
+local SETTLE_MIN_SEC = 120
+
+--[[ 刷新结算窗口里的文字。
+
+     ★ 定义必须在 openQuit 【之前】：openQuit 里要调它。
+       Lua 的 local 只对它【之后】的函数体可见 —— 写在后面的话，
+       openQuit 里的 updateQuitPanel 会被当成全局变量（nil），
+       一调用就 "attempt to call a nil value"。
+
+     ★ 和 openQuit 分开是因为职责不同：
+       openQuit = "显示"，这里 = "内容正确"（时间在走，要能反复刷）。 ]]--
+local function updateQuitPanel()
+  local t = S.playTime
+  if nodes.modalTime then
+    nodes.modalTime:setText(string.format("本局时间 %s", fmtTime(t)))
+  end
+
+  if nodes.modalTitle then
+    if t < SETTLE_MIN_SEC then
+      nodes.modalTitle:setText("结算（不足 2 分钟）")
+    else
+      nodes.modalTitle:setText("结算")
+    end
+  end
+
+  if nodes.modalWarn then
+    if t < SETTLE_MIN_SEC then
+      local left = math.ceil(SETTLE_MIN_SEC - t)
+      nodes.modalWarn:setText(string.format(
+          "不足 2 分钟，结算将判定为失败（还差 %d 秒）", left))
+    else
+      -- ★ 达标了就改成明确的"可以结算"。
+      --   ⚠️ 不用 hide()：那是 display:none，会把这一行从渲染里摘掉
+      --      （与弹窗按钮同一个坑）。改文字最省事也最安全。
+      nodes.modalWarn:setText("时长已达标，结算将判定为成功")
+    end
+  end
+end
+
+--[[ 打开结算窗口。
+
+     ★ 打开即暂停（S.paused = true）—— 见 tick 里的说明：
+       防止玩家开着窗口发呆凑时长。
+
+     ⚠️⚠️ 用 class 切换而不是 node:show()/hide()：
+        show/hide 走的是 display:none，那会把整棵子树从渲染里摘掉
+        -> 里面的按钮控件被回收、【点击事件也没了】，
+           窗口显示出来之后点"结算"毫无反应（且不报错）。
+        详见 CSS 里 .modal.off 的说明。 ]]--
+local function openQuit()
+  S.paused = true
+  updateQuitPanel()
+  if nodes.modal then nodes.modal:removeClass("off") end
+end
+
+local function closeQuit()
+  S.paused = false
+  if nodes.modal then nodes.modal:addClass("off") end
+end
+
+--[[ ★ 结算：把【游玩时长 + 最高分】发给服务端。
+
+     ⚠️ 双端约定（必须与服务端注册的信号一致）：
+          信号名  settle_game
+          参数    （int 游玩秒数, int 最高分）
+
+       参数顺序写错 = 服务端收到错位的值，而且【不会报错】。
+       所以这里在 mount 的 signals 里声明了签名，库会校验。
+
+     ★ 为什么上报秒数而不是"成败"：
+       判定标准（2 分钟）归服务端，客户端只提供事实。
+       否则改阈值要同时改两边，漏一个就出现"客户端说成功、
+       服务端算失败"的矛盾。
+
+     ★ 发完【不关闭窗口】—— 让玩家看到"已上报"，
+       也避免重复点击时重复发送（见下面的 settled 标记）。 ]]--
+local function doSettle()
+  if S.settleSent then
+    -- 已经发过了：只更新提示，不重复发（防连点）
+    if nodes.modalWarn then
+      nodes.modalWarn:setText("已上报，请等待服务端结算")
+    end
+    return
+  end
+
+  --[[ ★★ 两个参数都必须转成【整数】再发。
+
+       ⚠️ 这里踩过一个真实的坑（被 signals 的校验当场拦下）：
+
+         S.score 是【浮点】累加的（score + speed*dt*0.012），
+         所以 S.hi 也是小数（如 8.5388160000000131）。
+         而签名声明的是 "int" —— 直接把小数发出去会被拦下：
+
+           [warn] signal: 'settle_game' 发送被拦下 ——
+                  第 2 个参数(int): 期望整数，实际是小数 8.538...
+
+       ★ 真机上如果不声明签名，这个小数会【静默】发到服务端，
+         而服务端按整数解 -> 分数对不上，且没有任何报错。
+         这正是"把约定写成签名"的价值所在。
+
+       ★ 用 math.floor 而不是 math.ceil：
+         分数向下取整与界面显示（pad5 也是向下取整）保持一致，
+         否则会出现"界面显示 8 分、上报 9 分"的矛盾。
+       ★ 时间同样 floor —— 界面显示 01:59 时不该上报 120 秒
+         （那会导致"看着差 1 秒却判成功"的争议）。 ]]--
+  local secs  = math.floor(S.playTime)
+  local score = math.floor(S.hi)
+  local ok = app:emit("settle_game", secs, score)
+
+  if ok then
+    S.settleSent = true
+    S.settled = true
+    if nodes.modalTitle then nodes.modalTitle:setText("已结算") end
+    if nodes.modalWarn then
+      nodes.modalWarn:setText(string.format(
+          "已上报：时长 %s，最高分 %d", fmtTime(secs), score))
+    end
+  else
+    -- 被拦下：不置 settled，让玩家能重试（多半是签名写错了）
+    if nodes.modalWarn then
+      nodes.modalWarn:setText("上报失败（参数不符，见日志）")
+    end
+  end
+end
+
+--[[ ★ 继续：关闭窗口，恢复游戏。
+
+     ⚠️ 已经结算过的局不再恢复 —— 那局的分数已经交出去了，
+       继续玩会让"已上报的最高分"与实际不符。 ]]--
+local function doResume()
+  if S.settled then
+    -- 已结算：等价于重开一局（保留最高分）
+    local hi = S.hi
+    reset()
+    S.hi = hi
+    S.started = true
+    S._deadPosed = false
+    S.settleSent = false
+    setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
+    applyTheme(G.THEME.day)
+    if nodes.modal then nodes.modal:addClass("off") end
+    return
+  end
+  closeQuit()
+end
+
 local function onJump()
   if S.over then
     -- 重开：保留最高分
@@ -1635,7 +1987,9 @@ end
 -- 挂载
 --=============================================================================
 
-local app
+-- ★ app 已在文件上方（结算窗口那一节）前向声明，这里只赋值。
+--   不能再写 `local app` —— 那会【遮蔽】外层那个，
+--   于是 doSettle 里看到的仍是 nil。
 app = webui.mount{
   root    = "Root",
   prefabs = {
@@ -1650,6 +2004,22 @@ app = webui.mount{
 
   -- ★ 游戏逻辑钩子：每帧先跑它，再渲染
   onTick = tick,
+
+  --[[ ★★ 服务器信号：结算上报。
+
+       ⚠️ 信号名与参数【必须与服务端注册的完全一致】：
+            信号名  settle_game
+            参数    （int 游玩秒数, int 最高分）
+
+          引擎不校验任何东西 —— 名字拼错 / 参数顺序错 / 类型错，
+          全都是【静默】的（服务端收到错位的值，或谁都不响应）。
+          声明成签名后，库会在本地就拦下来并 warn。
+
+       ★ 只上报事实（秒数 + 分数），不报"成功/失败" ——
+         判定阈值归服务端，避免两边标准不一致。 ]]
+  signals = {
+    settle_game = { "int", "int" },
+  },
 
   -- ★★ 键盘（R20 真机验证）：只绑 root 一处，避免"按一次跳多次"
   keys = {
@@ -1741,6 +2111,14 @@ app = webui.mount{
     end
     if nodes.over then nodes.over:hide() end
 
+    --[[ ★ 结算窗口初始隐藏。
+
+         ⚠️ 用 class 而不是 hide()：hide() 是 display:none，
+            会把整棵子树从渲染里摘掉 -> 里面的按钮【永远绑不上点击】。
+            HTML 里已经写了 class="modal off"，这里只是确保一次
+            （DOM 若被重建，class 会回到 HTML 的初始值）。 ]]--
+    if nodes.modal then nodes.modal:addClass("off") end
+
     -- 恐龙初始朝右站好
     setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
 
@@ -1781,7 +2159,18 @@ app = webui.mount{
     print("[dino] 按 空格 / ↑ 开始")
   end,
 
-  on = {},
+  on = {
+    -- ★ 左上角退出按钮 -> 打开结算窗口（并暂停）
+    openQuit = openQuit,
+
+    -- ★ 窗口里的两个按钮
+    doSettle = doSettle,   -- 结算：把时长 + 最高分发给服务端
+    doResume = doResume,   -- 继续：关闭窗口，恢复游戏
+
+    -- 按钮的 hover 由 CSS 的 :hover 负责，这里只留钩子占位
+    quitHoverOn  = function() end,
+    quitHoverOff = function() end,
+  },
 }
 
 --=============================================================================

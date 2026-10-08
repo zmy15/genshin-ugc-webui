@@ -147,6 +147,31 @@ check("★ 所有文字框的对比度 > 100（真机默认底是深色 #535353�
     #lowContrast == 0 and "全部达标"
         or ("对比度不足: " .. table.concat(lowContrast, " / ")))
 
+--[[ ★ 退出按钮 + 结算窗口的文字也必须被采到。
+
+     ⚠️ 这条断言是必要的：结算窗口用 class="modal off" 藏在画布外，
+        如果哪天有人改成 display:none 来隐藏，
+        这些文字框就会【从渲染里消失】-> 采不到 -> 上面那条"全部达标"
+        会在样本变少的情况下【依然通过】（假阳性）。
+        所以这里显式要求它们必须出现在采样里。 ]]
+do
+  local want = {
+    { "退出",     "退出按钮文字" },
+    { "本局时间", "弹窗的游玩时间" },
+    { "分钟",     "弹窗的 2 分钟提示" },
+    { "结算",     "结算按钮文字" },
+    { "继续",     "继续按钮文字" },
+  }
+  local missing = {}
+  for i = 1, #want do
+    if not findBy(want[i][1]) then missing[#missing+1] = want[i][2] end
+  end
+  check("★ 退出按钮/结算窗口的文字确实被渲染并采样到",
+      #missing == 0,
+      #missing == 0 and "5 处全在"
+          or ("缺: " .. table.concat(missing, "、")))
+end
+
 --=============================================================================
 print("\n=== 2. Game Over：居中 + 浅底深字 ===")
 --=============================================================================
@@ -200,6 +225,38 @@ if hintD then
   check("提示居中", hintD.fields.horizontalAlignment == "C",
       "ha=" .. tostring(hintD.fields.horizontalAlignment))
   check("提示有显式背景色", hintD.fields.bgColor ~= nil)
+end
+
+--=============================================================================
+print("\n=== 5. 退出按钮 + 结算窗口：居中 + 显式背景 ===")
+--=============================================================================
+--[[ ★ 这几个是新增的交互控件，同样踩不得 R21 那两个坑。
+     判据与上面一致：horizontalAlignment 必须是 Middle，bgColor 必须非空
+     （真机不给的话会给默认深色底）。 ]]
+do
+  local ui = {
+    { "退出",     "退出按钮" },
+    { "本局时间", "弹窗时间行" },
+    { "结算",     "结算按钮" },
+    { "继续",     "继续按钮" },
+  }
+  local problems = {}
+  for i = 1, #ui do
+    local d = findBy(ui[i][1])
+    if not d then
+      problems[#problems+1] = ui[i][2] .. "(没找到)"
+    else
+      if d.fields.horizontalAlignment ~= "C" then
+        problems[#problems+1] = ui[i][2] .. "(没居中)"
+      end
+      if d.fields.bgColor == nil then
+        problems[#problems+1] = ui[i][2] .. "(没背景色)"
+      end
+    end
+  end
+  check("★ 退出/结算/继续 全部居中且有显式背景色",
+      #problems == 0,
+      #problems == 0 and "4 处全达标" or table.concat(problems, " / "))
 end
 
 print("")

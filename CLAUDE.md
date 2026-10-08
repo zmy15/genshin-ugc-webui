@@ -11,7 +11,7 @@ lib/webui/   库本体（13 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       42 个测试套件
+tests/       43 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -58,6 +58,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **真机读 `.gil` 不是文件夹** | 复制文件不生效，须编辑器导入 |
 | **根控件缩放必须 `1.01`** | 编辑器里手工设。`1.00` 时界面**四周留一圈缝**；库改不了 `localScale` |
 | **必须有名为 `Root` 的容器节点 + 脚本挂在其下** | 库靠 `FindClientUIRoot("Root")` 找挂载点；缺了/名字不对 → **界面空白且无日志** |
+| **★★ 隐藏但以后要点击的界面，不能用 `display:none`** | 子树被跳过 → 控件不建 → **事件根本不绑定**。"显示出来"后按钮点了毫无反应且无日志。要用 class 移出画布隐藏（`node:hide()` 同样是 `display:none`，且 `show()` 救不回来）。见 `docs/引擎能力与限制.md` §9.1 |
 
 完整清单与证据：`docs/引擎能力与限制.md`
 
@@ -73,7 +74,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-42 个套件，路径自包含（任何目录可跑）。关键回归：
+43 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -86,6 +87,8 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_signal` — ★ **服务器信号**（签名校验 / 接收缓冲 / 限流 / 解绑防叠加）
 - `test_mount` — ★ mount 生命周期（含 §8 信号接进逐帧循环的时序）
 - `test_demo_signal` — ★ **按钮发信号**（模拟点击 → 读回引擎实收参数）
+- `test_demo_dino_quit` — ★ **退出/结算窗口**（弹窗按钮可点、暂停计时、上报整数秒+分数）
+- `test_demo_dino_style` — ★ 文字视觉回归（含弹窗文字必须被采样到，防 `display:none` 回归）
 
 ## 真机探针
 
