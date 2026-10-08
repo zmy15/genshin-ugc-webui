@@ -12,6 +12,9 @@
                                     Down/Up 成对？哪个控件能收到？
     "perf"    ★ 逐帧写入上限      —— 用图片拼恐龙(34控件)真机扛得住吗？
                                     测每帧能写多少次字段 / 掉帧 / 显存
+    "align"   ★ 文字居中/坐标系   —— 弹窗里的文字为什么不居中？
+                                    A 直接放 / B 嵌容器 / C 显式 width /
+                                    D 嵌两层 / E 按钮尺寸，五组对照
 
   ══════════════════════════════════════════════════════════════════════════
   ⚠️ 已移除的模块（text / mask / glyph / clip / mount）
@@ -80,6 +83,24 @@
     R15~R18 的复现模块已移除，见上面「已移除的模块」。
        结论本身仍有效（来自真机实测），只是当前无现成复现手段。
 
+    R23  ⏳ 文字居中 / 坐标系（2026-10-09，模块 align）—— 【待真机结果】
+
+         起因：demo_dino 的结算窗口里文字贴框左边没有居中，
+               而同文件里 .over / .hint 的居中是真机验证过正常的。
+
+         ★ 本地已排除的（都在库/mock 层验证为正确）：
+             · 计算样式 text-align = center
+             · 控件字段 horizontalAlignment = Middle
+             · 布局盒尺寸与 CSS 声明一致
+             · 渲染成 textbox（不是 container/button）
+             · 与 .over 写法同构
+             · 对照实验：嵌套绝对定位容器 vs 直接放 scene，
+               库侧行为完全一致
+           => 本地复现不出症状，必须真机取证。
+
+         ⏳ 待填：五组对照（A 直接放 / B 嵌容器 / C 显式 width /
+                  D 嵌两层 / E 按钮尺寸）各自的实际渲染结果。
+
   ══════════════════════════════════════════════════════════════════════════
   硬性约束（真机实测，写探针时必须遵守）
   ══════════════════════════════════════════════════════════════════════════
@@ -97,7 +118,7 @@
 -- ★★ 选择要跑的模块（改这里）
 --=============================================================================
 
-local ACTIVE = "perf"
+local ACTIVE = "align"
 
 --=============================================================================
 -- 通用配置
@@ -939,6 +960,319 @@ M.perf.report = function(ui, items)
   log(string.format("  （本模块共 %d 个方块控件）", #items))
 end
 
+--[[============================================================================
+  模块：文字居中 / 坐标系（align）
+
+  ══════════════════════════════════════════════════════════════════════════
+  要回答的问题（一个真机现象，两种可能，必须一次分开）：
+
+    现象：demo_dino 的结算窗口里，文字【贴框左边】没有居中；
+          而同一个文件里 .over / .hint 的居中是【正常的】。
+
+    两种可能，必须先排除一个：
+      ① horizontalAlignment 根本没写进去（或写错控件）
+      ② 写进去了，但【框的宽度/位置】与我以为的不一样
+         -> 文字其实已经在其框内居中，只是那个框不是我以为的那个
+
+    ⚠️ 只打印"我打算设 center"会误导好几轮（血泪教训）。
+      本模块【读回实际值】：控件的 horizontalAlignment 字段
+      + 布局盒 (x,w) + 与声明值的差值。
+
+  ══════════════════════════════════════════════════════════════════════════
+  ★★ 对照组设计（关键实验必须带对照组 —— docs/引擎能力与限制.md §七）
+
+     A. 直接放在 .stage 下（与已知可用的 .over 同构）
+        —— 基线。若 A 也不居中，问题在库/引擎层，与嵌套无关。
+
+     B. 嵌在【绝对定位容器】里（复刻结算窗口的结构）
+        —— 若 A 居中而 B 不居中 -> 根因是嵌套。
+
+     C. 同 B，但显式写 width 与 text-align（不依赖继承）
+        —— 若 B 不居中而 C 居中 -> 根因是【样式继承】。
+
+     D. 嵌两层（容器 > 容器 > 文字），显式 width
+        —— 若 C 居中而 D 不居中 -> 根因与嵌套【深度】有关。
+
+     E. 退出按钮的复刻（宽 120 高 54，验证"渲染尺寸是否为声明的
+        1.6 倍"这个从截图上量到的疑点）
+        —— 独立问题：坐标系/尺寸换算。
+
+     ★ 每一组都放两个文本：一个短（"居中"）、一个长（"1234567890"）。
+       判据是【文字的左右留白是否相等】——
+       只看"看起来在中间"会被框本身的偏移骗到。
+
+  ══════════════════════════════════════════════════════════════════════════
+  屏幕上会看到 5 个横向色带（每组一条），每带里有文字。
+  请【截图】，然后看日志里的读回表。
+  ══════════════════════════════════════════════════════════════════════════
+
+  判读表（日志末尾会打印）：
+
+     ha=Middle 且 框宽符合预期  -> 引擎层没问题，去看截图里文字的实际位置
+     ha 为空/Left              -> 写入根本没生效（库或枚举名的问题）
+     框宽 != 声明值             -> 布局层的问题（尺寸没按 CSS 生效）
+
+  ⚠️ 还要看截图里的【文字左边界】：日志给不出文字的渲染位置
+     （引擎没有"文字实际 bbox"的 API），只能用截图像素量。
+     换算常数：截图像素 = 画布单位 x 1.6（2560 屏 / 1600 画布）。
+=============================================================================]]
+
+M.align = {}
+
+--[[ 各对照组的声明参数。
+
+     ⚠️ 这里的数字必须与 CSS 里【逐字对应】—— 本模块的核心就是
+        拿"声明的"与"读回的"对比，两边对不上就白测了。 ]]
+M.align.GROUPS = {
+  { id = "a", label = "A 直接放 stage",        w = 400, declaredW = 400 },
+  { id = "b", label = "B 嵌绝对定位容器",       w = 400, declaredW = 400 },
+  { id = "c", label = "C 同 B + 显式 width",    w = 400, declaredW = 400 },
+  { id = "d", label = "D 嵌两层",              w = 400, declaredW = 400 },
+  { id = "e", label = "E 退出按钮复刻",         w = 120, declaredW = 120 },
+}
+
+M.align.CSS = [[
+<style>
+  .stage { width: 1600px; height: 900px; background-color: #0e1016; }
+
+  .hdr { width: 1500px; height: 40px; font-size: 20px; color: #7fd1ff;
+         margin-left: 40px; margin-top: 20px; }
+  .sub { width: 1500px; height: 30px; font-size: 15px; color: #c8cfe0;
+         margin-left: 40px; margin-top: 6px; }
+
+  /* 每组的标签（左对齐，便于认出是哪一组） */
+  .glabel { width: 1500px; height: 26px; font-size: 15px; color: #ffffff;
+            margin-left: 40px; margin-top: 10px; }
+
+  /* ---- A 组：直接放 stage 下（与 .over 同构）---- */
+  /* 框高 50 >= 字号 20 x 1.9 = 38 ✓ */
+  .a-box { position: absolute; left: 40px; top: 150px;
+           width: 400px; height: 50px;
+           font-size: 20px; color: #ffffff; background-color: #2a3550;
+           text-align: center; }
+
+  /* ---- B 组：嵌在绝对定位容器里（复刻结算窗口结构）---- */
+  .b-wrap { position: absolute; left: 40px; top: 220px;
+            width: 500px; height: 120px; }
+  /* ⚠️ 容器不写 background-color：容器没有 bgColor 字段，写了也无效；
+        而且它是"裁剪容器不设背景"那条约束的同理 */
+  .b-box  { position: absolute; left: 20px; top: 10px;
+            width: 400px; height: 50px;
+            font-size: 20px; color: #ffffff; background-color: #2a3550;
+            text-align: center; }
+
+  /* ---- C 组：同 B，但把 width 与 text-align 都显式写在子元素上 ---- */
+  .c-wrap { position: absolute; left: 40px; top: 360px;
+            width: 500px; height: 120px; }
+  .c-box  { position: absolute; left: 20px; top: 10px;
+            width: 400px; height: 50px;
+            font-size: 20px; color: #ffffff; background-color: #2a3550;
+            text-align: center; }
+
+  /* ---- D 组：嵌两层 ---- */
+  .d-wrap1 { position: absolute; left: 40px; top: 500px;
+             width: 500px; height: 120px; }
+  .d-wrap2 { position: absolute; left: 10px; top: 10px;
+             width: 460px; height: 90px; }
+  .d-box   { position: absolute; left: 10px; top: 10px;
+             width: 400px; height: 50px;
+             font-size: 20px; color: #ffffff; background-color: #2a3550;
+             text-align: center; }
+
+  /* ---- E 组：退出按钮复刻（demo_dino 里那个）---- */
+  .e-box { position: absolute; left: 40px; top: 650px;
+           width: 120px; height: 54px;
+           font-size: 18px; color: #535353; background-color: #e8e8e8;
+           text-align: center; }
+
+  /* 长文本对照组：同样居中，但内容长，便于量左右留白是否相等 */
+  .long { position: absolute; left: 40px; top: 730px;
+          width: 400px; height: 50px;
+          font-size: 20px; color: #ffffff; background-color: #2a3550;
+          text-align: center; }
+
+  .tail { width: 1500px; height: 28px; font-size: 15px; color: #ff9a4a;
+          margin-left: 40px; margin-top: 10px; }
+</style>
+]]
+
+function M.align.build()
+  -- ★ 必须把 CSS 拼进来：库只从返回的 HTML 里提取 <style>，
+  --   单独定义一个 M.align.CSS 常量【不会】被用到（踩过）。
+  return M.align.CSS .. [[
+<div class="stage">
+  <div class="hdr" id="al-hdr">文字居中 / 坐标系探针</div>
+  <div class="sub" id="al-sub">请截图，并看日志里的【读回表】—— 每组两个文本：短 / 长</div>
+
+  <!-- A：直接放 stage 下（基线，与已知可用的 .over 同构） -->
+  <div class="glabel" id="al-gA">A 直接放 stage（基线）</div>
+  <div class="a-box" id="al-a1">居中</div>
+
+  <!-- B：嵌在绝对定位容器里 -->
+  <div class="glabel" id="al-gB">B 嵌绝对定位容器（复刻结算窗口）</div>
+  <div class="b-wrap" id="al-bw">
+    <div class="b-box" id="al-b1">居中</div>
+  </div>
+
+  <!-- C：同 B，显式 width + text-align -->
+  <div class="glabel" id="al-gC">C 同 B 但显式写 width / text-align</div>
+  <div class="c-wrap" id="al-cw">
+    <div class="c-box" id="al-c1">居中</div>
+  </div>
+
+  <!-- D：嵌两层 -->
+  <div class="glabel" id="al-gD">D 嵌两层</div>
+  <div class="d-wrap1" id="al-dw1">
+    <div class="d-wrap2" id="al-dw2">
+      <div class="d-box" id="al-d1">居中</div>
+    </div>
+  </div>
+
+  <!-- E：退出按钮复刻（验证尺寸是否为声明的 1.6 倍） -->
+  <div class="glabel" id="al-gE">E 退出按钮复刻（宽 120 高 54）</div>
+  <div class="e-box" id="al-e1">退出</div>
+
+  <!-- 长文本：同 A，但内容长，便于量左右留白 -->
+  <div class="glabel" id="al-gL">长文本对照组（同 A 的样式）</div>
+  <div class="long" id="al-l1">1234567890</div>
+
+  <div class="tail" id="al-tail">判读：看日志 ha 字段 与 截图里文字的左右留白</div>
+</div>
+]]
+end
+
+M.align.classes = { hdr = true, sub = true, glabel = true,
+                    ["a-box"] = true, ["b-box"] = true, ["c-box"] = true,
+                    ["d-box"] = true, ["e-box"] = true, long = true,
+                    tail = true }
+
+--[[ ★ 读回：把每个对照元素的【声明值】与【实际值】并排列出来。
+
+     ⚠️ 这是本模块的重点 —— 不打印"我打算设什么"，而是读引擎侧
+        真正生效的字段与布局结果。 ]]--
+function M.align.after(ui)
+  log("")
+  log("============================================================")
+  log("  读回表：声明值 vs 引擎实际值")
+  log("============================================================")
+
+  -- ★ 等一帧，确保控件都建出来了（render 后控件在同一帧内创建）
+  local dom = require('webui').dom
+
+  -- 每个 id 的【声明宽度】（与 CSS 逐字对应；改 CSS 记得同步改这里）
+  local DECLARED = {
+    ["al-a1"] = 400, ["al-b1"] = 400, ["al-c1"] = 400,
+    ["al-d1"] = 400, ["al-e1"] = 120, ["al-l1"] = 400,
+  }
+  -- 期望的 ha（全部都是 center）
+  local EXPECT = "Middle"
+
+  local order = { "al-a1", "al-b1", "al-c1", "al-d1", "al-e1", "al-l1" }
+
+  log("")
+  log(string.format("  %-8s %-10s %-12s %-10s %-14s %s",
+      "id", "声明宽", "实际框宽", "ha读回", "对齐判定", "说明"))
+  log("  " .. string.rep("-", 86))
+
+  local problems = {}
+
+  for _, id in ipairs(order) do
+    local nd = nil
+    dom.walk(ui.doc, function(n)
+      if n:isElement() and n.attrs and n.attrs.id == id then nd = n end
+    end)
+
+    if not nd then
+      log(string.format("  %-8s (找不到该 DOM 节点)", id))
+      problems[#problems + 1] = id .. ":节点缺失"
+    else
+      local e = ui.rendered.live[nd]
+      local ctrl = e and e.control
+      local box = nd.box
+
+      local ha = "?"
+      local kind = e and e.kind or "?"
+      if ctrl then
+        local v = safeCall(function() return ctrl.horizontalAlignment end)
+        ha = tostring(v)
+      end
+
+      local declared = DECLARED[id] or -1
+      local actualW = box and box.w or -1
+
+      -- ★ 判定：ha 是否为目标值；框宽是否等于声明值
+      local haOK = (ha == EXPECT)
+        or (ha ~= "?" and ha ~= "nil" and ha ~= "Left" and ha ~= "L")
+      local wOK = math.abs(actualW - declared) < 1.5
+
+      local verdict, note = "", ""
+      if not haOK then
+        verdict = "❌ ha不对"
+        note = "写入未生效（枚举名？控件类型？）"
+        problems[#problems + 1] = id .. ":ha=" .. ha
+      elseif not wOK then
+        verdict = "⚠️ 宽度不符"
+        note = string.format("差 %.1f（布局/尺寸问题）", actualW - declared)
+        problems[#problems + 1] = string.format("%s:宽 %.0f≠%.0f",
+            id, actualW, declared)
+      else
+        verdict = "✅ 相符"
+        note = string.format("被测控件 kind=%s", kind)
+      end
+
+      log(string.format("  %-8s %-10d %-12.1f %-10s %-14s %s",
+          id, declared, actualW, ha, verdict, note))
+
+      -- 额外打印位置，便于与截图对照
+      if box then
+        log(string.format("           box x=%.1f y=%.1f w=%.1f h=%.1f",
+            box.x or -1, box.y or -1, box.w or -1, box.h or -1))
+      end
+    end
+  end
+
+  --===========================================================================
+  hr("【判读表】")
+  --===========================================================================
+
+  log("  ★★ 关键：本表只能证明【库有没有把值写进去】。")
+  log("     文字在屏幕上到底有没有居中，必须看【截图】量左右留白 ——")
+  log("     引擎没有「文字实际 bbox」的 API，日志给不出渲染位置。")
+  log("")
+  log("  换算常数：截图像素 = 画布单位 x 1.6（2560 屏 / 1600 画布）")
+  log("    例：A 组框 left=40 宽=400 -> 截图上应为 x 64 ~ 704")
+  log("        若文字左边界不在中间（约 x 384 起），就是没居中")
+  log("")
+
+  if #problems == 0 then
+    log("  ✅ 所有对照组的 ha 与框宽都与声明相符")
+    log("     => 库这一层没问题。")
+    log("     => 那 demo_dino 弹窗里文字不居中的原因，只可能是：")
+    log("        ① 截图上量错了框的位置（框不在你以为的地方），或")
+    log("        ② 真机上 horizontalAlignment 对【某些控件】不生效")
+    log("")
+    log("  ⚠️ 请重点对比截图里的 A（基线）与 B（嵌套）：")
+    log("       A 居中而 B 不居中 -> 根因是【嵌套】")
+    log("       A、B 都不居中      -> 根因是引擎/库层（与嵌套无关）")
+    log("       A、B 都居中        -> 那 demo 的问题在别处，需再看 demo 截图")
+  else
+    log("  ⚠️ 发现 " .. #problems .. " 处与声明不符：")
+    for _, p in ipairs(problems) do log("     - " .. p) end
+    log("")
+    log("  => 先修这些【可测的】不符项，再谈文字居中。")
+  end
+
+  log("")
+  log("  ★ 别忘了把结论追加到本文件头部的「历史结论索引」。")
+  log("")
+  log("============================================================")
+end
+
+M.align.report = function(ui, items)
+  log(string.format("  （本模块共 %d 个对照文本控件）", #items))
+  log("  ★ 请【截图】，然后按「读回表」+ 截图留白一起判读。")
+end
+
 --=============================================================================
 -- 主流程
 --=============================================================================
@@ -948,7 +1282,7 @@ end
      ⚠️ 已移除：text / mask / glyph / clip / mount
         —— 归档在 docs/探针模块归档.md，需要时按那里重建。
   ]]--
-local MODULES = { key = M.key, perf = M.perf }
+local MODULES = { key = M.key, perf = M.perf, align = M.align }
 
 local root, ui, bound, retryCount = nil, nil, false, 0
 
@@ -968,6 +1302,13 @@ local function runModule(name)
   if not ok then
     warn("渲染失败: " .. tostring(err))
     return false
+  end
+
+  -- ★ 探针的 before 钩子：需要在首帧渲染【之前】做的事
+  --   （align 模块用它给对照组做第二遍 flush，确保读回的是稳定结果）
+  if mod.before then
+    local ok0, err0 = pcall(mod.before, ui)
+    if not ok0 then warn("before() 异常: " .. tostring(err0)) end
   end
 
   if mod.after then

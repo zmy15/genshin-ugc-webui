@@ -89,16 +89,18 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_demo_signal` — ★ **按钮发信号**（模拟点击 → 读回引擎实收参数）
 - `test_demo_dino_quit` — ★ **退出/结算窗口**（弹窗按钮可点、暂停计时、上报整数秒+分数）
 - `test_demo_dino_style` — ★ 文字视觉回归（含弹窗文字必须被采样到，防 `display:none` 回归）
+- `test_probe_align` — ★ align 探针自检（确认真机能拿到正确的读回表）
 
 ## 真机探针
 
 ```bash
 # 改 deploy/probe.lua 顶部一行：
-local ACTIVE = "perf"   -- key / perf
+local ACTIVE = "perf"   -- key / perf / align
 ```
 
 - `key` = 键盘事件验证（`AddKeyEventListener` 能否用）
 - `perf` = 逐帧写入上限压测（4 档：10/40/80/160 控件）
+- `align` = 文字居中 / 坐标系（五组对照，用于定位"文字不居中"）
 
 历史上还有 `text` / `mask` / `glyph` / `clip` / `mount` 五个模块，
 2026-10-07 精简时移除 —— 它们的**结论、设计意图与重建要点**归档在
