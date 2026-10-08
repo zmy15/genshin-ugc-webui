@@ -48,7 +48,7 @@
 |---|---|
 | `install.py` | ★ **一键安装到游戏工程**（库 + 起始页 + 使用说明） |
 | `build_external.lua` | 只装库到 `external_lua_file`（`install.py` 的薄封装） |
-| `build.lua` | 打包成单文件（`bundle/webui.lua`），供"粘贴源码"场景 |
+| `build.lua` | 打包成单文件（`bundle/webui.lua`），供"粘贴源码"场景；`--check` 与磁盘产物逐行比对，过期则 exit 1 |
 | `verify_external.lua` | 模拟真机 require 规则，验证部署正确性（含 `.gil` 同步检查） |
 | `engine_mock.lua` | ★ **真机仿真 mock** —— 严格模拟"自定义字段不可写"等限制 |
 
@@ -100,7 +100,7 @@ lua verify_external.lua "<external_lua_file 路径>"
 
 ---
 
-## 四、测试（32 个套件）
+## 四、测试（34 个套件）
 
 ```bash
 lua test_xxx.lua
@@ -125,6 +125,7 @@ lua test_xxx.lua
 | **`test_real`** | ★ **真机仿真**（用 `engine_mock`） |
 | `test_shop` | 装备商店端到端 |
 | `test_bundle` | 打包产物自检 |
+| **`test_build_check`** | ★ **`build.lua --check` 真能发现过期产物**（一致 / 过期 / 不存在 三分支 + 退出码与首个差异行断言） |
 | `test_real_prefabs` | 真实模板索引 |
 | **`test_clip`** | ★ **裁剪 / 换图**（遮罩容器、矩形裁剪、透明处理） |
 | `test_demo_panel` | 角色面板 demo 自检 |

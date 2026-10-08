@@ -11,7 +11,7 @@ lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md 是权威版）
-tests/       33 个测试套件
+tests/       34 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -70,12 +70,13 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-33 个套件，路径自包含（任何目录可跑）。关键回归：
+34 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
 - `test_real` — 真机仿真（用 `tools/engine_mock.lua`，严格模拟真机限制）
 - `test_probe` — 统一探针自检
+- `test_build_check` — `tools/build.lua --check` 真的能发现过期产物（见下）
 
 ## 真机探针
 

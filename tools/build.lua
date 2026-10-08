@@ -9,7 +9,12 @@
 
   用法：
     lua build.lua            -> 生成 bundle/webui.lua
-    lua build.lua --check    -> 只检查，不写文件
+    lua build.lua --check    -> 不写文件；把【重新生成的内容】与磁盘上现有的
+                                bundle/webui.lua 逐行比对，检测产物是否过期。
+
+  退出码（--check）：
+    0 = 一致，或磁盘上还没有产物（bundle/ 未构建过，谈不上"过期"）
+    1 = 不一致 —— 磁盘产物已过期，请重新构建
 ==============================================================================]]
 
 local MODULES = {
@@ -216,10 +221,68 @@ buf[#buf+1] = ""
 
 local out = table.concat(buf, "\n")
 
+--[[ --check 模式：把"重新生成的内容"与磁盘上现有的 bundle 逐行比对。
+
+      ★ 这里曾经只打印一行"将生成 N 字节"就 return —— 从不读磁盘产物，
+        所以任何情况下都 exit 0。而 .github/workflows/tests.yml 里那步
+        「校验 bundle 与源码同步」把它当成了防线，于是成了一枚
+        【永远不会红】的假绿勾。现在改成真比对，不一致就 exit 1。
+
+      产物不存在时【不算过期】（bundle/ 在 .gitignore 里，全新克隆本来就没有），
+      打印 [跳过] 后正常退出 —— 否则每个新克隆第一次跑 --check 都会红。
+      这条分支由 tests/test_build_check.lua 覆盖。
+]]--
+
 if checkOnly then
-  print("(--check 模式，未写文件)")
-  print(string.format("  将生成 %d 字节, %d 行", #out, select(2, out:gsub("\n",""))+1))
-  return
+  print("(--check 模式，不写文件)")
+  print(string.format("  重新生成 %d 字节, %d 行",
+      #out, select(2, out:gsub("\n", "")) + 1))
+
+  local existing = readFile(OUT_FILE)
+  if not existing then
+    print("  [跳过] 磁盘上没有 " .. OUT_FILE .. "，无从比对（未构建过）")
+    return
+  end
+
+  if existing == out then
+    print(string.format("  [OK] 与磁盘产物一致（%d 行）",
+        select(2, existing:gsub("\n", "")) + 1))
+    return
+  end
+
+  -- ---- 不一致：给出能直接定位的摘要，别只丢一句"不一致" ----
+  local function splitLines(s)
+    local t = {}
+    for line in (s .. "\n"):gmatch("(.-)\n") do t[#t + 1] = line end
+    return t
+  end
+
+  local oldLines, newLines = splitLines(existing), splitLines(out)
+  local total = math.max(#oldLines, #newLines)
+  local diffCount, firstDiff = 0, nil
+  for i = 1, total do
+    if oldLines[i] ~= newLines[i] then
+      diffCount = diffCount + 1
+      if not firstDiff then firstDiff = i end
+    end
+  end
+
+  local function clip(s)
+    if s == nil then return "(无此行)" end
+    if #s > 72 then return s:sub(1, 72) .. " …" end
+    return s
+  end
+
+  print()
+  print("  !! 磁盘产物已过期: " .. OUT_FILE .. " 与源码重新生成的结果不一致")
+  print(string.format("     磁盘 %d 行   vs   重新生成 %d 行",
+      #oldLines, #newLines))
+  print(string.format("     差异行数 %d，首个差异在第 %d 行", diffCount, firstDiff))
+  print("       磁盘: " .. clip(oldLines[firstDiff]))
+  print("       新  : " .. clip(newLines[firstDiff]))
+  print()
+  print("     修复: lua tools/build.lua")
+  os.exit(1)
 end
 
 -- 输出目录若不存在则自动创建（bundle/ 在 .gitignore 里，克隆后没有）

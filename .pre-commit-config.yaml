@@ -9,7 +9,7 @@
 #
 #   Lua 的语法与语义验证**不放这里**，全部交给 .github/workflows/tests.yml：
 #     - 语法检查：luac5.3 -p（覆盖所有 .lua）
-#     - 全量测试：32 个套件，在 Lua 5.3 下跑
+#     - 全量测试：34 个套件，在 Lua 5.3 下跑
 #   原因：pre-commit 的 Lua 钩子在本机与普通 GitHub runner 上都要求
 #   额外安装 luarocks（`language: lua` 会调用 `luarocks config`，
 #   `language: script/unsupported` 则依赖 PATH 里有 lua）。

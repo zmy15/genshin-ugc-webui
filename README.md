@@ -107,7 +107,7 @@ lua tests/test_html.lua      # 单个
 for f in tests/test_*.lua; do lua "$f" || echo "FAIL $f"; done   # 全部
 ```
 
-**32 个套件全部通过**（全部位于 `tests/`）。路径自包含，任何目录都能跑。
+**34 个套件全部通过**（全部位于 `tests/`）。路径自包含，任何目录都能跑。
 
 
 ### 真机验证
@@ -191,7 +191,7 @@ deploy/           示例与探针
   ├── demo_panel.lua    角色面板
   └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            32 个测试套件
+tests/            34 个测试套件
 tools/            构建、验证、mock
   ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
   └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）

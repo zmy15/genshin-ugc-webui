@@ -72,6 +72,13 @@ jobs:
 
       - name: 构建 bundle
         # 先构建：test_bundle.lua 依赖 bundle/webui.lua 产物
+        #
+        # ★ 这里【故意】不再跟一个 `build.lua --check` 步骤。
+        #   bundle/ 在 .gitignore 里 —— CI 上没有"提交过的产物"可比，
+        #   紧跟构建之后再 --check 必然一致，那会是一枚永远不红的假绿勾
+        #   （原来那步就是这种情形，已删）。
+        #   --check 的比对能力由 tests/test_build_check.lua 覆盖：
+        #   它故意改坏产物，断言退出码 = 1 且首个差异行定位正确。
         run: lua5.3 tools/build.lua
 
       - name: 运行全部测试套件
@@ -97,8 +104,3 @@ jobs:
             echo "::error::$fail 个测试套件失败"
             exit 1
           fi
-
-      - name: 校验 bundle 与源码同步
-        # 若有人改了 lib/ 却忘了重新构建，bundle 会过期。
-        # 这里用 --check 模式确认构建结果与提交一致（不写文件）。
-        run: lua5.3 tools/build.lua --check
