@@ -1206,14 +1206,15 @@ function Renderer:update(root, domChanged)
         -- ★ 记账：这个控件现在【在池里】（供 isOrphan 查询）
         if not self._pooled then self._pooled = {} end
         self._pooled[e.control] = true
-        --[[ ⚠️ 不写 control._orphan —— 那是【自定义字段】，真机静默写失败。
+        --[[ ⚠️ 这里【故意不写】control._orphan（自定义字段，真机写入静默失败）。
 
              本项目硬性约束：控件无法存自定义状态（见 CLAUDE.md）。
              所以"这个控件是否在池里"必须由【渲染器自己记账】，
              用 rendered:isOrphan(control) 查（见下）。
 
-             ★ 仍然保留这一行只是为了兼容老代码的读取 ——
-               但请注意它在真机上【读回来永远是 nil】。 ]]
+             ★ 历史教训：这里曾写过 `_orphan = true`，应用层也真的去读它 ——
+               那个判断【恒为真】（读回永远 nil）= 空检查，会把图/色
+               写到池里【别人的】控件上（白块/串色，不报错）。别再加回来。 ]]
         if e.hot then
           local hlist = self.pool["button"]
           if not hlist then hlist = {}; self.pool["button"] = hlist end
