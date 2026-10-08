@@ -218,8 +218,14 @@ check("★ 贴图时把控件引用存下来（rememberCtrl）",
      缓存引用可能指向池里别人的控件 -> 染色写错对象 -> 白块。 ]]
 check("★★ 染色现查 rendered.live（不优先用缓存）",
   src:find("local e = uiRef and uiRef.rendered and uiRef.rendered.live", 1, true) ~= nil)
-check("★★ reimageNode 现查优先、缓存仅作兜底（且查 _orphan）",
-  src:find("if cached and not cached._orphan then ctrl = cached end", 1, true) ~= nil)
+--[[ ★★ R31：兜底必须查 rendered:isOrphan，不能用 cached._orphan。
+
+     ⚠️ `_orphan` 是自定义字段，真机写入静默失败 -> 读回永远 nil ->
+        `not nil` 恒为 true -> 那个"检查"等于没检查。 ]]
+check("★★ reimageNode 现查优先、缓存仅作兜底（且查 isOrphan）",
+  src:find("rend:isOrphan(cached)", 1, true) ~= nil)
+check("★★ 不再用 _orphan 自定义字段当判据（真机写不进去）",
+  src:find("not cached._orphan", 1, true) == nil)
 
 --=============================================================================
 print("")

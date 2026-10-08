@@ -130,6 +130,7 @@ function R.new(rootControl, opts)
   self.root      = rootControl
   self.prefabs   = opts.prefabs   -- 保存一份，便于诊断输出
   self.pool      = {}        -- kind -> 空闲控件数组
+  self._pooled   = {}        -- ★ control -> true（"在池里"的账本，供 isOrphan 查）
   self.live      = {}        -- node -> { control=, kind=, last={} }
   self.stats     = { created = 0, reused = 0, destroyed = 0, written = 0 }
   self.debug     = opts.debug or false
@@ -235,6 +236,9 @@ function Renderer:_take(kind, parent)
       if isChildOf(c, parent) then
         table.remove(list, i)
         self.stats.reused = self.stats.reused + 1
+        -- ★ 从"池中"账本里划掉（见 isOrphan）
+        if self._pooled then self._pooled[c] = nil end
+        self:_resetReused(c, kind)
         return c
       end
     end
@@ -245,6 +249,67 @@ function Renderer:_take(kind, parent)
     self.stats.created = self.stats.created + 1
   end
   return c
+end
+
+--[[ ★★★ 复用前把控件【上一个主人的外观】清干净。
+
+     ══════════════════════════════════════════════════════════════════════
+     为什么必须清（R31 库级修复）
+     ══════════════════════════════════════════════════════════════════════
+
+       控件池是【共享】的：节点隐藏 -> 控件还池 -> 别的节点取走。
+       而还池时只调了 `SetActive(false)`，**外观字段一个都没清**。
+
+       于是新主人会继承旧主人的外观 —— 除非它自己显式写一遍：
+
+         · image.imageColor
+             旧主人染成红色 -> 新主人没写 -> 【新主人显示红色】
+             真机表现：某个图片控件"莫名其妙是红的/白的"。
+             ★ 这与"白色方块"是同一类 bug，只是颜色来源不同。
+
+         · image 的图（imageId）
+             旧主人 SetImage(100002 圆形) -> 新主人没 SetImage
+             -> 【新主人显示圆形】，而它可能想要方的。
+
+         · textbox.text / fontColor / fontSize
+             旧主人的文字会残留到新主人身上（新主人无文字时）。
+
+     ★ 为什么在 _take 里清而不是还池时清：
+       还池时清没有意义 —— 控件可能立刻又配给同一个节点。
+       在【取用时】清，语义是"交付给新主人前恢复出厂"，
+       对每个消费方都生效，应用层不用自己记得。
+
+     ⚠️ 只清"外观"，不清变换（位置/尺寸/可见性）：
+       那些由 writeControl 每帧按节点计算写入，清了也无害，
+       但清它们会破坏 diff 缓存与首帧的过渡起点（见 setColor 的 isFirst）。 ]]--
+function Renderer:_resetReused(control, kind)
+  if not control then return end
+
+  -- ① image：把染色复位成【全透明】，而不是白色
+  --[[ ⚠️⚠️ 为什么是透明而不是白（想清楚再改）：
+
+       复用后新主人若【没写】imageColor，它会保持我们复位成的值。
+       两种选择的后果完全不同：
+
+         · 复位成白色 (255,255,255,255)
+             -> 一个"忘了染色"的图片控件 = 【一块白】
+             -> 正是最难查的那种 bug（看着像渲染坏了）
+
+         · 复位成全透明 (0,0,0,0)          ★ 采用
+             -> 忘了染色 = 看不见（漏了内容，但不会画错东西）
+             -> 而且这恰好就是【裁剪容器】要的值（见下方 imageColor 段），
+                复用给裁剪容器时天然正确
+
+       ★ 原则：复用复位应把控件置于"最不会骗人"的状态。
+         看不见是明显的缺失；白色的方块会被误判成渲染故障。 ]]
+  if kind == "image" then
+    pcall(function() control.imageColor = Color.FromRGBA(0, 0, 0, 0) end)
+  end
+
+  -- ② textbox：清文字与字号/字色（新主人若不写就会残留别人的）
+  if kind == "textbox" then
+    pcall(function() control.text = "" end)
+  end
 end
 
 --[[ 归还到池 ]]--
@@ -285,6 +350,37 @@ end
 function Renderer:_show(control)
   if not control then return end
   pcall(function() control:SetActive(true) end)
+end
+
+--[[ ★★★ 查询一个控件是否【当前在控件池里】（= 已被还池、可能被别的节点取走）。
+
+     ══════════════════════════════════════════════════════════════════════
+     为什么需要它（R31 库级修复）
+     ══════════════════════════════════════════════════════════════════════
+
+       应用层常有"缓存一个控件引用，之后再用"的需求
+       （例如精灵矩形换姿态时要重贴图）。但控件池是【共享】的：
+       节点隐藏 -> 控件还池 -> 随时被别的节点取走。
+       缓存的引用就指向了别人的控件，写进去【不报错但写错对象】。
+
+       ⚠️ 旧做法是读 `control._orphan` —— 但那是【自定义字段】，
+          真机上写入静默失败（本项目的硬性约束），
+          所以那个标记【永远是 nil】，等于什么都没守。
+          => 应用层以为自己在检查，其实是空检查。
+
+       ★ 正确做法：由渲染器自己记账（_pooled 表），
+         应用层查 rendered:isOrphan(ctrl)。
+
+     用法：
+       if not ui.rendered:isOrphan(ctrl) then
+         -- 这个控件确实还属于那个节点，可以安全写
+       end
+
+     ⚠️ 返回 true 只表示"它在池里"，不保证"它属于你"——
+        要拿当前有效的控件，优先用 rendered.live[node].control 现查。 ]]--
+function Renderer:isOrphan(control)
+  if not control then return true end
+  return (self._pooled and self._pooled[control] == true) or false
 end
 
 --=============================================================================
@@ -810,11 +906,13 @@ function Renderer:update(root, domChanged)
       local list = self.pool[entry.kind]
       if not list then list = {}; self.pool[entry.kind] = list end
       list[#list + 1] = entry.control
+      self._pooled[entry.control] = true
 
       if entry.hot then
         local hlist = self.pool["button"]
         if not hlist then hlist = {}; self.pool["button"] = hlist end
         hlist[#hlist + 1] = entry.hot
+        self._pooled[entry.hot] = true
       end
     end
   end
@@ -1105,12 +1203,22 @@ function Renderer:update(root, domChanged)
         local list = self.pool[e.kind]
         if not list then list = {}; self.pool[e.kind] = list end
         list[#list + 1] = e.control
-        pcall(function() e.control._orphan = true end)
+        -- ★ 记账：这个控件现在【在池里】（供 isOrphan 查询）
+        if not self._pooled then self._pooled = {} end
+        self._pooled[e.control] = true
+        --[[ ⚠️ 不写 control._orphan —— 那是【自定义字段】，真机静默写失败。
+
+             本项目硬性约束：控件无法存自定义状态（见 CLAUDE.md）。
+             所以"这个控件是否在池里"必须由【渲染器自己记账】，
+             用 rendered:isOrphan(control) 查（见下）。
+
+             ★ 仍然保留这一行只是为了兼容老代码的读取 ——
+               但请注意它在真机上【读回来永远是 nil】。 ]]
         if e.hot then
           local hlist = self.pool["button"]
           if not hlist then hlist = {}; self.pool["button"] = hlist end
           hlist[#hlist + 1] = e.hot
-          pcall(function() e.hot._orphan = true end)
+          self._pooled[e.hot] = true
         end
       end
     end
@@ -1192,6 +1300,7 @@ function Renderer:clear()
   end
   self.live = {}
   self.pool = {}
+  self._pooled = {}
   return self
 end
 

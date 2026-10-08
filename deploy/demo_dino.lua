@@ -997,18 +997,27 @@ end
           · 或者贴图贴错对象
         这正是真机上"冒出白色方块"的成因之一。
 
-     ★ spriteCtrls 只作为【最后的兜底】，且用前检查 _orphan。 ]]--
+     ★ spriteCtrls 只作为【最后的兜底】，且用前查 rendered:isOrphan。
+
+     ⚠️⚠️ 不能用 `cached._orphan` 判断（R31 修）：
+        `_orphan` 是【自定义字段】，真机上写入静默失败 ->
+        读回来【永远是 nil】-> `not nil` 恒为 true ->
+        "检查"等于没检查，照样会写到池里别人的控件上。
+
+     正确做法：查渲染器自己记的账（rendered:isOrphan）。 ]]--
 local function reimageNode(node)
   if not clipRef then clipRef = require('webui_clip') end
 
+  local rend = uiRef and uiRef.rendered
   local ctrl = nil
-  local e = uiRef and uiRef.rendered and uiRef.rendered.live
-            and uiRef.rendered.live[node]
+  local e = rend and rend.live and rend.live[node]
   ctrl = e and e.control
   if not ctrl then
-    -- 兜底：用缓存的引用，但必须确认它没被还池
+    -- 兜底：用缓存的引用，但必须确认它没在池里（= 没被别的节点取走）
     local cached = spriteCtrls[node]
-    if cached and not cached._orphan then ctrl = cached end
+    if cached and not (rend and rend.isOrphan and rend:isOrphan(cached)) then
+      ctrl = cached
+    end
   end
   if ctrl then spriteCtrls[node] = ctrl end
 

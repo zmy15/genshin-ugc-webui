@@ -11,7 +11,7 @@ lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       35 个测试套件
+tests/       38 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -49,7 +49,8 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **裁剪容器不设 `background-color`** | 填充不受自身遮罩约束 → 溢出到裁剪区外 |
 | **容器高度要装得下内容** | 溢出内容**仍可见但失去父背景** → "背景颜色不同" |
 | **新控件 `active` 默认 `false`** | 必须 `SetActive(true)`，否则不可见但字段写入成功 |
-| **自定义字段不可写** | 控件无法存状态，只能用外部表或 `GetChildren()` |
+| **自定义字段不可写** | 控件无法存状态，只能用外部表或 `GetChildren()`。★ 这**包括**"标记控件是否已还池"—— 写 `ctrl._orphan` 是**空检查**（读回恒为 nil），要用 `rendered:isOrphan(ctrl)` |
+| **复用控件会继承上一个主人的外观** | 还池只 `SetActive(false)`，`imageColor`/`text` 都不清 → 新主人没写就露馅。库已在 `_take` 里复位（染色→**全透明**，不是白色） |
 | **字段按控件类型封死** | 容器/按钮写 `bgColor`/`text` 静默失败 |
 | **`fontSize` 必须整数** | 浮点写入失败 |
 | **`OnUpdate` 不驱动** | 逐帧靠递归 `TweenSequence` |
@@ -72,11 +73,13 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-35 个套件，路径自包含（任何目录可跑）。关键回归：
+38 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
 - `test_real` — 真机仿真（用 `tools/engine_mock.lua`，严格模拟真机限制）
+- `test_pool_reset` — ★ **控件池复用的两个库级缺陷**（外观继承 / `isOrphan` 账本）
+- `test_sprite_reassert` — ★ 拼像素图的每帧补帖图（白块回归）
 - `test_probe` — 统一探针自检
 - `test_build_check` — `tools/build.lua --check` 真的能发现过期产物（见下）
 - `test_dino_rules` — ★ **游戏可解性**（纯数值验算 + 与 demo 源码交叉校验常量）
