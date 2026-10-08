@@ -65,8 +65,9 @@ local G = {
   DINO_HIT_B = 112,
   DINO_X     = 160,
   OBS_HIT_PAD = 13,
-  MAX_SPEED  = 1500,
+  MAX_SPEED  = 2000,
   BASE_SPEED = 620,
+  ACCEL      = 48,
   WIDTH_SAFETY = 0.80,
   -- ★ 翼龙四档：前 2 档"必须跳"，后 2 档"不能跳"
   BIRD_YS    = { 596, 566, 440, 406 },
@@ -602,18 +603,78 @@ do
     check("★ WIDTH_SAFETY 一致", ws == G.WIDTH_SAFETY,
         string.format("demo=%s 本测试=%s", tostring(ws), tostring(G.WIDTH_SAFETY)))
 
-    -- ★ 生成间隔的时间约束：两障碍间隔 > 跳跃全程（来得及落地再跳）
-    local waveGap = tonumber(src:match("waveGap%s*=%s*(%d+)"))
-    local maxSpeed = tonumber(src:match("MAX_SPEED%s*=%s*(%d+)"))
-    local jumpDur = 2 * math.abs(G.JUMP_V) / G.GRAVITY
-    if waveGap and maxSpeed then
-      local worstGap = waveGap / maxSpeed
-      check("★ 最高速下两障碍间隔 > 跳跃全程（来得及落地）",
-          worstGap > jumpDur,
-          string.format("间隔 %.3fs > 跳跃 %.3fs", worstGap, jumpDur))
-    else
-      check("能从 demo 读到 waveGap / MAX_SPEED", false)
+    --[[ ★★★ 生成间隔的时间约束：两障碍间隔 > 跳跃全程（来得及落地再跳）
+
+       ⚠️⚠️ 必须检查【所有阶段】的 waveGap，不能只取第一个！
+
+          提速到 MAX_SPEED=2000 时暴露过这个测试自身的漏洞：
+          它用 `src:match("waveGap%s*=%s*(%d+)")` 只读到【阶段1】的值
+          （1100/2000 = 0.550s > 0.525s，看起来 OK），
+          而阶段2~4 是 1000/950/900 -> 0.500/0.475/0.450s，
+          【全部低于跳跃全程】= 玩家落地前下一个障碍就到了 = 必死波。
+
+          => 判据必须对【每一档】都成立（取最严的那档）。 ]]
+do
+  local gaps = {}
+  for v in src:gmatch("waveGap%s*=%s*(%d+)") do
+    gaps[#gaps + 1] = tonumber(v)
+  end
+  -- 跳过测试用副本里的替换值（999999 之类）
+  local real = {}
+  for _, v in ipairs(gaps) do
+    if v and v > 0 and v < 100000 then real[#real + 1] = v end
+  end
+
+  local maxSpeed = tonumber(src:match("MAX_SPEED%s*=%s*(%d+)"))
+  local jumpDur = 2 * math.abs(G.JUMP_V) / G.GRAVITY
+
+  check("★ 能读到各阶段的 waveGap", #real >= 4,
+      string.format("读到 %d 档", #real))
+
+  if maxSpeed and #real > 0 then
+    local worst, worstGap = nil, nil
+    for _, wg in ipairs(real) do
+      local t = wg / maxSpeed
+      if not worst or t < worst then worst, worstGap = t, wg end
     end
+    check("★★★ 【每一档】最高速下间隔都 > 跳跃全程（来得及落地）",
+        worst > jumpDur,
+        string.format("最严档 waveGap=%d -> %.3fs > 跳跃 %.3fs（%+.3fs）",
+            worstGap, worst, jumpDur, worst - jumpDur))
+  else
+    check("能从 demo 读到 waveGap / MAX_SPEED", false)
+  end
+end
+
+--[[ ★★ 封顶距离必须与【阶段标定】相称。
+
+     ⚠️ MAX_SPEED 提高时容易忽略：
+        封顶 dist = BASE*t + 0.5*ACCEL*t^2，t = (MAX-BASE)/ACCEL。
+        若加速度不跟着上调，封顶会被推到很远（甚至跑完所有阶段之后），
+        表现为「阶段4 已到、速度却还没上来」= 难度曲线形同虚设。 ]]
+do
+  local base  = tonumber(src:match("BASE_SPEED%s*=%s*(%d+)"))
+  local maxSp = tonumber(src:match("MAX_SPEED%s*=%s*(%d+)"))
+  local accel = tonumber(src:match("ACCEL%s*=%s*(%d+)"))
+  local stages = {}
+  for v in src:gmatch("STAGE_DIST%s*=%s*{([^}]*)}") do
+    for n in v:gmatch("(%d+)") do stages[#stages + 1] = tonumber(n) end
+    break
+  end
+  check("能读到 BASE_SPEED / MAX_SPEED / ACCEL",
+      base and maxSp and accel, string.format("%s/%s/%s",
+          tostring(base), tostring(maxSp), tostring(accel)))
+
+  if base and maxSp and accel and #stages >= 3 then
+    local t = (maxSp - base) / accel
+    local capDist = base * t + 0.5 * accel * t * t
+    local lastStage = stages[#stages]
+    check("★★ 封顶距离在【最后一个阶段之前】（否则阶段4 形同虚设）",
+        capDist < lastStage,
+        string.format("封顶 dist=%.0f < 阶段4 起点 %d（用时 %.1fs）",
+            capDist, lastStage, t))
+  end
+end
   end
 end
 
