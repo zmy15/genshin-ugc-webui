@@ -144,6 +144,7 @@ buf[#buf+1] = HEAD
 buf[#buf+1] = "-- webui.lua  ——  用 HTML/CSS 在千星奇域里渲染界面（单文件打包版）"
 buf[#buf+1] = "--"
 buf[#buf+1] = "-- 由 build.lua 自动生成，请勿手改。"
+buf[#buf+1] = "-- 协议: MIT —— Copyright (c) 2026 zmy15（见仓库根目录 LICENSE）"
 buf[#buf+1] = "-- 模块: " .. (function()
   local t = {}
   for _, p in ipairs(pieces) do t[#t+1] = p.name end

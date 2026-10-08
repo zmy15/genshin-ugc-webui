@@ -187,6 +187,7 @@ local ACTIVE = "key"     -- 改这里（★ 当前只有 key 一个模块）
 
 | 路径 | 说明 |
 |---|---|
+| `LICENSE` | 开源协议（MIT © 2026 zmy15） |
 | `bundle/webui.lua` | 打包产物（单文件部署用） |
 | `deploy/demo_panel.lua` | 角色面板示例（综合验证裁剪/换图/文字） |
 | `deploy/demo_shop.lua` | 装备商店示例 |

@@ -1,5 +1,8 @@
 # genshin-ugc-webui
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Lua 5.3](https://img.shields.io/badge/Lua-5.3-2C2D72.svg?logo=lua&logoColor=white)](.github/workflows/tests.yml)
+
 **用 Lua 在原神「千星奇域」（UGC）里渲染 HTML / CSS 风格的界面。**
 
 一个纯 Lua 实现的轻量 WebUI 引擎 —— 把 HTML/CSS 解析、布局、渲染到游戏的客户端控件上。
@@ -193,3 +196,10 @@ tools/            构建、验证、mock
   ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
   └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）
 ```
+
+---
+
+## 开源协议
+
+[MIT](LICENSE) © 2026 zmy15 —— 可自由使用、修改、分发、商用，
+只需保留版权声明与协议全文。软件按"原样"提供，不含任何担保。
