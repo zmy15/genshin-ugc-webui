@@ -50,6 +50,7 @@
 | **视觉** | 纯色块、文字、**圆形裁剪**、**矩形裁剪**、**任意形状裁剪**、`transform`、`transition`、`z-index` |
 | **交互** | `onclick` / `onmouseenter` / `ondrag` 等 8 种光标事件、**键盘事件**（`keys`） |
 | **游戏** | **`onTick(dt)` 逐帧逻辑钩子** —— 每帧先跑逻辑再渲染（物理 / 碰撞） |
+| **服务端** | **服务器信号**（`signals` / `onSignal` / `app:emit`）—— 签名校验 + 接收缓冲 + 限流 |
 | **图片** | 运行时 `SetImage` 换图、`imageColor` 染色 |
 
 ### 引擎做不到的
@@ -174,7 +175,7 @@ local ACTIVE = "key"   -- ★ 当前只有 key 一个模块
 ## 目录结构
 
 ```
-lib/webui/        ★ 库本体（12 个模块）。
+lib/webui/        ★ 库本体（13 个模块）。
                     文件名即部署名（webui_util.lua 等），整目录可直接拷进游戏工程
   ├── webui.lua         对外 API（入口）
   ├── webui_html.lua    HTML 解析
@@ -183,16 +184,18 @@ lib/webui/        ★ 库本体（12 个模块）。
   ├── webui_layout.lua  盒模型 + flex
   ├── webui_render.lua  控件池 + diff 渲染
   ├── webui_clip.lua    图片控件（遮罩 / 换图 / 染色）
+  ├── webui_signal.lua  ★ 服务器信号（签名校验 / 收发队列 / 缓冲 / 限流）
   └── ...
 deploy/           示例与探针
   ├── my_page.lua   ★ 用户视角的完整示例（队伍配置），install 的起始页模板
   ├── probe.lua     统一真机探针（改 ACTIVE 选模块）
   ├── demo_feature.lua  功能展示页（形状 / 裁剪 / flex，用于截图）
   ├── demo_min.lua      最小示例（82 行）
+  ├── demo_signal.lua   ★ 按钮 -> 发服务器信号
   ├── demo_panel.lua    角色面板
   └── demo_shop.lua     装备商店
 docs/             文档（引擎能力、API、Gaps 等）
-tests/            34 个测试套件
+tests/            42 个测试套件
 tools/            构建、验证、mock
   ├── install.py        ★ 一键安装到游戏工程（库 + 起始页 + 说明）
   └── build.lua          可选：打成一个单文件（给"粘贴源码"场景）

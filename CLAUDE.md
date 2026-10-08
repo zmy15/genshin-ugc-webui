@@ -6,12 +6,12 @@
 ## 目录
 
 ```
-lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎。
+lib/webui/   库本体（13 模块）—— 交付物，改动要谨慎。
              ★ 文件名即真机部署名（webui_util.lua / webui_render.lua …），
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       38 个测试套件
+tests/       42 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -73,7 +73,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-38 个套件，路径自包含（任何目录可跑）。关键回归：
+42 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -83,6 +83,9 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_probe` — 统一探针自检
 - `test_build_check` — `tools/build.lua --check` 真的能发现过期产物（见下）
 - `test_dino_rules` — ★ **游戏可解性**（纯数值验算 + 与 demo 源码交叉校验常量）
+- `test_signal` — ★ **服务器信号**（签名校验 / 接收缓冲 / 限流 / 解绑防叠加）
+- `test_mount` — ★ mount 生命周期（含 §8 信号接进逐帧循环的时序）
+- `test_demo_signal` — ★ **按钮发信号**（模拟点击 → 读回引擎实收参数）
 
 ## 真机探针
 

@@ -46,6 +46,67 @@ function OnDestroy()  app:stop()   end
 其中大半是 HTML/CSS）。**不写 mount 也可以** —— 用 `webui.new` 手动
 控制每一步，见 [`deploy/demo_feature.lua`](../../deploy/demo_feature.lua)。
 
+---
+
+## 和服务端通信
+
+客户端脚本与服务端之间**只有一条通道：服务器信号**
+（`ServerSignal` / `RegisterServerSignalHandler`）。
+
+```lua
+local app
+app = webui.mount{
+  root    = "Root",
+  prefabs = { container=1073741933, textbox=1073741934,
+              button=1073741935,    image=1073741938 },
+
+  -- ① 声明约定：信号名 = 服务端注册的名字，参数类型【按顺序】
+  signals = {
+    buy_item = { "int", "int" },   -- 商品 ID, 数量
+    chat     = { "string" },
+  },
+
+  -- ② 收：参数已按签名解好
+  onSignal = {
+    chat = function(text) app:setText("log", text) end,
+  },
+
+  html = [[<div class="btn" id="buy" onclick="buy">购买</div>
+           <div class="log" id="log"></div>]],
+  css  = [[
+    .btn { width:120px; height:40px; font-size:16px;
+           background-color:#3a7bd5; color:#fff; }
+    .log { width:300px; height:40px; font-size:16px;
+           background-color:#222; color:#fff; }
+  ]],
+
+  on = {
+    -- ③ 发
+    buy = function() app:emit("buy_item", 1001, 3) end,
+  },
+}
+
+function OnStart()    app:start()  end
+function OnUpdate(dt) app:update() end
+function OnDestroy()  app:stop()   end
+```
+
+**⚠️ 三条硬性注意：**
+
+1. **信号名必须先在服务端脚本里注册** —— 客户端单方面发/收没有意义。
+2. **参数顺序就是约定**，写错了**不会报错**，服务端只会收到错位的值。
+   所以请把顺序写进 `signals`，库会替你校验。
+3. `app:emit()` 默认**攒到本帧渲染前统一发**（防止 `onTick` 里每帧狂发）；
+   要立刻发用 `app:emitNow()`。
+
+**时序保证：`onTick(dt)` → 发信号 → 渲染 → 放行接收缓冲。**
+服务端信号如果在界面建好之前就到了，会先入队、等首帧渲染后按序重放，
+**不会丢**。
+
+完整说明见 [README.md](README.md) 的「服务器信号」一节。
+**完整可跑示例：** [`deploy/demo_signal.lua`](../../deploy/demo_signal.lua)
+（三个按钮分别演示 `emit` / `emitNow` / 字符串参数，并把发送结果显示在界面上）。
+
 <details>
 <summary>mount 到底替你做了什么</summary>
 
@@ -58,6 +119,7 @@ function OnDestroy()  app:stop()   end
 | `OnStart` 里找 Root + `OnUpdate` 里重试 120 帧 | `app:start()` / `app:update()` |
 | `OnDestroy` 里 `Kill` 循环 | `app:stop()` |
 | 手写 `refreshCounter` 改文字 | `app:setText(id, text)` |
+| 手写 `ServerSignal` / `RegisterServerSignalHandler` | `signals` + `onSignal` + `app:emit()` |
 
 `app:setText` / `app:setStyle` 内部走 **DOM**（`node:setText`）而不是
 直接写控件 —— 渲染器每帧都会用 DOM 文本覆盖控件，直接改 `control.text`

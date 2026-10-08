@@ -32,6 +32,9 @@ function EngineMock.new(prefabs)
   local tweenCalls = 0    -- ★ game.Tween 被 Play 的次数（R28）
   local tweenSeqs = {}    -- ★ 创建过的 tween 对象
   local lastTween = nil   -- ★ 最近一次 Play 的 { control, props, duration }
+  local sentSignals = {}  -- ★ 客户端发出的服务器信号 { name=, params= }
+  local handlers = {}     -- ★ 注册过的服务器信号监听 { [name] = {cb1, cb2} }
+  local sendHook = nil    -- ★ 模拟"发送时抛异常"（真机上是 pcall 失败的来源）
 
   local COMMON = {
     anchorMinX=1, anchorMinY=1, anchorMaxX=1, anchorMaxY=1,
@@ -355,6 +358,82 @@ function EngineMock.new(prefabs)
       tweenSeqs[#tweenSeqs + 1] = tw
       return tw
     end,
+
+    --[[ ★★ game.ServerSignal —— 客户端 -> 服务端的唯一通道（client_control_api.md §9）
+
+         API（文档第 305-338 行）：
+            game.ServerSignal(signalName) -> ServerSignal
+            sig:AddInt(n) / AddString(s) / AddFloat(f) / AddBool(b) / ...
+            sig:AddParam(paramType, paramValue)   -- 通用形式
+            sig:SendSignal()
+
+         ⚠️ 为什么必须补进 mock（"测试替身必须忠实"，见
+            docs/引擎能力与限制.md §七）：
+
+           webui_signal 的全部逻辑都建立在"发送真的发生了、
+           参数真的按顺序进了列表"之上。若 mock 没有 game.ServerSignal，
+           那条路径【本地永远不执行】—— 本地全绿、真机才走，
+           与 R28 补 game.Tween 之前的状态一模一样。
+
+         ★ 真实模型：参数按【调用顺序】追加进一个列表，
+           引擎不校验类型/个数，也不报错 —— 所以"顺序错了"
+           在真机上【完全静默】。mock 照实实现，好让
+           webui_signal 的签名校验在本地就能被测出来。
+
+         ★ 注意与控件的区别：这里【允许】自定义字段吗？
+           不允许。真机的 ServerSignal 也是宿主对象，
+           自定义字段写不进去 —— 所以 webui_signal 不能用
+           "在信号对象上挂标记"这类写法。
+    ]]--
+    ServerSignal = function(signalName)
+      if type(signalName) ~= "string" then
+        -- 真机：类型不对会抛异常（bad argument）
+        error("bad argument #1 to 'ServerSignal' (string expected, got "
+              .. type(signalName) .. ")", 2)
+      end
+      local params = {}
+      local sig = {}
+
+      -- 通用形式：AddParam(paramType, paramValue)
+      function sig:AddParam(paramType, paramValue)
+        params[#params + 1] = paramValue
+      end
+
+      -- ★ 各类型便捷方法：真机上它们只是"带类型标记的 AddParam"，
+      --   mock 里统一成 push，只保留【调用顺序】这一关键语义。
+      local TYPES = {
+        "Int", "IntList", "Float", "FloatList", "String", "StringList",
+        "Vector3", "Vector3List", "Bool", "BoolList",
+        "Guid", "GuidList", "Entity", "EntityList",
+        "PrefabId", "PrefabIdList", "ConfigId", "ConfigIdList",
+      }
+      for _, t in ipairs(TYPES) do
+        sig["Add" .. t] = function(_, v)
+          params[#params + 1] = v
+        end
+      end
+
+      function sig:SendSignal()
+        if sendHook then sendHook(signalName, params) end
+        -- ★ 深拷贝一份存下来：真机上发送后信号对象就没用了，
+        --   若测试拿到的是同一个 table，后续改动会污染历史记录。
+        local snap = {}
+        for i = 1, #params do
+          local v = params[i]
+          if type(v) == "table" then
+            local c = {}
+            for k, vv in pairs(v) do c[k] = vv end
+            snap[i] = c
+          else
+            snap[i] = v
+          end
+        end
+        sentSignals[#sentSignals + 1] = { name = signalName, params = snap }
+        return true
+      end
+
+      return sig
+    end,
   }
 
   --[[ ★ 关于 game 的类型（实测结论，2026-10-07）：
@@ -429,6 +508,85 @@ function EngineMock.new(prefabs)
     keyListenerCount = function(ctrl)
       local d = dataMap[ctrl]
       return d and #d.keyListeners or 0
+    end,
+
+    --[[ ★★ game.ServerSignal 的观测接口
+
+         用途：验证「SendSignal 真的发出了、参数顺序真的对」。
+         真机上顺序错了完全静默（引擎不校验），所以这里必须能读回
+         实际发出去的参数列表 —— 只断言"我们打算发什么"会误导
+         （见 docs/引擎能力与限制.md §七 "探针必须读回实际值"）。
+    ]]--
+    sent = function()
+      return sentSignals
+    end,
+    sentCount = function(name)
+      if not name then return #sentSignals end
+      local n = 0
+      for i = 1, #sentSignals do
+        if sentSignals[i].name == name then n = n + 1 end
+      end
+      return n
+    end,
+    lastSent = function(name)
+      for i = #sentSignals, 1, -1 do
+        local s = sentSignals[i]
+        if not name or s.name == name then return s end
+      end
+      return nil
+    end,
+    resetSent = function() sentSignals = {} end,
+
+    --[[ ★ 让下一次发送抛异常，用于验证"发送失败要被计到统计里"。
+         真机上 SetImage 这类参数错误会抛异常，SendSignal 也走 pcall。 ]]--
+    setSendHook = function(fn) sendHook = fn end,
+
+    --[[ ★★ 模拟【服务端 -> 客户端】的信号回调。
+
+         ⚠️ 真机形态（文档第 193 行）：
+            script:RegisterServerSignalHandler(name, function(signalName, params))
+                                              ^^^^^^ 回调参数是【两个】：
+                                              信号名 + 参数数组
+
+         这里照实调用 handler(signalName, params)，好让
+         "回调签名写错（只声明一个参数）" 这类问题在本地就暴露。 ]]--
+    fireSignal = function(name, params)
+      local list = handlers[name]
+      if not list then return 0 end
+      local n = 0
+      for i = 1, #list do
+        -- ★ 照真机：两个参数。params 为空时给空表（不是 nil）
+        list[i](name, params or {})
+        n = n + 1
+      end
+      return n
+    end,
+
+    --[[ ★ 注册表：lib/webui/webui_signal 通过它挂到 script 上。
+
+         为什么不让 mock 直接持有 script：真机上 script 是【宿主对象】，
+         由引擎按固定名称在【入口脚本的环境】里查找生命周期函数
+         （见 webui.lua 里 mount 的长注释）。mock 这里提供一个
+         能被注入到全局 script 的替身。 ]]--
+    scriptStub = function()
+      return {
+        RegisterServerSignalHandler = function(_, name, cb)
+          if type(name) ~= "string" then
+            error("bad argument #1 to 'RegisterServerSignalHandler'", 2)
+          end
+          if type(cb) ~= "function" then
+            error("bad argument #2 to 'RegisterServerSignalHandler'", 2)
+          end
+          handlers[name] = handlers[name] or {}
+          table.insert(handlers[name], cb)
+        end,
+        UnregisterServerSignalHandler = function(_, name)
+          handlers[name] = nil
+        end,
+        _handlerCount = function(_, name)
+          return handlers[name] and #handlers[name] or 0
+        end,
+      }
     end,
     -- 工具：统计沿父链可见的控件数
     visibleCount = function()

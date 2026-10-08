@@ -127,7 +127,7 @@ print("  子模块: util=" .. type(webui.util) ..
       " layout=" .. type(webui.layout))
 
 --=============================================================================
--- 断言：bundle 真的自包含（12 个模块全在里面，不靠 package.path）
+-- 断言：bundle 真的自包含（13 个模块全在里面，不靠 package.path）
 --=============================================================================
 do
   check("webui.new 可用", type(webui.new) == "function",
@@ -138,11 +138,11 @@ do
   -- 全部子系统都要在 bundle 里（缺一个就是 build.lua 的 MODULES 漏了）
   local missing = {}
   for _, m in ipairs({"util","dom","html","css","color","style",
-                      "layout","render","clip","event"}) do
+                      "layout","render","clip","sprite","event","signal"}) do
     if type(webui[m]) ~= "table" then missing[#missing+1] = m end
   end
   check("子模块全部可用", #missing == 0,
-      #missing == 0 and "10 个子模块齐全" or ("缺: " .. table.concat(missing, ",")))
+      #missing == 0 and "12 个子模块齐全" or ("缺: " .. table.concat(missing, ",")))
 
   -- ★ 关键自包含证据：解析器能真正干活（内部查表，不走 require）
   check("html.parse 可用", type(webui.html.parse) == "function",
@@ -151,6 +151,8 @@ do
       "type=" .. type(webui.layout.compute))
   check("render.new 可用", type(webui.render.new) == "function",
       "type=" .. type(webui.render.new))
+  check("signal.new 可用", type(webui.signal.new) == "function",
+      "type=" .. type(webui.signal.new))
 
   -- bundle 末尾把 webui 注册进 package.preload，所以 require('webui')
   -- 在没有 package.path 的情况下也能命中

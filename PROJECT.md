@@ -6,14 +6,14 @@
 
 ## 一、库（`lib/webui/`）
 
-**交付物本体。12 个模块，约 4000 行。**
+**交付物本体。13 个模块，约 5400 行。**
 
 > ★ 文件名**就是**真机部署名（`webui_util.lua` 对应 `require('webui_util')`），
 > 整个目录可直接拷进游戏工程，不需要构建改名。
 
 | 文件 | 行数 | 职责 |
 |---|---|---|
-| `webui.lua` | 374 | 对外 API（`mount` / `new` / `render` / `flush` / `startLoop`） |
+| `webui.lua` | 844 | 对外 API（`mount` / `new` / `render` / `flush` / `startLoop`） |
 | `webui_util.lua` | 222 | 字符串、数值、画布尺寸工具 |
 | `webui_dom.lua` | 255 | DOM 节点、class 管理、运行时样式 |
 | `webui_html.lua` | 213 | HTML 解析器 |
@@ -25,6 +25,7 @@
 | `webui_render.lua` | 867 | 控件池、diff 渲染、双层架构、z-index、**裁剪容器** |
 | **`webui_clip.lua`** | 175 | ★ **图片控件：遮罩 / 换图 / 染色**（运行时探测枚举） |
 | `webui_event.lua` | 198 | 事件绑定、伪类状态、坐标换算 |
+| **`webui_signal.lua`** | 1349 | ★ **服务器信号**：签名声明与校验、参数编解码、发送队列 + 冷却、接收缓冲、字节预算、极简 JSON |
 | `README.md` | — | **使用文档（入口）** |
 
 ---
@@ -36,6 +37,7 @@
 | **`probe.lua`** | ★ **统一真机探针**（改 `ACTIVE` 选模块，见 §五） |
 | **`demo_dino.lua`** | ★ **小恐龙跳跃游戏**（真机验证通过）—— 演示 `keys` 键盘 + `onTick` 游戏循环 + **像素图形拼接**（16 个矩形拼出恐龙，绕开文本框圆角）；含三种仙人掌 / 两种飞行高度的翼龙 / 地面装饰 |
 | `demo_panel.lua` | **角色面板** —— 综合验证圆形/矩形裁剪、`SetImage` 换形状、文字渲染 |
+| **`demo_signal.lua`** | ★ **按钮发信号** —— 三个按钮分别演示 `emit` / `emitNow` / 字符串参数，含发送结果回显（区分"发出去了"和"被拦下"） |
 | `demo_shop.lua` | 装备商店 —— 10 卡片、页签、筛选、购物车、结算、transition |
 
 挂载方式：编辑器里挂到 `ProbeRoot`。
@@ -100,7 +102,7 @@ lua verify_external.lua "<external_lua_file 路径>"
 
 ---
 
-## 四、测试（35 个套件）
+## 四、测试（42 个套件）
 
 ```bash
 lua test_xxx.lua
@@ -136,6 +138,9 @@ lua test_xxx.lua
 | **`test_dino_rules`** | ★ **游戏可解性**：跳跃/障碍/翼龙高度的几何约束，含与 demo 源码的常量交叉校验 |
 | `test_demo_feature` | 功能展示页 demo 自检（形状 / 裁剪数 / 文字硬约束） |
 | `test_probe` | 统一探针自检（`key` 模块含真实按键回调断言） |
+| **`test_signal`** | ★ **服务器信号**：签名校验（个数/类型/顺序）、事件展开、接收缓冲与重放顺序、冷却限流、字节/条数预算顺延、解绑防叠加、JSON 往返 |
+| **`test_demo_signal`** | ★ **按钮 -> 发信号**：模拟点击三个按钮，读回引擎实际收到的参数（名/个数/顺序/类型），并验证文字反馈确实更新 |
+| **`test_mount`** | ★ mount 生命周期（含 §8：信号接进逐帧循环的时序 + stop 解绑） |
 
 **★ 标记的是关键回归测试**，各自对应真机上踩过的严重 bug。
 

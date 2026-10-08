@@ -3,7 +3,7 @@
 在《原神》千星奇域 UGC 环境中，用 Lua 渲染 HTML/CSS 风格的界面。
 
 ```
-3,500+ 行 Lua / 12 个模块 / 零外部依赖 / 34 个测试套件
+3,500+ 行 Lua / 13 个模块 / 零外部依赖 / 41 个测试套件
 ```
 
 ---
@@ -84,6 +84,7 @@ webui_render.lua
 webui_clip.lua
 webui_sprite.lua
 webui_event.lua
+webui_signal.lua
 ```
 
 **部署就是复制**（无需改名、无需改写 require）：
@@ -261,6 +262,73 @@ app = webui.mount{
 不用 mount 时：`ui:startLoop(fps, onTick)` 或 `ui:setTick(fn)`。
 不传 `onTick` 时行为与从前完全一致（只 `flush`）。
 
+#### 服务器信号 `signals` / `onSignal`（客户端 ↔ 服务端唯一通道）
+
+```lua
+local app
+app = webui.mount{
+  signals = {
+    buy_item = { "int", "int" },   -- 名字 = 服务端约定的信号名
+    chat     = { "string" },       -- 参数类型【按顺序】声明
+  },
+  onSignal = {
+    -- 收到服务端信号：参数已按签名解好，直接就是 Lua 值
+    chat = function(text) app:setText("log", text) end,
+  },
+  onTick = function(dt)
+    app:emit("buy_item", 1001, 3)   -- 发送（进队列，本帧渲染前统一发）
+  end,
+}
+```
+
+**为什么必须声明签名** —— 引擎**不校验任何东西**：
+
+| 写错的地方 | 真机表现 |
+|---|---|
+| 参数个数不对 | 不报错，服务端收到缺参/多参 |
+| 参数顺序不对 | 不报错，服务端收到**错位的值** |
+| 类型不对 | 不报错，静默变成别的值 |
+| 信号名拼错 | 不报错，谁都不响应 |
+
+也就是「什么都没发生」。所以库把约定变成**签名表**并替你校验；
+不声明也能用（按值推断类型），但同一个信号前后形状不一致会告警。
+
+**四个可靠性机制**（都接在 `mount` 的逐帧循环里，不用手动调）：
+
+| 机制 | 解决的坑 |
+|---|---|
+| **接收缓冲** | 信号可能早于 DOM 到达（Root 晚一帧就绪是常态）→ 先入队，首帧渲染后按**到达顺序**重放 |
+| **发送队列** | `emit` 不当场发，攒到本帧渲染前统一发（`emitNow` 可立即发） |
+| **冷却限流** | 同一信号每帧最多发 1 次（默认）—— 防 `onTick` 每帧狂发 |
+| **校验 + 预算** | 参数个数/类型不符、条数/字节超预算 → **warn**（不是静默） |
+
+**时序保证：`onTick(dt)` → 发信号 → 渲染 → 放行接收缓冲。**
+
+**信号名与参数顺序是双端约定** —— 必须先在服务端脚本里注册同名信号。
+官方教程多讲**服务端悬浮交互页**，与客户端控件不是一套，别照着套
+（`docs/引擎能力与限制.md` §七）。
+
+**低层 API**（不走 mount 时）：
+
+```lua
+local signal = require('webui_signal')
+
+local S = signal.new{ signatures = { buy = {"int","int"} } }
+S:on("buy", function(id, n) ... end)   -- 注册
+S:emit("buy", 1001, 3)                  -- 入队
+S:emitNow("buy", 1001, 3)               -- 立即发
+S:flush()                               -- 逐帧推进（发队列 + 换帧）
+S:ready()                               -- 放行接收缓冲（DOM 就绪后调一次）
+S:destroy()                             -- 解绑全部监听（★ 必须，否则叠加）
+S:report()                              -- 一行统计摘要
+
+signal.send("name", 1, "x")             -- 无状态：直接发（不校验不排队）
+signal.register("name", fn)             -- 无状态：直接注册
+signal.toJSON(v) / signal.fromJSON(s)   -- 极简 JSON（真机没有 json 库）
+```
+
+**完整示例：** `deploy/demo_signal.lua`（按钮 -> 发信号，含发送结果回显）。
+
 回调收到：
 
 ```lua
@@ -332,7 +400,8 @@ lib/webui/                （文件名即真机部署名，可直接整目录拷
 ├── webui_clip.lua       175 行   图片控件（遮罩 / 换图 / 染色）
 ├── webui_sprite.lua     — 行     ★ 像素图形：点阵 -> 矩形分解 -> 多控件拼接
 ├── webui_event.lua      198 行   事件绑定 + 伪类状态 + 坐标换算
-└── webui.lua            374 行   对外 API（入口）
+├── webui_signal.lua    1349 行   ★ 服务器信号：签名校验 / 收发队列 / 缓冲 / 限流
+└── webui.lua            844 行   对外 API（入口）
 ```
 
 ### 渲染流程
@@ -430,6 +499,8 @@ lua test_diff.lua        # diff 渲染
 lua test_list.lua        # 列表重建
 lua test_loop.lua        # 逐帧稳定性
 lua test_listener.lua    # 监听器生命周期
+lua test_signal.lua      # ★ 服务器信号（签名/缓冲/限流/解绑）
+lua test_demo_signal.lua # ★ 按钮发信号（模拟点击 -> 读回引擎实收参数）
 lua test_parent.lua      # 父链正确性
 lua test_visible.lua     # 可见性
 lua test_real.lua        # ★ 真机仿真（限制严格的 mock）

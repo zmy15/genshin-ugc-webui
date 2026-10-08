@@ -77,6 +77,35 @@ app = webui.mount{
 
 详见 [引擎能力与限制.md](引擎能力与限制.md) §5.2。
 
+### ✅ 已完成：服务器信号（2026-10-09）
+
+| 项 | 状态 |
+|---|---|
+| **签名声明** | ✅ `mount{ signals = { 名 = { "int", "string" } } }` |
+| **发送** | ✅ `app:emit(name, ...)` / `emitNow` / 队列 + 冷却 |
+| **接收** | ✅ `mount{ onSignal = { 名 = fn } }`，参数按签名解码 |
+| **接收缓冲** | ✅ 早于 DOM 到达的信号先入队，首帧渲染后按序重放 |
+| **校验与预算** | ✅ 参数个数/类型、条数/字节超预算 → warn |
+| **生命周期** | ✅ `app:stop()` 自动解绑引擎监听（防叠加） |
+
+**为什么要封装**：引擎**不校验任何东西** —— 参数个数/顺序/类型错、
+信号名拼错，全都是**静默**的（"什么都没发生"）。封装层的价值就是
+把「双端约定」变成显式签名表并替开发者校验。
+
+```lua
+app = webui.mount{
+  signals  = { buy_item = { "int", "int" } },
+  onSignal = { chat = function(text) ... end },
+  onTick   = function(dt) app:emit("buy_item", 1001, 3) end,
+}
+```
+
+**⚠️ 两个前提**：① 信号名必须**先在服务端脚本里注册**；
+② 官方教程讲的多是**服务端悬浮交互页**，与客户端控件不是一套。
+
+**回归：** `tests/test_signal.lua`（81 项）、`tests/test_mount.lua` §8。
+详见 [引擎能力与限制.md](引擎能力与限制.md) §5.3。
+
 ### ✅ P0 —— 已完成
 
 `z-index` / `flex-grow`/`flex-shrink` / `transform` / `:hover`/`:active`

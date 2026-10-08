@@ -125,6 +125,7 @@ local REQUIRED = {
   "webui.lua", "webui_util.lua", "webui_dom.lua", "webui_html.lua",
   "webui_css.lua", "webui_color.lua", "webui_style.lua", "webui_transition.lua",
   "webui_layout.lua", "webui_render.lua", "webui_clip.lua", "webui_event.lua",
+  "webui_sprite.lua", "webui_signal.lua",
 }
 for _, n in ipairs(REQUIRED) do
   local f = io.open(TARGET .. "/" .. n, "r")

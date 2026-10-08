@@ -455,5 +455,71 @@ do
 end
 
 print("")
+print("=== 8. 服务器信号接进 mount ===")
+do
+  local E, root, pump = setupEnv()
+  -- ★ 把信号相关的 script 方法补上（真机上 script 是宿主对象，
+  --   这里用 engine_mock 提供的替身）
+  local stub = E.scriptStub()
+  script.RegisterServerSignalHandler   = stub.RegisterServerSignalHandler
+  script.UnregisterServerSignalHandler = stub.UnregisterServerSignalHandler
+
+  local webui = require('webui')
+  local got = {}
+  local emitted = 0
+  local appRef = nil
+
+  -- ★ 注意 `local app` 必须先声明再赋值 —— 与库里 QUICKSTART 强调的一致：
+  --   直接写 `local app = webui.mount{...}` 会让 onTick 里的闭包
+  --   永远看到 nil（Lua 的 local 在整条赋值语句执行完之前不可见）。
+  local app
+  app = webui.mount{
+    root    = "Root",
+    prefabs = PREFABS,
+    html    = [[<div class="a" id="hp">100</div>]],
+    css     = [[.a { width: 160px; height: 40px; font-size: 16px; color:#fff; background-color:#222; }]],
+    signals = {
+      buy   = { "int", "int" },
+      ready = {},
+    },
+    onSignal = {
+      -- ★ 收到服务端信号 -> 改界面
+      buy = function(id, n) got[#got+1] = id .. "x" .. n end,
+    },
+    onTick = function()
+      -- ★ 每帧都发（冷却应该把它压成本帧一条）
+      emitted = emitted + 1
+      app:emit("buy", 1001, 1)
+    end,
+  }
+  appRef = app
+
+  check("signal 层已建立", app.sig ~= nil)
+  check("接收监听已注册到 script",
+      stub._handlerCount(nil, "buy") == 1,
+      stub._handlerCount(nil, "buy"))
+
+  -- 服务端 -> 客户端
+  E.fireSignal("buy", { 7, 3 })
+  check("收到并解码了服务端信号", #got == 1 and got[1] == "7x3",
+      table.concat(got, ","))
+
+  -- 客户端 -> 服务端：跑几帧，每帧一条
+  pump()
+  pump()
+  pump()
+  check("onTick 每帧发了信号", emitted >= 2, "emit 调用 " .. emitted)
+  check("发出去的是 buy", E.sentCount("buy") >= 1, E.sentCount("buy"))
+
+  -- ★ stop 必须解绑，否则下一次 mount 会叠加监听
+  app:stop()
+  check("stop 后监听已解绑", stub._handlerCount(nil, "buy") == 0,
+      stub._handlerCount(nil, "buy"))
+  local before = #got
+  E.fireSignal("buy", { 9, 9 })
+  check("解绑后不再收到", #got == before, #got)
+end
+
+print("")
 print(string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
 if fail > 0 then os.exit(1) end

@@ -38,6 +38,7 @@ local render = require('webui_render')
 local clip   = require('webui_clip')
 local sprite = require('webui_sprite')
 local event  = require('webui_event')
+local signal = require('webui_signal')
 
 local M = {}
 
@@ -55,6 +56,7 @@ M.render = render
 M.clip   = clip
 M.sprite = sprite
 M.event  = event
+M.signal = signal
 
 --[[----------------------------------------------------------------------------
   一个 WebUI 实例 = 一棵 DOM 树 + 一套样式 + 一棵控件树
@@ -232,6 +234,14 @@ function Instance:bind(name, fn)
   return self
 end
 
+--[[ 挂一个逐帧前的钩子（信号层用它，见 webui_signal.lua）。
+
+     签名是 fn(dt)，在 onTick 之后、flush 之前调用。 ]]--
+function Instance:setPreFlush(fn)
+  self.onPreFlush = fn
+  return self
+end
+
 --[[ 启动逐帧循环
      OnUpdate 在真机上不被驱动（R9/R11 实测），
      所以用 TweenSequence 递归实现。
@@ -268,6 +278,11 @@ function Instance:startLoop(fps, onTick)
     -- ① 先跑游戏逻辑（更新 DOM 上的状态）
     if type(self_.onTick) == "function" then
       util.try(function() self_.onTick(interval) end)
+    end
+
+    -- ①.5 发服务器信号（在渲染之前 —— 见 mount 里的时序说明）
+    if type(self_.onPreFlush) == "function" then
+      util.try(function() self_.onPreFlush(interval) end)
     end
 
     -- ② 再渲染（重新布局 + diff 写入）
@@ -415,6 +430,22 @@ function M.mount(opts)
     rootName = opts.root or "Root",
     handlers = opts.on or {},
     logTag   = opts.logTag or "[webui]",
+    -- ★ 服务器信号层（见 webui_signal.lua）—— 未配 signatures 时仍是
+    --   一个可用实例（按值推断类型），只是没有显式约定。
+    sig      = opts.signals and signal.new({
+                 signatures = opts.signals,
+                 -- ★ 不传全局 script：模块里的 script 是【模块自己的身份】，
+                 --   不是入口脚本的。见本文件 mount 顶部关于 _ENV 的说明。
+                 --   这里允许调用方显式传，传不到就退化为"不可用 + warn"。
+                 script     = opts.script,
+                 strict     = opts.signalStrict,
+                 queue      = opts.signalQueue,
+                 buffer     = opts.signalBuffer,
+                 perFrame   = opts.signalPerFrame,
+                 frameBudget= opts.signalFrameBudget,
+                 byteBudget = opts.signalByteBudget,
+                 logTag     = opts.logTag,
+               }) or nil,
   }, App)
 
   -- 建立自引用（此后 onReady 里可直接用第二个参数，见下）
@@ -491,8 +522,54 @@ function M.mount(opts)
       util.try(function() opts.onReady(ui, appRef) end)
     end
 
+    --[[ ★★ 服务器信号：把逐帧链接到 startLoop 之前。
+
+         ⚠️ 接在这里而不是别处，是因为 mount 的参数里【没有】
+            "信号专属的逐帧钩子"—— 复用同一条整流循环最省事，
+            也保证时序与渲染对齐：
+
+              onTick(dt)  ->  发信号(flush)  ->  渲染(flush)  ->  收信号就绪
+
+         ★ 为什么"发"要排在渲染【前面】：
+           信号描述的是"本帧发生的动作"（买了、开火了），
+           先发出去，服务端与画面的认知在同一帧内保持一致。
+           排在渲染后面的话，这一帧的画面与服务端差一帧。
+
+         ★ 为什么"收就绪"排在渲染【后面】：
+           缓冲里积压的信号要等 DOM 与控件都建好才敢交给 handler
+           （Root 比脚本晚一帧就绪是真机常态）。首帧渲染完再放行，
+           才是安全的时刻。
+     ]]--
+    if type(opts.signals) == "table" or type(opts.onSignal) == "table" then
+      local sig = app.sig
+      if sig then
+        -- 注册业务回调（onSignal 表：{ 信号名 = fn }）
+        local onSig = opts.onSignal or {}
+        for name, fn in pairs(onSig) do
+          if type(fn) == "function" then
+            sig:on(name, fn)
+          end
+        end
+        -- 也算"约定过的信号"：只写在 onSignal 里没写进 signatures 的，
+        -- 按值推断也能收发，但强烈建议补上 signatures（真机不校验）。
+        if type(opts.signals) == "table" then
+          signal.setCurrent(sig)
+          app.signalOn = true
+        end
+      end
+    end
+
     if opts.loop ~= false then
+      -- ★ 信号层挂在渲染之前（见上面时序说明）
+      if app.sig then
+        ui:setPreFlush(function() app.sig:flush() end)
+      end
       ui:startLoop(opts.fps, opts.onTick)
+    end
+
+    -- ★ 首帧渲染已完成 -> 放行接收缓冲里积压的信号
+    if app.sig then
+      util.try(function() app.sig:ready() end)
     end
 
     app.bound = true
@@ -642,9 +719,16 @@ function M.mount(opts)
   function App:stop()
     if self.ui then
       util.try(function() self.ui:stopLoop() end)
+      util.try(function() self.ui:setPreFlush(nil) end)
     end
     -- ★ 解绑按键监听（用同一回调引用移除，防泄漏）
     util.try(function() event.unbindKeys() end)
+    -- ★★ 解绑服务器信号监听 —— 引擎按名注册，留着会在下一次 mount
+    --    时【叠加】，表现为"一个信号被处理两遍"（与光标事件监听
+    --    累积是同一类泄漏，见 docs/真机复用问题复盘.md）
+    if self.sig then
+      util.try(function() self.sig:destroy() end)
+    end
     -- ★ 停掉"等 Root"的重试链，避免销毁后还在跑
     stopRetry()
     if type(opts.onUnmount) == "function" then
@@ -696,6 +780,46 @@ function M.mount(opts)
       util.warn("mount:setStyle 找不到元素 #" .. tostring(id))
     end
     return self
+  end
+
+  --[[ ★ 发一条服务器信号（进队列，本帧渲染前统一发出）。
+
+       app:emit("buy_item", 1001, 3)
+
+     ⚠️ 信号名与参数顺序是【双端约定】，且真机不校验：
+        写错了不报错，只是服务端收到错位的值。
+        所以建议在 mount 的 signals 里显式声明签名 —— 库会替你校验。 ]]--
+  function App:emit(name, ...)
+    if not self.sig then
+      util.warn("mount:emit 未启用信号层（请在 mount 里传 signals）")
+      return false
+    end
+    return self.sig:emit(name, ...)
+  end
+
+  --[[ ★ 立即发（不进队列）—— 实时性要求高的场景 ]]--
+  function App:emitNow(name, ...)
+    if not self.sig then
+      util.warn("mount:emitNow 未启用信号层（请在 mount 里传 signals）")
+      return false
+    end
+    return self.sig:emitNow(name, ...)
+  end
+
+  --[[ ★ 运行时补注册一个信号处理（页面切换后用得上） ]]--
+  function App:onSignal(name, fn, o)
+    if not self.sig then
+      util.warn("mount:onSignal 未启用信号层（请在 mount 里传 signals）")
+      return self
+    end
+    self.sig:on(name, fn, o)
+    return self
+  end
+
+  --[[ ★ 信号统计摘要（诊断用；看趋势比体感可靠） ]]--
+  function App:signalReport()
+    if not self.sig then return "(未启用信号层)" end
+    return self.sig:report()
   end
 
   --[[ ★ 若调用 mount 时 Root 已经就绪，这里直接挂上，
