@@ -202,14 +202,35 @@ end
 
      ★ 注意：仙人掌本身是 8 个矩形拼的，外层容器才是 72x112。
        这里数【外层容器】（有 3 个），不是矩形。 ]]--
+--[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 翼龙），尺寸各不相同。
+
+     所以不能像以前那样用固定尺寸(72x112)来认障碍。
+     这里改成：一个控件只要尺寸等于【某一档障碍】的尺寸，
+     就算障碍容器。 ]]--
+local OBS_SIZES = {}
+do
+  local sprite = require('webui_sprite')
+  local CELL, BLEED = 8, 1
+  local function add(rects, w, h)
+    -- 容器尺寸 = 逻辑尺寸 x CELL（容器不受 bleed 影响）
+    OBS_SIZES[w .. "x" .. h] = true
+  end
+  for _, v in ipairs(sprite.cactusVariants()) do
+    add(v.rects, v.w * CELL, v.h * CELL)
+  end
+  local br = sprite.birdRects()
+  -- 翼龙 20x10 格
+  add(br, 20 * CELL, 10 * CELL)
+end
+
 local function obsCtrls()
   local out = {}
   for _, c in ipairs(E.controls) do
     local d = E.dataOf(c)
-    if d and math.abs((d.fields.sizeDeltaX or 0) - OBS_W) < 0.01
-       and math.abs((d.fields.sizeDeltaY or 0) - OBS_H) < 0.01 then
-      out[#out+1] = d
-    end
+    local key = string.format("%dx%d",
+        math.floor(d and d.fields.sizeDeltaX or 0),
+        math.floor(d and d.fields.sizeDeltaY or 0))
+    if d and OBS_SIZES[key] then out[#out+1] = d end
   end
   return out
 end
@@ -219,7 +240,8 @@ local hidden = 0
 for _, d in ipairs(obs) do
   if d.fields.active == false then hidden = hidden + 1 end
 end
-check("3 个障碍初始都隐藏（active=false）", hidden == 3,
+-- 障碍槽有 4 个
+check("★ 4 个障碍槽初始都隐藏（active=false）", hidden == 4,
     "hidden=" .. tostring(hidden) .. "/" .. tostring(#obs))
 
 --=============================================================================

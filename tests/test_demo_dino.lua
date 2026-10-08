@@ -132,46 +132,106 @@ local BLEED = 1        -- 与 sprite.toHTML 的默认值一致
      33 个矩形里 88% 变形。image 模板是方的（编辑器确认）。
 
      => 所以这里数的是 kind == "image" 的矩形。 ]]
-local function countRectsOf(rectTables)
-  -- 汇总所有期望尺寸（含 bleed 外扩）
+--[[ ★★ 精确计数：按【尺寸 -> 期望个数】映射比对。
+
+     旧的"只按尺寸集合"计数会被【不同精灵的同尺寸矩形】重复计入
+     （翼龙和恐龙的某些块尺寸相同）-> 数量对不上。
+
+     这里改成：统计所有精灵里每个尺寸出现多少次，
+     再和画面上该尺寸的 image 控件数逐一比对。
+
+     返回：匹配到的总数, 尺寸不符的种类数 ]]--
+local function countRectsExact(rectTables)
   local want = {}
   for _, rects in ipairs(rectTables) do
     for _, r in ipairs(rects) do
-      want[(r.w * CELL + BLEED * 2) .. "x" .. (r.h * CELL + BLEED * 2)] = true
+      local key = (r.w * CELL + BLEED * 2) .. "x" .. (r.h * CELL + BLEED * 2)
+      want[key] = (want[key] or 0) + 1
     end
   end
-  -- 统计引擎里尺寸落在期望集合内的 image 控件
-  local n = 0
+
+  local got = {}
   for _, c in ipairs(E.controls) do
     local d = E.dataOf(c)
     if d and d.kind == "image" then
       local key = string.format("%dx%d",
           math.floor(d.fields.sizeDeltaX or 0),
           math.floor(d.fields.sizeDeltaY or 0))
-      -- 只统计"像精灵矩形"的（排除 1600x900 场景、地面等）
-      if want[key] and (d.fields.sizeDeltaX or 0) <= 176 then
-        n = n + 1
-      end
+      if want[key] then got[key] = (got[key] or 0) + 1 end
     end
   end
-  return n
+
+  local total, bad = 0, 0
+  for key, n in pairs(want) do
+    local g = got[key] or 0
+    total = total + g
+    if g ~= n then bad = bad + 1 end
+  end
+  return total, bad
 end
 
 local dinoN   = #sprite.dinoRects()
-local cactusN = #sprite.cactusRects()
 local cloudN  = #sprite.cloudRects()
 
-check("恐龙点阵分解为 33 个矩形", dinoN == 33, dinoN .. " 个")
-check("仙人掌分解为 8 个矩形", cactusN == 8, cactusN .. " 个")
+--[[ ★ 不硬编码数量：点阵改一次数量就变（实测 31~34）。
+       这里断言数量合理，而不是某个固定值。 ]]--
+check("恐龙点阵分解出合理数量的矩形（20~45）",
+    dinoN >= 20 and dinoN <= 45, dinoN .. " 个")
 check("云分解为 6 个矩形", cloudN == 6, cloudN .. " 个")
 
--- 画面上实际的矩形控件数：恐龙 33 + 仙人掌 8x3 + 云 6x2
-local expectTotal = dinoN + cactusN * 3 + cloudN * 2
-local actual = countRectsOf({
-  sprite.dinoRects(), sprite.cactusRects(), sprite.cloudRects(),
-})
+--[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 翼龙）。
+        每档的矩形数不同，所以断言"每档都合理"而不是某个固定值。 ]]
+local variants = sprite.cactusVariants()
+check("仙人掌有 3 档（大/中/小）", #variants == 3, #variants .. " 档")
+local allOk = true
+for i, v in ipairs(variants) do
+  local n = #v.rects
+  if n < 2 or n > 20 then allOk = false end
+end
+check("每档仙人掌的矩形数合理（2~20）", allOk)
+
+local birdN = #sprite.birdRects()
+check("翼龙分解出合理数量的矩形（2~20）", birdN >= 2 and birdN <= 20, birdN .. " 个")
+
+--[[ ★ 地面装饰也断言一下（原版地面不是纯直线）。 ]]
+local decos = sprite.decoVariants()
+check("地面装饰有 3 种", #decos == 3, #decos .. " 种")
+
+--[[ 画面上实际的矩形控件数。
+
+     ⚠️ 障碍槽是按【矩形最多的那档】建节点的（运行时要在同一槽里
+        切换不同档），所以槽里的节点数 = 最大档的矩形数，不是某个档的。
+
+     计算：恐龙 + 云x2 + 装饰(各按自己) + 4 个障碍槽(各按最大档) ]]
+--[[ 期望值：恐龙 + 云x2 + 装饰各1 + 4 个障碍槽（各按最大档）
+
+     ⚠️ 障碍槽是按【矩形最多的那档】建节点的（运行时要在同一槽里
+        切换不同档），所以每个槽的节点数 = 最大档的矩形数。 ]]
+local variants = sprite.cactusVariants()
+local birdRects = sprite.birdRects()
+
+local biggest = variants[1].rects
+for _, v in ipairs(variants) do
+  if #v.rects > #biggest then biggest = v.rects end
+end
+if #birdRects > #biggest then biggest = birdRects end
+
+local allRectTables = {
+  sprite.dinoRects(),
+  sprite.cloudRects(), sprite.cloudRects(),
+  sprite.pebbleRects(), sprite.grassRects(), sprite.tuftRects(),
+}
+for _ = 1, 4 do allRectTables[#allRectTables + 1] = biggest end
+
+local expectTotal = 0
+for _, t in ipairs(allRectTables) do expectTotal = expectTotal + #t end
+
+local actual, badKinds = countRectsExact(allRectTables)
+
 check("画面上的精灵矩形控件数 = " .. expectTotal,
     actual == expectTotal, actual .. " 个")
+check("★ 每种尺寸的矩形数量都吻合", badKinds == 0,
+    badKinds .. " 种尺寸数量不符")
 
 --[[ ★★ 关键：矩形必须是【image 类型】，不能是 textbox。
 

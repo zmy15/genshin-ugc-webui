@@ -79,8 +79,31 @@ local SP = {
   dino     = { rects = sprite.dinoRects(),     w = 22, h = 24 },
   dinoRun  = { rects = sprite.dinoRunRects(),  w = 22, h = 24 },
   dinoDead = { rects = sprite.dinoDeadRects(), w = 22, h = 24 },
-  cactus   = { rects = sprite.cactusRects(),   w = 9,  h = 14 },
   cloud    = { rects = sprite.cloudRects(),    w = 10, h = 5  },
+}
+
+--[[ ★★ 仙人掌三档（原版有大/中/小，随机出现）+ 空中翼龙。
+
+     每个障碍槽可以从这几档里随机挑一种，宽度/高度都不同：
+       大 9x18 格 = 72x144 px
+       中 6x17 格 = 48x136 px
+       小 5x12 格 = 40x 96 px
+       翼龙 16x8 格 = 128x64 px（空中，两个高度）
+
+     ★ 它们的【底边都对齐地面线】，所以 top 要按各自高度算：
+         top = 地面 700 - 高度px ]]--
+local OBS_KINDS = {
+  { name = "cactusBig",   rects = sprite.cactusBigRects(),   w = 9,  h = 18, ground = true },
+  { name = "cactusMid",   rects = sprite.cactusMidRects(),   w = 6,  h = 17, ground = true },
+  { name = "cactusSmall", rects = sprite.cactusSmallRects(), w = 5,  h = 12, ground = true },
+  { name = "bird",        rects = sprite.birdRects(),        w = 20, h = 10, ground = false },
+}
+
+--[[ ★ 地面装饰：贴在地面线上的小图案，打破"一条直线"的单调。 ]]--
+local DECO_KINDS = {
+  { name = "pebble", rects = sprite.pebbleRects(), w = 5, h = 2 },
+  { name = "grass",  rects = sprite.grassRects(),  w = 7, h = 2 },
+  { name = "tuft",   rects = sprite.tuftRects(),   w = 3, h = 2 },
 }
 
 --[[ 生成一个"精灵容器"的 HTML：外层负责移动，内层装矩形。
@@ -114,6 +137,29 @@ end
 -- 页面
 --=============================================================================
 
+--[[ ★ 障碍槽：按【矩形数最多的那种障碍】来建节点。
+
+     ⚠️ 运行时会在同一槽里切换大/中/小仙人掌和翼龙，
+        节点数必须按最大需求建，否则换到"矩形更多"的类型时
+        多出来的矩形没有控件可画 -> 缺一块。
+
+     ★ 初始用哪种都行（都会被隐藏），这里用矩形最多的那种，
+       保证节点数一次到位。 ]]--
+local OBS_MAX_RECTS = 0
+local OBS_TEMPLATE = nil
+for _, k in ipairs(OBS_KINDS) do
+  if #k.rects > OBS_MAX_RECTS then
+    OBS_MAX_RECTS = #k.rects
+    OBS_TEMPLATE = k
+  end
+end
+
+local function obsSlotHTML(slot)
+  -- 用"矩形最多"的模板生成，保证节点够用
+  return spriteHTML(OBS_TEMPLATE.rects,
+                    "o" .. slot .. "R", "o" .. slot, "o" .. slot .. "Body")
+end
+
 local HTML = ([[
 <div class="stage" id="stage">
   <div class="scene" id="scene">
@@ -121,10 +167,16 @@ local HTML = ([[
 
     <div class="ground"></div>
 
+    <!-- 地面装饰：3 个点缀（石子/草丛/小簇），随场景滚动 -->
+    %s
+    %s
+    %s
+
     <!-- 恐龙：外层移动 / 内层换帧 -->
     %s
 
-    <!-- 障碍：3 个仙人掌槽位 -->
+    <!-- 障碍：4 个槽位，运行时按类型切换精灵（大/中/小仙人掌 或 翼龙） -->
+    %s
     %s
     %s
     %s
@@ -138,10 +190,15 @@ local HTML = ([[
   </div>
 </div>
 ]]):format(
-  spriteHTML(SP.dino.rects, "dR",  "dino", "dinoBody"),
-  spriteHTML(SP.cactus.rects, "c0R", "o0", "o0Body", "#535353"),
-  spriteHTML(SP.cactus.rects, "c1R", "o1", "o1Body", "#535353"),
-  spriteHTML(SP.cactus.rects, "c2R", "o2", "o2Body", "#535353"),
+  -- 地面装饰：初始用三种不同的图案
+  spriteHTML(DECO_KINDS[1].rects, "p0R", "dc0", "dc0Body", "#8a8a8a"),
+  spriteHTML(DECO_KINDS[2].rects, "p1R", "dc1", "dc1Body", "#8a8a8a"),
+  spriteHTML(DECO_KINDS[3].rects, "p2R", "dc2", "dc2Body", "#8a8a8a"),
+  -- 恐龙
+  spriteHTML(SP.dino.rects, "dR", "dino", "dinoBody"),
+  -- 障碍槽（按最大矩形数建节点）
+  obsSlotHTML(0), obsSlotHTML(1), obsSlotHTML(2), obsSlotHTML(3),
+  -- 云
   spriteHTML(SP.cloud.rects,  "k0R", "cl0", "cl0Body", "#c8cdd4"),
   spriteHTML(SP.cloud.rects,  "k1R", "cl1", "cl1Body", "#c8cdd4")
 )
@@ -188,9 +245,24 @@ local CSS = [[
    ★ top=508 让【点阵的脚】正好落在地面线 700 上（508 + 192 = 700） */
 #dino { left: 160px; top: 508px; width: 176px; height: 192px; }
 
-/* 仙人掌：9x14 格 x 8px = 72 x 112
-   ★ top=588 让底落在地面线（588 + 112 = 700） */
-#o0, #o1, #o2 { top: 588px; width: 72px; height: 112px; }
+/*[[ 障碍槽：尺寸与 top 由运行时按【实际类型】设置。
+
+     各种类型的底边都对齐地面线 700：
+       大仙人掌 9x18 格 = 72x144  ->  top = 700-144 = 556
+       中仙人掌 6x17 格 = 48x136  ->  top = 700-136 = 564
+       小仙人掌 5x12 格 = 40x 96  ->  top = 700- 96 = 604
+       翼龙    16x 8 格 = 128x 64 ->  在空中，两个高度（见 BIRD_YS）
+
+     ★ 所以这里【不给固定的 width/height/top】——
+       初始值随便给，onReady 后由 applyObstacle 立刻覆盖。 */
+#o0, #o1, #o2, #o3 { top: 604px; width: 40px; height: 96px; }
+
+/* 地面装饰：贴在地面线上（top = 700 - 高度px）
+   高 2 格 = 16px -> top = 684 */
+#dc0, #dc1, #dc2 { top: 684px; height: 16px; }
+#dc0 { left: 500px;  width: 40px; }
+#dc1 { left: 1000px; width: 56px; }
+#dc2 { left: 1400px; width: 24px; }
 
 /* 云：10x5 格 x 8px = 80 x 40 */
 #cl0 { left: 400px; top: 200px; width: 80px; height: 40px; }
@@ -246,20 +318,26 @@ local G = {
        恐龙点阵里躯干+腿大致在格 y 12..21 -> 像素 88..168（相对控件顶）。
        取这个区间做碰撞盒，手感更接近原版：
          · 站着时 画布 y = 508+88 .. 508+168 = 596..676
-         · 跳到峰值（146px）时 = 450..530，低于仙人掌顶 588 -> 安全 ✓ ]]
+         · 跳到峰值（146px）时 = 450..530，低于仙人掌顶 -> 安全 ✓ ]]
   DINO_X     = 160,
   DINO_SPR_H = 192,     -- 恐龙点阵总高
   DINO_HIT_W = 92,      -- 碰撞盒宽（比控件 176 窄：点阵左右有空格）
   DINO_HIT_T = 88,      -- 碰撞盒顶（相对控件顶）
   DINO_HIT_B = 168,     -- 碰撞盒底（相对控件顶）
 
-  -- 仙人掌：实心柱，取全高
-  OBS_W      = 72,
-  OBS_H      = 112,
-  OBS_TOP    = 588,
-  OBS_HIT_W  = 46,      -- 比控件窄：点阵左右有空格
-  OBS_HIT_T  = 0,       -- 相对控件顶
-  OBS_HIT_B  = 112,
+  --[[ ★★ 障碍：三种仙人掌 + 翼龙，尺寸各不同。
+
+       所有【地面】障碍的底边都对齐地面线 700：
+         top = 700 - 高度px
+       翼龙在【空中】，两个高度来回飞（原版就是这么设计的）：
+         低飞 -> 必须跳过去（或蹲下，本版没做蹲）
+         高飞 -> 站着也能过，但跳起来会撞
+       ⚠️ 所以翼龙不能设成"必须跳"，否则玩家没解法。 ]]
+  GROUND_LINE = 700,
+  OBS_HIT_PAD = 13,     -- 碰撞盒比控件每边窄这么多（点阵左右有空格）
+
+  -- 翼龙的两个飞行高度（画布 top）
+  BIRD_YS = { 470, 402 },   -- 低飞 / 高飞
 
   SPAWN_GAP  = 760,     -- 障碍之间的最小水平间距
   RUN_FRAME  = 6,       -- 每多少帧换一次跑动姿态
@@ -276,6 +354,7 @@ local S = {
   onAir   = false,
   obs     = {},
   clouds  = {},
+  decos   = {},         -- 地面装饰（随场景滚动）
   speed   = G.BASE_SPEED,
   dist    = 0,
   score   = 0,
@@ -284,12 +363,33 @@ local S = {
   started = false,
   runPhase = 1,         -- 1 或 2：当前用哪个跑动姿态
   runTimer = 0,
+  seed    = 20261008,   -- ★ 自带的伪随机种子（不用 math.random，见下）
 }
 
 local nodes = {}       -- id -> DOM 节点
 
 -- 精灵的矩形节点缓存（换姿态时直接操作，不用每帧查 DOM）
 local spNodes = {}
+
+--[[ ★ 自带线性同余随机数。
+
+     ⚠️ 不用 math.random：真机沙箱里它的种子行为未验证，
+        而且我们希望每次开局序列【可复现】（便于调试）。
+     返回 0..1 的浮点。 ]]--
+local function rnd()
+  S.seed = (S.seed * 1103515245 + 12345) % 2147483648
+  return S.seed / 2147483648
+end
+
+local function pickKind()
+  -- 三种仙人掌等概率
+  local r = rnd()
+  if r < 0.34 then return 1 elseif r < 0.67 then return 2 else return 3 end
+end
+
+--[[ 障碍槽数量（4 个，够放同屏的障碍） ]]--
+local OBS_SLOTS = 4
+local DECO_SLOTS = 3
 
 local function reset()
   S.y, S.vy, S.onAir = G.GROUND_Y, 0, false
@@ -298,13 +398,17 @@ local function reset()
   S.over, S.started = false, false
   S.runPhase, S.runTimer = 1, 0
   S.obs = {}
-  for i = 1, 3 do
-    S.obs[i] = { x = -9999, active = false }
+  for i = 1, OBS_SLOTS do
+    S.obs[i] = { x = -9999, active = false, kind = 1, birdY = 0 }
   end
   S.clouds = {
     { x = 400,  y = 200, speed = 0.18 },
     { x = 1100, y = 300, speed = 0.14 },
   }
+  S.decos = {}
+  for i = 1, DECO_SLOTS do
+    S.decos[i] = { x = 300 + i * 420, kind = ((i - 1) % #DECO_KINDS) + 1 }
+  end
 end
 
 reset()
@@ -342,6 +446,49 @@ end
 
 local function setPose(prefix, rects, count)
   sprite.apply(spNodes[prefix] or {}, rects, CELL, count, BLEED, reimageNode)
+end
+
+--=============================================================================
+-- ★★ 障碍：把某个槽位切换成指定的类型（换精灵 + 改尺寸 + 改位置）
+--=============================================================================
+
+--[[ 改变一个障碍槽的"外观"。
+
+     slot   1..OBS_SLOTS
+     kind   OBS_KINDS 的下标（1=大仙人掌 2=中 3=小 4=翼龙）
+     birdY  仅翼龙用：飞行高度（画布 top）
+
+     ★ 做法：
+       ① 把旧精灵的多余矩形隐藏，再按新精灵的矩形表铺开（setPose）
+       ② 改外层容器的尺寸与 top（让底边对齐地面，或放到空中）
+
+     ⚠️ 矩形节点是按【最大需求】建的？不是 —— 每个槽初始只用
+        "小仙人掌"的矩形数建了节点。换成大仙人掌（矩形更多）时，
+        节点不够用，多出来的矩形【画不出来】。
+
+     ★ 所以这里按【矩形数最多的那种】来建初始节点（见 HTML 生成处），
+       切换时只显示需要的前 N 个。
+]]--
+local function applyObstacle(slot, kind, birdY)
+  local k = OBS_KINDS[kind]
+  local wrap = nodes["o" .. (slot - 1)]
+  if not wrap or not k then return end
+
+  -- ① 先按新精灵的矩形表铺开（内部会 show/hide 到正确的数量）
+  setPose("o" .. (slot - 1) .. "R", k.rects, #k.rects)
+
+  -- ② 定位：地面障碍底边贴地面线；翼龙放空中
+  local w = k.w * CELL
+  local h = k.h * CELL
+  if k.ground then
+    wrap:setStyle("top",   (G.GROUND_LINE - h) .. "px")
+    wrap:setStyle("left",  "0px")     -- 实际 x 由每帧 translateX 控制
+  else
+    wrap:setStyle("top",   (birdY or G.BIRD_YS[1]) .. "px")
+    wrap:setStyle("left",  "0px")
+  end
+  wrap:setStyle("width",  w .. "px")
+  wrap:setStyle("height", h .. "px")
 end
 
 --=============================================================================
@@ -401,27 +548,44 @@ local function tick(dt)
     local o = S.obs[i]
     if o.active then
       o.x = o.x - S.speed * dt
-      if o.x < -G.OBS_W - 60 then
+      local k = OBS_KINDS[o.kind]
+      local w = k and (k.w * CELL) or 72
+      if o.x < -w - 60 then
         o.active = false
         o.x = -9999
       end
     end
   end
 
+  --===========================================================================
   -- ④ 生成障碍
+  --
+  --   ★ 偶尔派翼龙（空中），其余派三种仙人掌之一。
+  --     翼龙的飞行高度二选一 —— 低飞必须跳，高飞站着也能过。
+  --===========================================================================
   local needSpawn = (S.dist % G.SPAWN_GAP) < (S.speed * dt)
   if needSpawn then
     for i = 1, #S.obs do
       if not S.obs[i].active then
-        S.obs[i].active = true
-        S.obs[i].x = 1600 + 60
+        local o = S.obs[i]
+        o.active = true
+        o.x = 1600 + 60
+        -- 约 22% 概率出翼龙
+        if rnd() < 0.22 then
+          o.kind = 4
+          o.birdY = G.BIRD_YS[(rnd() < 0.5) and 1 or 2]
+        else
+          o.kind = pickKind()
+          o.birdY = 0
+        end
+        applyObstacle(i, o.kind, o.birdY)
         break
       end
     end
   end
 
   --===========================================================================
-  -- ⑤ 云（视差：比障碍慢很多）
+  -- ⑤ 云（视差：比障碍慢很多）+ 地面装饰
   --===========================================================================
   for i = 1, #S.clouds do
     local c = S.clouds[i]
@@ -429,8 +593,23 @@ local function tick(dt)
     if c.x < -100 then c.x = 1700 end
   end
 
+  --[[ ★ 地面装饰：跟障碍【同速】滚动（贴地的东西不该有视差），
+       移出屏幕后从右边回来并换一个图案 —— 这样地面就不单调了。 ]]
+  for i = 1, #S.decos do
+    local d = S.decos[i]
+    d.x = d.x - S.speed * dt
+    if d.x < -100 then
+      d.x = 1700 + rnd() * 200
+      d.kind = math.floor(rnd() * #DECO_KINDS) + 1
+      local dk = DECO_KINDS[d.kind]
+      setPose("p" .. (i - 1) .. "R", dk.rects, #dk.rects)
+      local nd = nodes["dc" .. (i - 1)]
+      if nd then nd:setStyle("width", (dk.w * CELL) .. "px") end
+    end
+  end
+
   --===========================================================================
-  -- ⑥ 碰撞检测（AABB，用点阵推导出的真实碰撞盒）
+  -- ⑥ 碰撞检测（AABB，按【每个障碍的实际类型】算碰撞盒）
   --===========================================================================
   local dinoL = G.DINO_X
   local dinoR = G.DINO_X + G.DINO_HIT_W
@@ -440,11 +619,18 @@ local function tick(dt)
   for i = 1, #S.obs do
     local o = S.obs[i]
     if o.active then
-      local padX = (G.OBS_W - G.OBS_HIT_W) / 2
+      local k = OBS_KINDS[o.kind]
+      local w = k.w * CELL
+      local h = k.h * CELL
+      -- 容器的 top：地面障碍贴地，翼龙在指定高度
+      local top = k.ground and (G.GROUND_LINE - h) or (o.birdY or G.BIRD_YS[1])
+
+      -- ★ 碰撞盒比控件窄（点阵左右有空格），上下取全高
+      local padX = G.OBS_HIT_PAD
       local obsL = o.x + padX
-      local obsR = obsL + G.OBS_HIT_W
-      local obsT = G.OBS_TOP + G.OBS_HIT_T
-      local obsB = G.OBS_TOP + G.OBS_HIT_B
+      local obsR = obsL + (w - padX * 2)
+      local obsT = top
+      local obsB = top + h
 
       if dinoR > obsL and dinoL < obsR and dinoB > obsT and dinoT < obsB then
         S.over = true
@@ -496,6 +682,15 @@ local function tick(dt)
     local nd = nodes["cl" .. (i - 1)]
     if nd then
       nd:setStyle("transform", string.format("translateX(%.1fpx)", c.x))
+    end
+  end
+
+  -- 地面装饰（跟场景同速滚动）
+  for i = 1, #S.decos do
+    local d = S.decos[i]
+    local nd = nodes["dc" .. (i - 1)]
+    if nd then
+      nd:setStyle("transform", string.format("translateX(%.1fpx)", d.x))
     end
   end
 
@@ -581,12 +776,26 @@ app = webui.mount{
     end)
 
     -- ★ 收集【每个精灵的矩形节点】，供换姿态时直接操作
-    --   精灵前缀 -> 矩形数：见 SP 表
+    --[[ ⚠️ 障碍槽要按【矩形数最多的那种障碍】建节点 ——
+          因为运行时会在同一槽里切换大/中/小仙人掌和翼龙，
+          节点不够时多出来的矩形画不出来（会缺一块）。
+          HTML 里已经按最大需求生成了，这里也按最大数收。 ]]
+    local maxObsRects = 0
+    for _, k in ipairs(OBS_KINDS) do
+      if #k.rects > maxObsRects then maxObsRects = #k.rects end
+    end
+
     local prefixes = {
-      dR = #SP.dino.rects,
-      c0R = #SP.cactus.rects, c1R = #SP.cactus.rects, c2R = #SP.cactus.rects,
+      dR  = #SP.dino.rects,
       k0R = #SP.cloud.rects,  k1R = #SP.cloud.rects,
+      p0R = #DECO_KINDS[1].rects,
+      p1R = #DECO_KINDS[2].rects,
+      p2R = #DECO_KINDS[3].rects,
     }
+    for s = 0, OBS_SLOTS - 1 do
+      prefixes["o" .. s .. "R"] = maxObsRects
+    end
+
     for prefix, count in pairs(prefixes) do
       spNodes[prefix] = sprite.collect(dom, ui.doc, prefix, count)
     end
@@ -626,7 +835,7 @@ app = webui.mount{
     end
 
     -- 初始隐藏障碍
-    for i = 0, 2 do
+    for i = 0, OBS_SLOTS - 1 do
       local nd = nodes["o" .. i]
       if nd then nd:hide() end
     end
@@ -635,8 +844,22 @@ app = webui.mount{
     -- 恐龙初始朝右站好
     setPose("dino", SP.dino.rects, #SP.dino.rects)
 
-    print(string.format("[dino] 就绪：恐龙 %d 矩形，仙人掌 %d，云 %d",
-        #SP.dino.rects, #SP.cactus.rects, #SP.cloud.rects))
+    -- 障碍槽先都铺成小仙人掌（隐藏状态，第一次生成时会 applyObstacle）
+    for i = 1, OBS_SLOTS do
+      setPose("o" .. (i - 1) .. "R",
+              OBS_KINDS[3].rects, #OBS_KINDS[3].rects)
+    end
+
+    -- 地面装饰：铺上各自的图案
+    for i = 1, DECO_SLOTS do
+      local dk = DECO_KINDS[S.decos[i].kind]
+      setPose("p" .. (i - 1) .. "R", dk.rects, #dk.rects)
+      local nd = nodes["dc" .. (i - 1)]
+      if nd then nd:setStyle("width", (dk.w * CELL) .. "px") end
+    end
+
+    print(string.format("[dino] 就绪：恐龙 %d 矩形，障碍 %d 种，云 %d",
+        #SP.dino.rects, #OBS_KINDS, #SP.cloud.rects))
     print(string.format("[dino] 贴方形图 %d / %d（image 模式，绕开文本框圆角）",
         okCount, total))
     print("[dino] 按 空格 / ↑ 开始")
