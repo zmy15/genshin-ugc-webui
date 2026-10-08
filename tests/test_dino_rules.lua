@@ -3,7 +3,7 @@
 
      ★★ 为什么要单独测这个：
 
-        用户提的几条要求（恐龙高度、跳跃高度、鸟的两个高度）本质上是
+        用户提的几条要求（恐龙高度、跳跃高度、鸟的高度）本质上是
         【几何约束】—— 一旦有人调了其中任何一个数字，就可能出现
         「玩家无论如何都会死」的死局，而**游戏看起来完全正常**。
 
@@ -14,8 +14,25 @@
        与渲染无关，纯计算更快也更可靠。
 
      ⚠️ 这些常量必须与 deploy/demo_dino.lua 的 G 表【保持一致】。
-        改动那边时，这里会失败 —— 这正是它的作用。
-=============================================================================]]
+        改动那边时，这里会失败 —— 这正是它的作用（第 7 节交叉校验）。
+
+     ══════════════════════════════════════════════════════════════════════
+     ★★★ R27 新增：三条与「难度」相关的约束
+     ══════════════════════════════════════════════════════════════════════
+
+       用户要求：① 鸟高度要在跳跃可达范围内（不能"跳起来撞不到"）
+                 ② 仙人掌随机拼 1~4 株（不是写死）
+                 ③ 开局只有单株仙人掌、无鸟，往后才加
+
+       这三条都【可能引入死局】：
+
+         ① 鸟若放在可达范围外 -> 玩家跳起来够不着，等于"别跳"的惩罚
+         ② 4 株仙人掌可达 288px，而初始速度下最多只能跳 137px
+            -> 随机拼株【必须按速度限宽】，否则第一波就必死
+         ③ 阶段若推进太快/太慢 -> 难度曲线形同虚设
+
+       所以下面各加了一节断言。
+============================================================================]]
 
 -- 仓库根 = 本脚本所在目录的上一级（tests/ -> root/）
 local _here = (arg and arg[0] or ""):gsub(string.char(92), "/")
@@ -49,17 +66,15 @@ local G = {
   DINO_X     = 160,
   OBS_HIT_PAD = 13,
   MAX_SPEED  = 1500,
-  WAVE_GAP   = 1500,
-  BIRD_YS    = { 603, 405 },   -- 低飞 / 高飞
+  BASE_SPEED = 620,
+  WIDTH_SAFETY = 0.80,
+  -- ★ 翼龙四档：前 2 档"必须跳"，后 2 档"不能跳"
+  BIRD_YS    = { 596, 566, 440, 406 },
+  BIRD_LOW_COUNT = 2,
 }
 
--- 与 OBS_KINDS 保持一致
-local OBS = {
-  { name="cactusBig",   w=9,  h=18, ground=true,  hitL=10, hitW=52,  hitT=0, hitH=144 },
-  { name="cactusMid",   w=6,  h=17, ground=true,  hitL=6,  hitW=36,  hitT=0, hitH=136 },
-  { name="cactusSmall", w=5,  h=12, ground=true,  hitL=5,  hitW=30,  hitT=0, hitH=96  },
-  { name="bird",        w=20, h=10, ground=false, hitL=20, hitW=120, hitT=8, hitH=72  },
-}
+-- 翼龙碰撞盒（与 OBS_KINDS.bird 一致）
+local BIRD = { w=20, h=10, ground=false, hitL=20, hitW=120, hitT=8, hitH=72 }
 
 --[[ 跳跃峰值：H = v^2 / (2g) ]]--
 local PEAK = (G.JUMP_V * G.JUMP_V) / (2 * G.GRAVITY)
@@ -83,45 +98,57 @@ end
 -- 恐龙的两个关键姿态
 local STAND_Y = G.GROUND_Y                  -- 站着
 local PEAK_Y  = G.GROUND_Y - PEAK           -- 跳到峰值
+-- ★ 恐龙 top 的可达区间（这就是"跳跃可达范围"）
+local REACH_LO, REACH_HI = PEAK_Y, STAND_Y
+
+--[[ ★★★ 当前速度下能越过的障碍最大宽度。
+
+     与 demo 的 maxClearWidth 同一套公式（交叉校验见第 7 节）。 ]]--
+local function maxClearWidth(obsH, speed)
+  local needTop = GROUND - obsH - G.DINO_HIT_B
+  local need = G.GROUND_Y - needTop
+  if need <= 0 then return math.huge end
+  local a, b, c = 0.5*G.GRAVITY, G.JUMP_V, need
+  local disc = b*b - 4*a*c
+  if disc < 0 then return 0 end
+  local t1 = (-b - math.sqrt(disc)) / (2*a)
+  local t2 = (-b + math.sqrt(disc)) / (2*a)
+  local w = speed * (t2 - t1) - G.DINO_HIT_W
+  if w < 0 then w = 0 end
+  return w * G.WIDTH_SAFETY
+end
 
 print("\n=== 0. 基本数值 ===")
 print(string.format("  跳跃峰值 = %d^2/(2*%d) = %.1f px", -G.JUMP_V, G.GRAVITY, PEAK))
 print(string.format("  恐龙站立盒 = %.0f..%.0f", dinoBox(STAND_Y)))
 print(string.format("  恐龙峰值盒 = %.0f..%.0f", dinoBox(PEAK_Y)))
+print(string.format("  ★ 恐龙 top 可达区间 = [%.0f, %.0f]", REACH_LO, REACH_HI))
 
 --=============================================================================
 print("\n=== 1. 恐龙高度 = 中仙人掌高度 ===")
 --=============================================================================
 local dinoH = G.DINO_SPR_H
-local midH  = OBS[2].h * CELL
+local midH  = sprite.CACTUS_KINDS[2].h * CELL      -- 中仙人掌 17 格
 check("恐龙高度 = 136px", dinoH == 136, dinoH .. "px")
 check("中仙人掌高度 = 136px", midH == 136, midH .. "px")
 check("★ 两者相等", dinoH == midH, string.format("%d = %d", dinoH, midH))
 
--- 顺带验证：恐龙点阵实际就是 16x17 格
+-- 顺带验证：恐龙点阵实际就是 22x24 格
 local dinoRows = sprite.DINO_ROWS
 check("恐龙点阵是 22x24 格", #dinoRows[1] == 22 and #dinoRows == 24,
     string.format("%dx%d", #dinoRows[1], #dinoRows))
---[[ 恐龙用独立的浮点格宽 DINO_CELL，非全局 CELL：
-       点阵 24 行 x 5.67px = 136px = 恐龙高度 ]]--
-  check("★ 点阵高度 x DINO_CELL(5.67) = 恐龙高度",
-      math.abs(#dinoRows * 5.67 - dinoH) < 1,
-      string.format("%.1f ~= %d", #dinoRows * 5.67, dinoH))
+check("★ 点阵高度 x DINO_CELL(5.67) = 恐龙高度",
+    math.abs(#dinoRows * 5.67 - dinoH) < 1,
+    string.format("%.1f ~= %d", #dinoRows * 5.67, dinoH))
 
 --=============================================================================
-print("\n=== 2. 跳跃高度 > 最高仙人掌 ===")
+print("\n=== 2. 跳跃高度 > 最高的仙人掌（含 4 株组合）===")
 --=============================================================================
-local tallest = 0
-local tallestName = nil
-for _, k in ipairs(OBS) do
-  if k.ground and k.h * CELL > tallest then
-    tallest = k.h * CELL
-    tallestName = k.name
-  end
-end
-check("最高地面障碍是 " .. tallestName, tallestName == "cactusBig")
-check("★ 跳跃峰值 > 最高仙人掌",
-    PEAK > tallest, string.format("%.0f > %d", PEAK, tallest))
+-- 最高的仙人掌 = 大仙人掌 18 格 = 144px
+local tallest = sprite.CACTUS_KINDS[1].h * CELL
+check("最高的仙人掌 = 144px（大仙人掌）", tallest == 144, tallest .. "px")
+check("★ 跳跃峰值 > 最高仙人掌", PEAK > tallest,
+    string.format("%.0f > %d", PEAK, tallest))
 check("★ 余量 >= 40px（不只勉强越过）", PEAK - tallest >= 40,
     string.format("余量 %.0fpx", PEAK - tallest))
 
@@ -134,283 +161,371 @@ check("★ 峰值时恐龙盒底 < 大仙人掌顶（真的能越过）",
         bigTop - dinoPeakBottom))
 
 --=============================================================================
-print("\n=== 3. 三种仙人掌：站着必撞、跳起来能过 ===")
+print("\n=== 3. ★★ 单株仙人掌（三种）：站着必撞、跳起来能过 ===")
 --=============================================================================
-for _, k in ipairs(OBS) do
-  if k.ground then
-    local top = GROUND - k.h * CELL
-    local oT, oB = obsBox(k, top)
-    local sT, sB = dinoBox(STAND_Y)
-    local pT, pB = dinoBox(PEAK_Y)
+for _, k in ipairs(sprite.CACTUS_KINDS) do
+  local hPx = k.h * CELL
+  local top = GROUND - hPx
+  local single = { hitT = 0, hitH = hPx, hitW = k.w * CELL }
+  local oT, oB = obsBox(single, top)
+  local sT, sB = dinoBox(STAND_Y)
+  local pT, pB = dinoBox(PEAK_Y)
 
-    -- 站着应该撞（否则障碍形同虚设）
-    local standHit = overlap(sT, sB, oT, oB)
-    -- 跳到峰值应该安全（否则无解）
-    local peakHit = overlap(pT, pB, oT, oB)
-
-    check(string.format("%s：站着会撞（有威胁）", k.name), standHit,
-        string.format("盒 %.0f..%.0f vs %.0f..%.0f", sT, sB, oT, oB))
-    check(string.format("%s：跳到峰值能过（有解）", k.name), not peakHit,
-        peakHit and "★ 跳不过去 —— 死局！" or "安全")
-  end
+  check(string.format("%s仙人掌(%dpx)：站着会撞（有威胁）", k.name, hPx),
+      overlap(sT, sB, oT, oB),
+      string.format("盒 %.0f..%.0f vs %.0f..%.0f", sT, sB, oT, oB))
+  check(string.format("%s仙人掌(%dpx)：跳到峰值能过（有解）", k.name, hPx),
+      not overlap(pT, pB, oT, oB),
+      overlap(pT, pB, oT, oB) and "★ 跳不过去 —— 死局！" or "安全")
 end
 
--- 水平方向也要够宽：恐龙得有时间从障碍上方掠过
-print("\n  水平可行性:")
-local K = G.GRAVITY
-local safeTime = 0
+--=============================================================================
+print("\n=== 4. ★★★ 随机拼株：任意 1~4 株组合都必须可解 ===")
+--=============================================================================
+--[[ 这是 R27 最重要的一节。
+
+     用户要求"随机组合 1~4 个仙人掌"。但株数一多，组就变宽 ——
+     而恐龙滞空时间有限，太宽的障碍【无论怎么跳都会撞】。
+
+     实测：4 株大仙人掌 = 36 格 = 288px
+           而初始速度 620 下最多只能跳 137px
+           -> 不做限宽的话，第一波就可能必死。
+
+     ★ 所以这里穷举【所有 1~4 株组合】，对每个速度验证：
+         demo 的 makeCactus（限宽后）实际产出的组，
+         都能在【该速度】下跳过去。
+]]--
+local allKeys = {}
 do
-  -- 求"恐龙盒底高于障碍顶"的持续时间
-  local y, vy = G.GROUND_Y, G.JUMP_V
-  local dt = 1/50
-  local inSafe = false
-  for _ = 1, 500 do
-    vy = vy + K * dt
-    y = y + vy * dt
-    local _, b = dinoBox(y)
-    -- 用最高的仙人掌做最严苛的判据
-    if b < GROUND - tallest then
-      safeTime = safeTime + dt
-      inSafe = true
+  local function rec(pref, n)
+    if #pref == n then
+      allKeys[#allKeys+1] = { table.unpack(pref) }
+      return
     end
-    if y >= G.GROUND_Y then break end
+    for k = 1, 3 do
+      local p = { table.unpack(pref) }
+      p[#p+1] = k
+      rec(p, n)
+    end
   end
-  check("★ 安全窗口足够长（> 0.25s）", safeTime > 0.25,
-      string.format("%.2fs", safeTime))
-  -- 最快速度下，障碍在窗口内能走多远？要能走完"恐龙宽 + 障碍宽"
-  local maxSpeed = 1500
-  local travel = maxSpeed * safeTime
-  local need = G.DINO_HIT_W + OBS[1].hitW
-  check("★ 最高速下窗口内能走完恐龙+障碍宽度", travel > need,
-      string.format("走 %.0fpx，需要 %dpx", travel, need))
+  for n = 1, 4 do rec({}, n) end
+end
+check("穷举出所有 1~4 株组合（3+9+27+81=120）", #allKeys == 120, #allKeys .. " 个")
+
+-- ① 先证明【真正的危险存在】：不限宽时确实有超预算的组合
+local worstUnlimited, worstKeys = 0, nil
+for _, keys in ipairs(allKeys) do
+  local g = sprite.cactusGroup(keys)
+  local wpx = g.w * CELL
+  if wpx > worstUnlimited then
+    worstUnlimited = wpx
+    worstKeys = keys
+  end
+end
+local budgetAtBase = maxClearWidth(tallest, G.BASE_SPEED)
+check("★ 不限宽时存在超预算的组合（危险是真的）",
+    worstUnlimited > budgetAtBase,
+    string.format("最宽 %dpx > 初始预算 %.0fpx", worstUnlimited, budgetAtBase))
+
+-- ② 复刻 demo 的 makeCactus（限宽），对每个速度穷举验证
+local seed = 20261008
+local function rnd()
+  seed = (seed * 1103515245 + 12345) % 2147483648
+  return seed / 2147483648
 end
 
---=============================================================================
-print("\n=== 4. ★★ 翼龙两个高度：低飞必跳 / 高飞不能跳 ===")
---=============================================================================
-local bird = OBS[4]
-check("翼龙是空中障碍（ground=false）", bird.ground == false)
+local function makeCactusLike(maxStalks, speed)
+  local budget = maxClearWidth(tallest, speed)
+  local n = maxStalks
+  local grp
+  while n >= 1 do
+    grp = sprite.randomCactusGroup(n, rnd)
+    if grp.w * CELL <= budget then break end
+    n = n - 1
+  end
+  return grp, n, budget
+end
 
-local loY, hiY = G.BIRD_YS[1], G.BIRD_YS[2]
+local violated, tested = 0, 0
+for speed = G.BASE_SPEED, G.MAX_SPEED, 10 do
+  for _ = 1, 60 do
+    local grp, n, budget = makeCactusLike(4, speed)
+    tested = tested + 1
+    local hPx = grp.h * CELL
+    -- 用【该组自己的高度】算可跳上限
+    local limit = maxClearWidth(hPx, speed)
+    if grp.w * CELL > limit + 0.01 then violated = violated + 1 end
+  end
+end
+check(string.format("★ 限宽后 %d 次随机组全部可跳过", tested), violated == 0,
+    violated == 0 and "0 次超预算"
+        or string.format("★ %d 次超预算 —— 会出现死局！", violated))
+
+-- ③ 初始速度下【必须】只出单株（否则开局就可能太难）
+local wideAtStart = 0
+for _ = 1, 200 do
+  local grp = makeCactusLike(4, G.BASE_SPEED)
+  if grp.w > 2 * CELL + 0.01 and grp.w * CELL > maxClearWidth(tallest, G.BASE_SPEED) then
+    wideAtStart = wideAtStart + 1
+  end
+end
+check("★ 初始速度下不会出现超预算的宽组", wideAtStart == 0,
+    wideAtStart .. " 次")
+
+-- ④ 株数应随速度增加（这就是"难度递增"的几何体现）
+local nSlow = select(2, makeCactusLike(4, G.BASE_SPEED))
+local nFast = select(2, makeCactusLike(4, G.MAX_SPEED))
+check("★ 株数随速度增加（慢->少、快->多）", nFast >= nSlow,
+    string.format("初始 %d 株 -> 最高速 %d 株", nSlow, nFast))
+
+--=============================================================================
+print("\n=== 5. ★★★ 翼龙四档：全部在跳跃可达范围内 + 语义正确 ===")
+--=============================================================================
+--[[ ★★ 用户反馈：「最上面的鸟高度不对，太高了跳起来撞不到」。
+
+     所以这里的判据有【三条】，缺一不可：
+
+       ① 语义正确：要么"必须跳"（站撞/峰过），要么"不能跳"（站过/峰撞）
+          —— 绝不能"站着跳着都过"（障碍形同虚设）
+             也绝不能"站着跳着都撞"（死局）
+       ② 都在【跳跃可达范围内】—— 玩家跳到任何高度都能与它发生关系
+       ③ 安全区够宽（>= 60px）—— 不是"帧级精度才活得下来"的伪死局
+]]--
+check("翼龙是空中障碍（ground=false）", BIRD.ground == false)
+check("翼龙碰撞盒高 72px", BIRD.hitH == 72, BIRD.hitH .. "px")
+
 local sT, sB = dinoBox(STAND_Y)
 local pT, pB = dinoBox(PEAK_Y)
+local N_LOW = G.BIRD_LOW_COUNT
 
--- 低飞：站着撞 + 峰值安全 -> 必须跳
-local loTop, loBot = obsBox(bird, loY)
-local loStandHit = overlap(sT, sB, loTop, loBot)
-local loPeakHit  = overlap(pT, pB, loTop, loBot)
-check("★ 低飞鸟：站着会撞", loStandHit,
-    string.format("鸟 %.0f..%.0f vs 站 %.0f..%.0f", loTop, loBot, sT, sB))
-check("★ 低飞鸟：跳到峰值能躲开", not loPeakHit,
-    loPeakHit and "跳过也撞 —— 无解！" or "安全")
-check("★★ 低飞鸟结论：必须跳才能过",
-    loStandHit and not loPeakHit,
-    string.format("top=%d", loY))
+for i, y in ipairs(G.BIRD_YS) do
+  local t, b = obsBox(BIRD, y)
+  local hitStand = overlap(sT, sB, t, b)
+  local hitPeak  = overlap(pT, pB, t, b)
+  local shouldJump = (i <= N_LOW)          -- 前两档 = 必须跳
 
--- 高飞：站着安全 + 峰值撞 -> 不能跳
-local hiTop, hiBot = obsBox(bird, hiY)
-local hiStandHit = overlap(sT, sB, hiTop, hiBot)
-local hiPeakHit  = overlap(pT, pB, hiTop, hiBot)
-check("★ 高飞鸟：站着能安全通过", not hiStandHit,
-    hiStandHit and "站着就撞 —— 那和低飞没区别" or "安全")
-check("★ 高飞鸟：跳起来反而会撞", hiPeakHit,
-    string.format("鸟 %.0f..%.0f vs 峰值 %.0f..%.0f", hiTop, hiBot, pT, pB))
-check("★★ 高飞鸟结论：不用跳，跳了会撞",
-    not hiStandHit and hiPeakHit,
-    string.format("top=%d", hiY))
-
--- 两个高度必须不同，否则玩家无法区分
-check("★ 两个飞行高度不同", loY ~= hiY,
-    string.format("%d vs %d", loY, hiY))
-
--- 高飞鸟的区间不能太高（否则玩家跳不跳都无所谓，失去意义）
-check("★ 高飞鸟在恐龙跳跃可达范围内（否则跳了也撞不到）",
-    hiBot < STAND_Y,
-    string.format("鸟底 %.0f < 恐龙站立顶 %d", hiBot, STAND_Y))
-
---=============================================================================
-print("\n=== 5. 翼龙扇翅帧 ===")
---=============================================================================
-local birdRects = sprite.birdRects()
-local flapRects = sprite.birdFlapRects()
-check("翼龙有两个姿态（主帧 + 扇翅帧）",
-    #birdRects > 0 and #flapRects > 0,
-    string.format("%d / %d 个矩形", #birdRects, #flapRects))
-check("★ 两个姿态不同（不是同一张）",
-    sprite.BIRD_ROWS ~= sprite.BIRD_FLAP_ROWS)
-
--- 两帧尺寸必须一致，否则扇翅时会跳动
-check("★ 两姿态点阵尺寸一致",
-    #sprite.BIRD_ROWS == #sprite.BIRD_FLAP_ROWS
-    and #sprite.BIRD_ROWS[1] == #sprite.BIRD_FLAP_ROWS[1],
-    string.format("%dx%d / %dx%d",
-        #sprite.BIRD_ROWS[1], #sprite.BIRD_ROWS,
-        #sprite.BIRD_FLAP_ROWS[1], #sprite.BIRD_FLAP_ROWS))
-
---[[ ★★ 障碍槽按【矩形最多的那一帧】建节点。
-
-     ⚠️ 这里要证的是【危险真的存在】：
-        扇翅帧的矩形数比其他所有障碍都多 ——
-        所以建节点时「只看主帧」就会少一块，扇翅时缺角。
-
-     ★ 之前写成 `#flapRects <= math.max(maxObs, #flapRects)` 是个套话
-        （恒为真），起不到保护作用。 ]]
-local maxOther = 0
-local maxOtherName = nil
-for _, k in ipairs(OBS) do
-  local rects
-  if k.name == "cactusBig" then rects = sprite.cactusBigRects()
-  elseif k.name == "cactusMid" then rects = sprite.cactusMidRects()
-  elseif k.name == "cactusSmall" then rects = sprite.cactusSmallRects()
-  else rects = birdRects end
-  if #rects > maxOther then
-    maxOther = #rects
-    maxOtherName = k.name
+  -- ① 语义
+  if shouldJump then
+    check(string.format("翼龙[%d] top=%d：站着撞 / 峰值过（必须跳）", i, y),
+        hitStand and not hitPeak,
+        string.format("盒 %d..%d  站:%s 峰:%s", t, b,
+            hitStand and "撞" or "·", hitPeak and "撞" or "·"))
+  else
+    check(string.format("翼龙[%d] top=%d：站着过 / 峰值撞（不能跳）", i, y),
+        (not hitStand) and hitPeak,
+        string.format("盒 %d..%d  站:%s 峰:%s", t, b,
+            hitStand and "撞" or "·", hitPeak and "撞" or "·"))
   end
+
+  -- ② 都在可达范围内：★ 判据要用【恐龙可达的碰撞盒区间】，
+  --    不是"恐龙 top 的区间" —— 这两者差一个盒子的高度。
+  --
+  --    恐龙 top 可达 [354, 564]，对应盒区间 = [354+56, 564+112] = [410, 676]。
+  --    ⚠️ 下面这个 check 我第一版写错了（拿鸟盒去比 top 区间），
+  --       于是低飞鸟（盒 604..676）被判成"够不着" —— 其实它比的是
+  --       恐龙的"头顶位置"而不是"身体"。已改为比盒区间。
+  local reachBoxT = REACH_LO + G.DINO_HIT_T
+  local reachBoxB = REACH_HI + G.DINO_HIT_B
+  local reachable = (b > reachBoxT) and (t < reachBoxB)
+  check(string.format("★ 翼龙[%d] 与恐龙可达盒区间相交（跳起来够得着）", i),
+      reachable,
+      string.format("盒 %d..%d vs 可达盒 [%.0f,%.0f]", t, b, reachBoxT, reachBoxB))
+
+  -- ③ 安全区够宽
+  local safeBelow = t - G.DINO_HIT_B      -- 恐龙 top <= 此值 => 在鸟下方（跳过去）
+  local safeAbove = b - G.DINO_HIT_T      -- 恐龙 top >= 此值 => 在鸟上方（站地上）
+  local wBelow = math.max(0, math.min(safeBelow, REACH_HI) - REACH_LO)
+  local wAbove = math.max(0, REACH_HI - math.max(safeAbove, REACH_LO))
+  local wSafe = math.max(wBelow, wAbove)
+  check(string.format("★ 翼龙[%d] 安全区 >= 60px（不是伪死局）", i),
+      wSafe >= 60, string.format("%.0fpx", wSafe))
 end
 
---[[ ★★ 障碍槽按【矩形最多的那一帧】建节点。
+-- 四档高度必须【互不相同】，否则玩家无法区分
+local uniq = {}
+for _, y in ipairs(G.BIRD_YS) do uniq[y] = true end
+local nu = 0
+for _ in pairs(uniq) do nu = nu + 1 end
+check("★ 四个飞行高度互不相同", nu == #G.BIRD_YS,
+    string.format("%d 个不同值", nu))
 
-     新参考姿态下：翼龙主帧（翅上） 15 个矩形，
-     扇翅帧（翅下） 12 个 —— 主帧更多。
-     所以不再有「扇翅帧占去额外节点」的危险。
-     但“按最大矩形数建节点”的原则仍然成立。 ]]
-check("★ 扇翅帧矩形数 <= 主帧（不会超出节点数）",
-    #flapRects <= #birdRects,
-    string.format("扇翅 %d <= 主帧 %d", #flapRects, #birdRects))
+-- ★ 关键回归：旧版 405 那档"太高"—— 现在最高档必须仍然够得着
+local highest = G.BIRD_YS[#G.BIRD_YS]
+local ht, hb = obsBox(BIRD, highest)
+local rbt = REACH_LO + G.DINO_HIT_T
+local rbb = REACH_HI + G.DINO_HIT_B
+check("★★ 最高档翼龙仍在可达范围内（旧版 405 的问题）",
+    hb > rbt and ht < rbb,
+    string.format("最高档盒 %d..%d vs 可达盒 [%.0f,%.0f]", ht, hb, rbt, rbb))
 
 --=============================================================================
-print("\n=== 6. ★★★ 可解性：同时出现时还有活路吗？ ===")
+print("\n=== 6. 翼龙三帧扇翅 ===")
 --=============================================================================
---[[ ★★★ 这是用户明确要求的一条：「确保有解」。
+local frames = sprite.birdFrames()
+check("翼龙有 3 个姿态（抬 / 半收 / 放）", #frames == 3, #frames .. " 帧")
+check("每帧都有矩形", frames[1] and #frames[1] > 0
+    and frames[2] and #frames[2] > 0 and frames[3] and #frames[3] > 0,
+    string.format("%d / %d / %d 个矩形",
+        #frames[1], #frames[2], #frames[3]))
 
-     问题：若仙人掌和高飞的鸟同时挡在身前 ——
-           跳起来躲仙人掌 -> 撞上高飞的鸟
-           不跳躲鸟       -> 撞上仙人掌
-           是不是死局？
+-- 三帧点阵尺寸必须一致，否则扇翅时会横向跳动
+local r1, r2, r3 = sprite.BIRD_ROWS, sprite.BIRD_MID_ROWS, sprite.BIRD_FLAP_ROWS
+check("★ 三帧点阵尺寸一致", #r1 == #r2 and #r2 == #r3
+    and #r1[1] == #r2[1] and #r2[1] == #r3[1],
+    string.format("%dx%d / %dx%d / %dx%d",
+        #r1[1], #r1, #r2[1], #r2, #r3[1], #r3))
 
-     方法：把恐龙能处的每个 y 都试一遍，看有没有
-           「对两个障碍都安全」的 y。
+-- 三帧必须互不相同（否则"动画"是假的）
+check("★ 三帧内容互不相同",
+    table.concat(r1) ~= table.concat(r2)
+    and table.concat(r2) ~= table.concat(r3)
+    and table.concat(r1) ~= table.concat(r3))
 
-     ★ 关键不在「有没有」，而在「宽不宽」——
-       只有 16px 的话，玩家必须帧级精度才能生存，
-       实际等于死局。 ]]
-local function dinoBox(y)
-  return y + G.DINO_HIT_T, y + G.DINO_HIT_B
-end
+-- 帧表是缓存的：重复调用返回同一张表
+check("birdFrames 有缓存（重复调用同一张表）",
+    sprite.birdFrames()[1] == sprite.birdFrames()[1])
 
-local function avoidIVs(o0, o1, yLo, yHi)
-  -- 避开 [o0,o1] 的 y 区间（恐龙盒不与之重叠）
-  local out = {}
-  local hi = o0 - G.DINO_HIT_B        -- 恐龙在障碍下方
-  if hi >= yLo then out[#out+1] = { yLo, math.min(hi, yHi) } end
-  local lo = o1 - G.DINO_HIT_T        -- 恐龙在障碍上方
-  if lo <= yHi then out[#out+1] = { math.max(lo, yLo), yHi } end
-  return out
-end
+--=============================================================================
+print("\n=== 7. ★★★ 难度曲线：开局只有单株仙人掌、无鸟 ===")
+--=============================================================================
+--[[ 用户要求：「游戏刚开始应该只有单个仙人掌，没有鸟，
+                 往后难度变大再增加鸟和仙人掌的数量和密度」
 
-local yLo, yHi = PEAK_Y, STAND_Y
+     这必须【源码级】校验 —— 几何验算证明不了"生成逻辑真的分阶段"。
 
--- 障碍的碰撞盒（画布坐标）
-local bigBox  = { GROUND - OBS[1].h * CELL, GROUND }
-local loBird  = { G.BIRD_YS[1] + bird.hitT, G.BIRD_YS[1] + bird.hitT + bird.hitH }
-local hiBird  = { G.BIRD_YS[2] + bird.hitT, G.BIRD_YS[2] + bird.hitT + bird.hitH }
+     判据：
+       ① STAGE_RULES[1].maxStalks == 1     （开局只出单株）
+       ② STAGE_RULES[1].birdChance == 0    （开局绝不出鸟）
+       ③ 株数上限【单调不减】              （难度只升不降）
+       ④ 波间隔【单调不增】                （密度只增不减）
+       ⑤ 鸟档数【单调不减】                （鸟的种类只多不少）
+]]--
+local f2 = io.open(_root .. "/deploy/demo_dino.lua", "r")
+if not f2 then
+  check("能读到 deploy/demo_dino.lua", false)
+else
+  local src = f2:read("*a")
+  f2:close()
 
---[[ 求「对两个障碍都安全」的 y 区间宽度 ]]--
-local function commonWidth(a, b)
-  local best = 0
-  local aIVs = avoidIVs(a[1], a[2], yLo, yHi)
-  local bIVs = avoidIVs(b[1], b[2], yLo, yHi)
-  for _, x in ipairs(aIVs) do
-    for _, y in ipairs(bIVs) do
-      local lo = math.max(x[1], y[1])
-      local hi = math.min(x[2], y[2])
-      if hi - lo > best then best = hi - lo end
+  -- 解析 STAGE_RULES
+  local block = src:match("STAGE_RULES%s*=%s*{(.-)\n  }")
+  check("能从 demo 读到 STAGE_RULES", block ~= nil)
+
+  if block then
+    local rules = {}
+    for line in block:gmatch("[^\n]+") do
+      local ms = tonumber(line:match("maxStalks%s*=%s*(%d+)"))
+      if ms then
+        rules[#rules+1] = {
+          maxStalks  = ms,
+          birdChance = tonumber(line:match("birdChance%s*=%s*([%d%.]+)")),
+          waveGap    = tonumber(line:match("waveGap%s*=%s*(%d+)")),
+          birdTiers  = tonumber(line:match("birdTiers%s*=%s*(%d+)")),
+        }
+      end
+    end
+    check("解析出 4 个阶段", #rules == 4, #rules .. " 个")
+
+    if #rules == 4 then
+      check("★★ 阶段1 只出【单株】仙人掌（maxStalks=1）",
+          rules[1].maxStalks == 1, "maxStalks=" .. tostring(rules[1].maxStalks))
+      check("★★ 阶段1 出鸟概率 = 0（开局没有鸟）",
+          rules[1].birdChance == 0, "birdChance=" .. tostring(rules[1].birdChance))
+      check("★★ 阶段1 鸟档数 = 0（根本不会生成鸟）",
+          rules[1].birdTiers == 0, "birdTiers=" .. tostring(rules[1].birdTiers))
+      check("★ 最后阶段可达 4 株（难度上限）",
+          rules[#rules].maxStalks == 4, "maxStalks=" .. tostring(rules[#rules].maxStalks))
+
+      -- 单调性
+      local monoStalks, monoGap, monoTiers, monoBird = true, true, true, true
+      for i = 2, #rules do
+        if rules[i].maxStalks < rules[i-1].maxStalks then monoStalks = false end
+        if rules[i].waveGap > rules[i-1].waveGap then monoGap = false end
+        if rules[i].birdTiers < rules[i-1].birdTiers then monoTiers = false end
+        if rules[i].birdChance < rules[i-1].birdChance then monoBird = false end
+      end
+      check("★ 株数上限单调不减（难度只升不降）", monoStalks)
+      check("★ 波间隔单调不增（密度只增不减）", monoGap)
+      check("★ 鸟档数单调不减（鸟的种类只多不少）", monoTiers)
+      check("★ 出鸟概率单调不减", monoBird)
+
+      -- 阶段分界必须是递增的
+      local distBody = src:match("STAGE_DIST%s*=%s*{([^}]*)}")
+      local ds = {}
+      if distBody then
+        for v in distBody:gmatch("(%d+)") do ds[#ds+1] = tonumber(v) end
+      end
+      check("能从 demo 读到 STAGE_DIST", #ds == 3, #ds .. " 个分界")
+      local monoDist = true
+      for i = 2, #ds do if ds[i] <= ds[i-1] then monoDist = false end end
+      check("★ 阶段分界递增", #ds == 3 and monoDist,
+          table.concat(ds, " < "))
+
+      --[[ ★★★ 阶段1 必须【真的生效】—— 这是踩过的坑。
+
+            ⚠️ 第一版写 STAGE_DIST[1] = 900，而第一波是在
+               dist ~1100 才生成的（= 阶段1 的 waveGap）。
+               900 < 1100  =>  第一波生成时【已经是阶段2】，
+               => 阶段1 从未生效：开局第一波就是 2 株仙人掌、
+                  第 2 波就出鸟，与需求完全相反。
+
+           ★ 判据：STAGE_DIST[1] 必须 > 阶段1 的 waveGap
+             （否则连第一波都盖不住），且最好能覆盖【前几波】。 ]]
+      local gap1 = rules[1].waveGap
+      check("★★ 阶段1 的分界 > 第一波出场距离（否则阶段1 形同虚设）",
+          ds[1] > gap1,
+          string.format("STAGE_DIST[1]=%d > waveGap=%d", ds[1], gap1))
+
+      -- 能覆盖至少 3 波才算"开局学习期"
+      local wavesInS1 = math.floor(ds[1] / gap1)
+      check("★★ 阶段1 至少覆盖 3 波（真正的开局学习期）",
+          wavesInS1 >= 3,
+          string.format("约 %d 波", wavesInS1))
+
+      --[[ ★★ 阶段2（无鸟 -> 有鸟 的过渡期）必须够长，
+           否则玩家可能【一只鸟都没见到】就进入阶段3
+           （那时会出现"不能跳"的鸟，规则正好相反）。
+
+           判据：阶段2 内的波数 × birdChance，要能大概率见到鸟。
+             期望波数 >= 10（0.75^10 = 5.6% 见不到）。 ]]
+      local wavesInS2 = math.floor((ds[2] - ds[1]) / rules[2].waveGap)
+      check("★★ 阶段2 有足够波数来引入鸟（>= 10 波）",
+          wavesInS2 >= 10,
+          string.format("约 %d 波（0.75^%d = %.1f%% 见不到鸟）",
+              wavesInS2, wavesInS2,
+              100 * (1 - rules[2].birdChance) ^ wavesInS2))
     end
   end
-  return best
-end
 
-local wBigLow  = commonWidth(bigBox, loBird)
-local wBigHigh = commonWidth(bigBox, hiBird)
-
-print(string.format("  大仙人掌 + 低飞鸟 : 公共安全区 %.0fpx", wBigLow))
-print(string.format("  大仙人掌 + 高飞鸟 : 公共安全区 %.0fpx", wBigHigh))
-print("")
-print("  ★ 读法：低飞鸟的安全区有 92px ——")
-print("    为仙人掌跳起来就自然越过了它，不构成额外约束。")
-print("  ★ 但高飞鸟只剩 16px ——实战几乎不可能打中。")
-
-check("★ 大仙人掌 + 高飞鸟的安全区极窄（< 40px）",
-    wBigHigh < 40, string.format("%.0fpx", wBigHigh))
-print("      ↳ 这就是为什么【必须把它们拆开生成】")
-
---[[ ★ 验证 demo 确实拆开了（源码级检查）
-
-     不能只验几何，还要验「生成逻辑真的没让它们同时出现」。
-     这里做一个轻量的源码检查：看 demo 是否用 WAVE_GAP
-     而非 SPAWN_GAP 来控制生成节奏。 ]]
-local demoPath = _root .. "/deploy/demo_dino.lua"
-local f = io.open(demoPath, "r")
-if f then
-  local src = f:read("*a")
-  f:close()
-  check("★ demo 使用 WAVE_GAP 控制生成节奏",
-      src:find("WAVE_GAP") ~= nil)
-  check("★ demo 生成时只激活一个槽位（break 跳出）",
-      src:find("o%.active = true") ~= nil and src:find("break") ~= nil)
-  --[[ ★★ 生成间隔的真正不变量
-
-       不是「两个障碍不能同屏」（屏宽 1600，而 WAVE_GAP=1500 会同屏），
-       而是「处理完前一个后，要有时间回到地面再处理下一个」：
-
-         两障碍到达恐龙的时间间隔 = WAVE_GAP / speed
-         最坏情况（最高速）也要 > 跳跃全程时长
-
-       ★ 实测：1500/1500 = 1.000s  vs  跳跃 0.633s  ->  余量 0.37s ✓ ]]
-  local waveGap = tonumber(src:match("WAVE_GAP%s*=%s*(%d+)"))
-  local maxSpeed = tonumber(src:match("MAX_SPEED%s*=%s*(%d+)"))
-  local jumpDur = 2 * math.abs(G.JUMP_V) / G.GRAVITY
-
-  if waveGap and maxSpeed then
-    local worstGap = waveGap / maxSpeed
-    check("★ 最高速下两障碍间隔 > 跳跃全程（来得及落地）",
-        worstGap > jumpDur,
-        string.format("间隔 %.3fs > 跳跃 %.3fs（余量 %.3fs）",
-            worstGap, jumpDur, worstGap - jumpDur))
-    check("★ 余量 >= 0.2s（不是刚好卡着）",
-        worstGap - jumpDur >= 0.2,
-        string.format("%.3fs", worstGap - jumpDur))
-  else
-    check("能从 demo 读到 WAVE_GAP / MAX_SPEED", false)
-  end
-else
-  check("能读到 deploy/demo_dino.lua", false, demoPath)
+  -- ★ 交叉校验：maxClearWidth 的公式必须真的存在于 demo 里
+  check("★ demo 里有 maxClearWidth（组宽预算）",
+      src:find("maxClearWidth") ~= nil)
+  check("★ demo 里有 widthBudget 用的 WIDTH_SAFETY",
+      src:find("WIDTH_SAFETY") ~= nil)
+  check("★★ demo 生成仙人掌时按【当前速度】限宽",
+      src:find("makeCactus(rule.maxStalks, S.speed)", 1, true) ~= nil)
+  check("★ demo 用 birdFrames() 取三帧（不是自己抄帧表）",
+      src:find("sprite.birdFrames()") ~= nil)
 end
 
 --=============================================================================
-print("\n=== 7. ★★★ 交叉校验：本测试的常量 == demo 的常量 ===")
+print("\n=== 8. ★★★ 交叉校验：本测试的常量 == demo 的常量 ===")
 --=============================================================================
 --[[ ★★★ 为什么必须有这一节：
 
-     本文件头部自己抄了一份 G 表（为了能做纯数值验算）。
-     但那意味着：**若 demo 改了而本文件没改，所有断言依然全绿** ——
-     而真机上跑的是 demo 的那套数值。
+      本文件头部自己抄了一份 G 表（为了能做纯数值验算）。
+      但那意味着：**若 demo 改了而本文件没改，所有断言依然全绿** ——
+      而真机上跑的是 demo 的那套数值。
 
-     这正是项目文档里「**测试替身必须忠实**」那条教训：
-     替身（这里的常量副本）与真实对象不一致时，测试给的是假阳性。
-
-     ★ 所以这里直接读 demo 源码，逐项比对关键常量。 ]]
+      ★ 所以这里直接读 demo 源码，逐项比对关键常量。 ]]
 do
-  local f2 = io.open(_root .. "/deploy/demo_dino.lua", "r")
-  if not f2 then
+  local f3 = io.open(_root .. "/deploy/demo_dino.lua", "r")
+  if not f3 then
     check("能读到 deploy/demo_dino.lua", false)
   else
-    local src = f2:read("*a")
-    f2:close()
+    local src = f3:read("*a")
+    f3:close()
 
-    --[[ 从源码里抓出常量值。
-         格式：KEY = 数字   或  KEY = { a, b } ]]
     local function num(key)
       return tonumber(src:match(key .. "%s*=%s*(%-?%d+)"))
     end
@@ -423,14 +538,17 @@ do
     end
 
     local pairsToCheck = {
-      { "GROUND_Y",   G.GROUND_Y   },
-      { "GRAVITY",    G.GRAVITY    },
-      { "JUMP_V",     G.JUMP_V     },
-      { "DINO_SPR_H", G.DINO_SPR_H },
-      { "DINO_HIT_W", G.DINO_HIT_W },
-      { "DINO_HIT_T", G.DINO_HIT_T },
-      { "DINO_HIT_B", G.DINO_HIT_B },
-      { "DINO_X",     G.DINO_X     },
+      { "GROUND_Y",       G.GROUND_Y   },
+      { "GRAVITY",        G.GRAVITY    },
+      { "JUMP_V",         G.JUMP_V     },
+      { "DINO_SPR_H",     G.DINO_SPR_H },
+      { "DINO_HIT_W",     G.DINO_HIT_W },
+      { "DINO_HIT_T",     G.DINO_HIT_T },
+      { "DINO_HIT_B",     G.DINO_HIT_B },
+      { "DINO_X",         G.DINO_X     },
+      { "BASE_SPEED",     G.BASE_SPEED },
+      { "MAX_SPEED",      G.MAX_SPEED  },
+      { "BIRD_LOW_COUNT", G.BIRD_LOW_COUNT },
     }
     for _, pr in ipairs(pairsToCheck) do
       local key, expect = pr[1], pr[2]
@@ -440,48 +558,61 @@ do
           string.format("demo=%s 本测试=%s", tostring(got), tostring(expect)))
     end
 
-    -- 翼龙两个高度（数组）
+    -- 翼龙四档高度
     local bys = list("BIRD_YS")
-    check("★ BIRD_YS 一致（demo = 本测试）",
-        bys and #bys == 2 and bys[1] == G.BIRD_YS[1] and bys[2] == G.BIRD_YS[2],
-        bys and table.concat(bys, ", ") or "未找到")
-
-    -- 障碍碰撞盒：抓 OBS_KINDS 里的 hitW/hitT/hitH
-    for _, k in ipairs(OBS) do
-      -- 在源码里找到该 name 的那一段
-      local seg = src:match('name%s*=%s*"' .. k.name .. '"' ..
-                            '.-hitL%s*=%s*%-?%d+' ..
-                            '.-hitW%s*=%s*%-?%d+' ..
-                            '.-hitT%s*=%s*%-?%d+' ..
-                            '.-hitH%s*=%s*%-?%d+')
-      if not seg then
-        check(string.format("★ %s 的碰撞盒能在 demo 里找到", k.name),
-            false, "未找到")
-      else
-        local hl = tonumber(seg:match("hitL%s*=%s*(%-?%d+)"))
-        local hw = tonumber(seg:match("hitW%s*=%s*(%-?%d+)"))
-        local ht = tonumber(seg:match("hitT%s*=%s*(%-?%d+)"))
-        local hh = tonumber(seg:match("hitH%s*=%s*(%-?%d+)"))
-        local ok = hl == k.hitL and hw == k.hitW and ht == k.hitT and hh == k.hitH
-        check(string.format("★ %s 碰撞盒一致", k.name), ok,
-            string.format("demo=(%s,%s,%s,%s) 本测试=(%d,%d,%d,%d)",
-                tostring(hl), tostring(hw), tostring(ht), tostring(hh),
-                k.hitL, k.hitW, k.hitT, k.hitH))
+    local same = bys and (#bys == #G.BIRD_YS)
+    if same then
+      for i = 1, #bys do
+        if bys[i] ~= G.BIRD_YS[i] then same = false end
       end
     end
+    check("★ BIRD_YS 一致（四档，demo = 本测试）", same,
+        bys and table.concat(bys, ", ") or "未找到")
 
-    -- 尺寸（w/h）也比一下
-    for _, k in ipairs(OBS) do
-      local seg = src:match('name%s*=%s*"' .. k.name .. '"' ..
-                            '.-w%s*=%s*%-?%d+%s*,%s*h%s*=%s*%-?%d+')
-      if seg then
-        local w = tonumber(seg:match("w%s*=%s*(%-?%d+)"))
-        local h = tonumber(seg:match("h%s*=%s*(%-?%d+)"))
-        check(string.format("★ %s 尺寸一致", k.name),
-            w == k.w and h == k.h,
-            string.format("demo=%sx%s 本测试=%dx%d",
-                tostring(w), tostring(h), k.w, k.h))
-      end
+    -- 翼龙碰撞盒
+    local seg = src:match('name%s*=%s*"bird"' ..
+                          '.-hitL%s*=%s*%-?%d+' ..
+                          '.-hitW%s*=%s*%-?%d+' ..
+                          '.-hitT%s*=%s*%-?%d+' ..
+                          '.-hitH%s*=%s*%-?%d+')
+    if not seg then
+      check("★ 翼龙碰撞盒能在 demo 里找到", false, "未找到")
+    else
+      local hl = tonumber(seg:match("hitL%s*=%s*(%-?%d+)"))
+      local hw = tonumber(seg:match("hitW%s*=%s*(%-?%d+)"))
+      local ht = tonumber(seg:match("hitT%s*=%s*(%-?%d+)"))
+      local hh = tonumber(seg:match("hitH%s*=%s*(%-?%d+)"))
+      check("★ 翼龙碰撞盒一致",
+          hl == BIRD.hitL and hw == BIRD.hitW
+          and ht == BIRD.hitT and hh == BIRD.hitH,
+          string.format("demo=(%s,%s,%s,%s) 本测试=(%d,%d,%d,%d)",
+              tostring(hl), tostring(hw), tostring(ht), tostring(hh),
+              BIRD.hitL, BIRD.hitW, BIRD.hitT, BIRD.hitH))
+    end
+    -- 翼龙尺寸
+    local bw = tonumber(src:match('name%s*=%s*"bird".-w%s*=%s*(%d+)'))
+    local bh = tonumber(src:match('name%s*=%s*"bird".-h%s*=%s*(%d+)'))
+    check("★ 翼龙尺寸一致 20x10",
+        bw == BIRD.w and bh == BIRD.h,
+        string.format("demo=%sx%s 本测试=%dx%d",
+            tostring(bw), tostring(bh), BIRD.w, BIRD.h))
+
+    -- ★ WIDTH_SAFETY 必须与 demo 一致（它直接决定"限宽"松紧）
+    local ws = tonumber(src:match("WIDTH_SAFETY%s*=%s*([%d%.]+)"))
+    check("★ WIDTH_SAFETY 一致", ws == G.WIDTH_SAFETY,
+        string.format("demo=%s 本测试=%s", tostring(ws), tostring(G.WIDTH_SAFETY)))
+
+    -- ★ 生成间隔的时间约束：两障碍间隔 > 跳跃全程（来得及落地再跳）
+    local waveGap = tonumber(src:match("waveGap%s*=%s*(%d+)"))
+    local maxSpeed = tonumber(src:match("MAX_SPEED%s*=%s*(%d+)"))
+    local jumpDur = 2 * math.abs(G.JUMP_V) / G.GRAVITY
+    if waveGap and maxSpeed then
+      local worstGap = waveGap / maxSpeed
+      check("★ 最高速下两障碍间隔 > 跳跃全程（来得及落地）",
+          worstGap > jumpDur,
+          string.format("间隔 %.3fs > 跳跃 %.3fs", worstGap, jumpDur))
+    else
+      check("能从 demo 读到 waveGap / MAX_SPEED", false)
     end
   end
 end

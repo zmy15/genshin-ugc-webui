@@ -95,54 +95,78 @@ local SP = {
   cloud    = { rects = sprite.cloudRects(),    w = 10, h = 5  },
 }
 
---[[ ★★ 仙人掌三档（原版有大/中/小，随机出现）+ 空中翼龙。
+--[[ ★★ 障碍：仙人掌【运行时随机拼 1~4 株】+ 翼龙（四档飞行高度）。
 
-     每个障碍槽可以从这几档里随机挑一种，宽度/高度都不同：
-       大 9x18 格 = 72x144 px
-       中 6x17 格 = 48x136 px
-       小 5x12 格 = 40x 96 px
-       翼龙 16x8 格 = 128x64 px（空中，两个高度）
+     ══════════════════════════════════════════════════════════════════════
+     为什么仙人掌不再写死成 5 档
+     ══════════════════════════════════════════════════════════════════════
 
-     ★ 它们的【底边都对齐地面线】，所以 top 要按各自高度算：
-         top = 地面 700 - 高度px ]]--
+       旧版把「单株大/中/小 + 双株小 + 中+小」写死成 5 种组合，
+       用户反馈：应该【随机组合 1~4 个】，而不是硬写。
+
+       现在改成：库里 joinStalks 把随机挑出的 N 株【底部对齐】拼成一行
+       （见 webui_sprite.lua），demo 只负责决定「这一波出几株、哪几株」。
+
+     ══════════════════════════════════════════════════════════════════════
+     ★★★ 株数/宽度必须按【当前速度】限制 —— 否则是死局
+     ══════════════════════════════════════════════════════════════════════
+
+       障碍越宽，恐龙要"悬在它上方"的时间越久，而滞空时间是有限的：
+
+         跳跃全程 = 2 x 1600 / 6100 = 0.525s
+         恐龙盒底高于「大仙人掌顶」的窗口 = 0.343s
+
+       所以能越过的障碍最大宽度 = speed x 窗口 - 恐龙盒宽：
+
+         速度  620 -> 最多 137px（17 格）  ★ 初始速度下 4 株大仙人掌(288px) 必然撞死
+         速度 1500 -> 最多 439px（55 格）
+
+       => 组宽预算由【当前速度】算出来（见 widthBudget），
+          随机拼株时一旦超预算就减少株数。
+          ★ 这是"难度递增"的几何依据，不是手感偏好。
+
+     ══════════════════════════════════════════════════════════════════════
+     ★★ 翼龙：四档高度，全部落在【跳跃可达范围】内
+     ══════════════════════════════════════════════════════════════════════
+
+       恐龙碰撞盒：站立 620..676，跳到峰值 410..466
+       => 恐龙 top 的可达区间 = [354, 564]
+
+       旧版只有 603 / 405 两档，用户反馈「最上面的鸟太高了，跳起来撞不到」。
+       405 那档的盒子(413..485)正好卡在峰值盒上 —— 玩家跳起来【反而撞】，
+       既躲不开也够不着，观感上就是"高度不对"。
+
+       现在四档（数值与安全区宽度都验算过）：
+
+         top=596 必须跳   下方安全区 138px
+         top=566 必须跳   下方安全区 108px
+         top=440 不能跳   上方安全区 100px
+         top=406 不能跳   上方安全区 134px
+
+       ★ 四档【都在可达区间内】—— 玩家跳到任何高度都能与它发生关系，
+         不存在"够不着的鸟"。
+       ★ 安全区都 >= 100px，不是"帧级精度才活得下来"的伪死局。
+
+     ══════════════════════════════════════════════════════════════════════
+     ★★ 翼龙三帧扇翅
+     ══════════════════════════════════════════════════════════════════════
+
+       旧版只有 2 帧（抬/放），来回切换看起来是"抖"。
+       现在用 sprite.birdFrames() 的三帧循环：抬 -> 半收 -> 放 -> 半收 -> 抬。
+       ★ 三帧点阵尺寸严格一致（20x10），否则扇翅时会横向错位。 ]]--
 local OBS_KINDS = {
-  --[[ ★ 障碍四种。字段含义：
+  --[[ ★ 仙人掌：点阵由 makeCactus() 运行时随机拼出（1~4 株）。
 
-       w, h     逻辑尺寸（格），实际像素 = w*CELL x h*CELL
-       ground   true = 底边对齐地面线；false = 在空中（用 BIRD_YS）
+       w/h 与碰撞盒都在那里按【实际拼出的组合】算，
+       这里只登记"它是地面障碍"。 ]]
+  { name = "cactus", ground = true },
 
-       hitL/hitW/hitT/hitH  ★ 碰撞盒（相对控件左上角）
-         点阵的图形周围总有空格，碰撞盒比控件小一圈
-         手感更接近原版（看着没撞就不该判死）。
+  --[[ ★★ 翼龙：容器尺寸固定 20x10 格 = 160x80px，高度由 birdY 决定。
 
-       ★ 这四组数值都经数值验证：
-           三种仙人掌 -> 站着必撞 ✓  跳到峰值能过 ✓
-           低飞鸟     -> 站着撞 ✓    峰值安全 ✓（必须跳）
-           高飞鸟     -> 站着安全 ✓  峰值撞 ✓（不能跳） ]]
-  { name = "cactusBig",   rects = sprite.cactusBigRects(),
-    w = 9,  h = 18, ground = true,
-    hitL = 10, hitW = 52, hitT = 0, hitH = 144 },
-
-  { name = "cactusMid",   rects = sprite.cactusMidRects(),
-    w = 6,  h = 17, ground = true,
-    hitL = 6,  hitW = 36, hitT = 0, hitH = 136 },
-
-  { name = "cactusSmall", rects = sprite.cactusSmallRects(),
-    w = 5,  h = 12, ground = true,
-    hitL = 5,  hitW = 30, hitT = 0, hitH = 96 },
-
-  --[[ ★★ 仙人掌组合：一次出 2 株（原版常见）。
-       双小株：13 格宽 = 104px；中+小：14 格宽 = 112px
-       碰撞盒覆盖两株（每株各留一点余量）。 ]]
-  { name = "cactusDouble", rects = sprite.cactusDoubleRects(),
-    w = 13, h = 12, ground = true,
-    hitL = 4, hitW = 96, hitT = 0, hitH = 96 },
-
-  { name = "cactusMix", rects = sprite.cactusMixRects(),
-    w = 14, h = 17, ground = true,
-    hitL = 4, hitW = 104, hitT = 0, hitH = 136 },
-
-  { name = "bird",        rects = sprite.birdRects(),
+       碰撞盒 hitT=8 / hitH=72：
+         点阵第 1 行是喙（只有 2 格宽），最后一行是翅尖 ——
+         真正"实体"的部分在 y 8..80，所以盒比容器矮一圈、且偏下。 ]]
+  { name = "bird", rects = sprite.birdRects(),
     w = 20, h = 10, ground = false,
     hitL = 20, hitW = 120, hitT = 8, hitH = 72 },
 }
@@ -195,22 +219,33 @@ end
      ★ 初始用哪种都行（都会被隐藏），这里用矩形最多的那种，
        保证节点数一次到位。
 
-     ⚠️【翼龙的扇翅帧矩形数可能比主帧多】（实测 16 > 15）——
-        所以必须把扇翅帧也纳入比较，
-        否则扇翅时会缺一块（多出的那个矩形没控件可画）。 ]]--
+     ⚠️【翼龙三帧的矩形数不同】（15 / 14 / 12）——
+        必须把【三帧都】纳入比较，否则扇翅时会缺一块
+        （多出的那个矩形没控件可画）。
+
+     ⚠️ 仙人掌是【运行时随机拼】的，矩形数不固定 ——
+        所以必须按【理论上最宽的组合（4 株大仙人掌）】建节点。
+        宁可多建（空闲矩形 hide 掉），也不能少建（缺一块）。 ]]--
 local OBS_MAX_RECTS = 0
 local OBS_TEMPLATE_RECTS = nil
 local obsAllRects = {}
 for _, k in ipairs(OBS_KINDS) do
-  obsAllRects[#obsAllRects + 1] = k.rects
+  if k.rects then obsAllRects[#obsAllRects + 1] = k.rects end
 end
-obsAllRects[#obsAllRects + 1] = sprite.birdFlapRects()   -- ★ 扇翅帧也算上
+-- ★ 翼龙三帧全算上
+for _, r in ipairs(sprite.birdFrames()) do
+  obsAllRects[#obsAllRects + 1] = r
+end
+-- ★ 仙人掌：按最坏情况（4 株大仙人掌）算
+obsAllRects[#obsAllRects + 1] = sprite.cactusGroup({1, 1, 1, 1}).rects
 for _, rects in ipairs(obsAllRects) do
   if #rects > OBS_MAX_RECTS then
     OBS_MAX_RECTS = #rects
     OBS_TEMPLATE_RECTS = rects
   end
 end
+print(string.format("[dino] 障碍槽按 %d 个矩形建节点（最坏情况）",
+    OBS_MAX_RECTS))
 
 local function obsSlotHTML(slot)
   -- 用"矩形最多"的那组生成，保证节点够用
@@ -360,7 +395,7 @@ local G = {
   --[[ ★★ 摆放几何（必须与点阵尺寸一致，否则恐龙会悬空/陷地）
 
        地面线 .ground top = 700
-       恐龙 16x17 格 x 8px = 128x136，脚在控件顶 +136
+       恐龙 22x24 格 x DINO_CELL(5.67) = 125x136，脚在控件顶 +136
          -> 站在地面时控件 top = 700 - 136 = 564
        仙人掌底边都对齐地面：top = 700 - 高度px ]]
   GROUND_Y   = 564,     -- 恐龙落地时的 top（= 地面 700 - 点阵高 136）
@@ -368,15 +403,15 @@ local G = {
 
   --[[ ★★ 起跳初速：让跳跃峰值达到 ~210px
 
-       为什么要 210：需求要求「跳跃必须高过最高的仙人掌」
-         大仙人掌 = 144px
-         旧参数峰值 146px -> 只高出 2px，碰巧就撞，太勉强
+       为什么是 210：需求要求「跳跃必须高过最高的仙人掌」
+         最高仙人掌（大）= 144px
+         峰值 210 -> 余量 66px，不是"碰巧越过"
 
        峰值公式：H = v^2 / (2g)
-         v = 1150 -> H = 1150^2/(2*4200) = 157
-         v = 1330 -> H = 1330^2/(2*4200) = 210  ✓
+         v = 1600, g = 6100 -> H = 209.8  ✓
 
-       ★ 210 还给了「高飞鸟」充足的可用空间（见 BIRD_YS）。 ]]
+       ★ v 与 g 必须【同时提高】：只提 v 会让全程变长、手感拖沓
+         （v=1330/g=4200 全程 0.633s -> v=1600/g=6100 全程 0.525s）。 ]]
   JUMP_V     = -1600,   -- 起跳初速度 px/s（负 = 向上）-> 峰值约 210px
 
   BASE_SPEED = 620,     -- 障碍初始速度 px/s
@@ -385,44 +420,120 @@ local G = {
 
   --[[ ★★ 碰撞盒：只取【身体主体】，不含头部最上和尾巴尖。
 
-       恐龙点阵 16x17，躯干+腿大致在格 y 7..14
+       恐龙点阵 22x24，躯干+腿大致在格 y 11..20
          -> 像素 56..112（相对控件顶）
        站着时 画布 y = 564+56 .. 564+112 = 620..676
        峰值时 = 564-210+56 .. 564-210+112 = 410..466
 
-       ★ 寬度取 76（比控件 128 窄：点阵左右有空格） ]]
+       ★ 宽度取 76（比控件 125 窄：点阵左右有空格） ]]
   DINO_X     = 160,
   DINO_SPR_H = 136,     -- 恐龙点阵总高
   DINO_HIT_W = 76,      -- 碰撞盒宽
   DINO_HIT_T = 56,      -- 碰撞盒顶（相对控件顶）
   DINO_HIT_B = 112,     -- 碰撞盒底（相对控件顶）
 
-  --[[ ★★ 障碍：三种仙人掌 + 翼龙，尺寸各不同。
+  --[[ ★★ 障碍：仙人掌（运行时随机拼 1~4 株）+ 翼龙。
 
        所有【地面】障碍的底边都对齐地面线 700：top = 700 - 高度px ]]
   GROUND_LINE = 700,
   OBS_HIT_PAD = 13,     -- 碰撞盒比控件每边窄这么多（点阵左右有空格）
 
-  --[[ ★★★ 翼龙的两个飞行高度（算出来的，不是拍的）
+  --[[ ★★★ 翼龙四档飞行高度（算出来的，不是拍的）
 
        恐龙碰撞盒：  站立 620..676   跳到峰值 410..466
-       翼龙高 80px
+       => 恐龙 top 的可达区间 = [峰值 354, 站立 564]
+       翼龙碰撞盒 = [birdY+8, birdY+80]
 
-       低飞=603（区间 603..683）：
-         ✓ 与站立盒重叠  -> 不跳就撞（必须跳）
-         ✓ 与峰值盒不重叠 -> 跳起来能躲
+       判据（三选一，前两条是"有威胁"，第三条是"无威胁"）：
+         必须跳 = 与站立盒重叠 且 与峰值盒不重叠
+         不能跳 = 与站立盒不重叠 且 与峰值盒重叠
+         无威胁 = 两者都不重叠（★ 绝不能出现 —— 障碍形同虚设）
 
-       高飞=405（区间 405..485）：
-         ✓ 与站立盒不重叠 -> 站着就能过（不用跳）
-         ✓ 与峰值盒重叠  -> 跳了反而撞
+       实算（安全区 = 可达区间内"能安全通过"的 top 宽度）：
 
-       ★ 两者都用数值搜索验证过有解，且余量充足。 ]]
-  BIRD_YS = { 603, 405 },   -- 低飞（必须跳）/ 高飞（不能跳）
+         top=596  必须跳  下方安全区 138px
+         top=566  必须跳  下方安全区 108px
+         top=440  不能跳  上方安全区 100px
+         top=406  不能跳  上方安全区 134px
 
-  SPAWN_GAP  = 760,     -- 障碍之间的最小水平间距
-  WAVE_GAP   = 1500,    -- ★ 两波障碍的间隔（保证不会"仙人掌+鸟"同时挡路）
+       ★★ 与旧版的关键差别：旧版高飞档 405 —— 盒子 413..485，
+          而恐龙峰值盒 410..466，两者【几乎完全重合】，
+          玩家跳起来不但躲不开、还"够不着"（够不着 = 高度不在可达范围内
+          的有效交互区）。观感就是用户说的"太高了，跳起来撞不到"。
+
+       现在最低 596 / 最高 406，【全部落在可达区间 [354,564] 内】，
+       且安全区都 >= 100px（不是帧级精度才能活的伪死局）。 ]]
+  BIRD_YS = { 596, 566, 440, 406 },  -- 前两档"必须跳"，后两档"不能跳"
+  BIRD_LOW_COUNT = 2,                -- ★ BIRD_YS 前几个是"必须跳"档
+
+--[[ ★★★ 难度曲线：开局只有单个仙人掌，往后才出鸟和多株仙人掌
+
+       用户要求：「游戏刚开始应该只有单个仙人掌，没有鸟，
+                  往后难度变大再增加鸟和仙人掌的数量和密度」
+
+       用【已跑距离 dist】分阶段（不是按分数 —— 距离才是速度的积分，
+       与"障碍跑得多快"直接对应）：
+
+         阶段1  dist <  4600 : 只出【单株】仙人掌，绝不出鸟   ★ 学习期
+         阶段2  dist < 24000 : 1~2 株，开始出鸟（只出"必须跳"档）
+         阶段3  dist < 40000 : 1~3 株，鸟四档全开，间隔缩小
+         阶段4  dist >= 40000: 1~4 株，最密
+
+       ★ 株数与组宽【还要再受 widthBudget 约束】（见 makeCactus），
+         所以 stage 只是"上限"，实际宽度永远是可解的。
+
+       ══════════════════════════════════════════════════════════════
+       ★★★ 分界值有【两条】约束，缺一条就会出现"阶段形同虚设"
+       ══════════════════════════════════════════════════════════════
+
+       ① 必须 >= 第一波的出场距离
+
+          ⚠️ 踩过的坑：第一版写的三个分界是 900 / 5000 / 20000，
+             而第一波是在 dist ~1100 才生成的（= 阶段1 的 waveGap）。
+             900 < 1100  =>  【第一波生成时已经是阶段2】
+             => 阶段1 从未生效，开局第一波就是 2 株仙人掌，
+                第 2 波就出鸟 —— 与需求完全相反。
+
+          所以这里按【波数】定：阶段1 的 waveGap=1100，
+          要覆盖前 4 波 -> STAGE_DIST[1] >= 1100 x 4 = 4400，取 4600。
+
+       ② 必须按【速度曲线】标定（否则玩家感知不到变化）
+
+          速度在 dist=1665 到 700、dist=9628 到 1000、dist=29159 封顶 1500。
+          曾用 3000/7000/12000 -> 阶段4 要到分数 144 才开始，
+          而那时速度已近封顶 => 前 20 秒一直停在最简单档。
+
+       ③ 阶段2（无鸟 -> 有鸟 的过渡期）必须够长
+
+          ⚠️ 踩过的坑：曾用 STAGE_DIST[2]=14000，阶段2 只有 9 波，
+             而 birdChance=0.25 -> 9 波全不出鸟的概率仍有 7.5%，
+             实测那一轮就是 0 鸟。玩家可能【一只鸟都没见到】
+             就进入阶段3（那时会出现"不能跳"的鸟，规则正好相反）。
+
+          现在 STAGE_DIST[2]=24000 -> 阶段2 约 19 波，
+          见到至少一只鸟的概率 = 1 - 0.75^19 = 99.6%。
+
+       ★ 当前分界的实际节奏（纯逻辑复刻实测）：
+           阶段1  用时 ~6.4s（分数 ~77）    4 波    ★ 纯单株、无鸟
+           阶段2  用时 ~24s （分数 ~350）   24 波（其中约 19 波属阶段2）
+           阶段3  用时 ~35s （分数 ~490）   41 波
+           阶段4  此后
+       ]]--
+  STAGE_DIST = { 4600, 24000, 40000 },  -- 三个分界 -> 共 4 个阶段
+
+  --[[ 每阶段：{ 最多株数, 出鸟概率, 波间隔, 鸟档数 } ]]--
+  STAGE_RULES = {
+    { maxStalks = 1, birdChance = 0.00, waveGap = 1100, birdTiers = 0 },
+    { maxStalks = 2, birdChance = 0.25, waveGap = 1000, birdTiers = 2 },
+    { maxStalks = 3, birdChance = 0.45, waveGap = 950,  birdTiers = 4 },
+    { maxStalks = 4, birdChance = 0.60, waveGap = 900,  birdTiers = 4 },
+  },
+  --[[ ★ 组宽安全系数：算出"理论上能越过"的宽度后，再打这个折扣。
+        0.8 = 留 20% 余量，避免"刚好卡着也能过"的极限操作。 ]]--
+  WIDTH_SAFETY = 0.80,
+
   RUN_FRAME  = 6,       -- 每多少帧换一次跑动姿态
-  BIRD_FLAP  = 8,       -- ★ 翼龙扇翅膀的帧间隔
+  BIRD_FLAP  = 8,       -- ★ 翼龙扇翅膀的帧间隔（三帧循环）
   FPS        = 50,      -- 循环步长（固定）
 }
 
@@ -463,18 +574,120 @@ local function rnd()
   return S.seed / 2147483648
 end
 
-local function pickKind()
-  -- 三种仙人掌 + 两种组合（双株小、中+小）等概率
-  -- ★ 4 是翼龙（空中），不走这里 —— 所以从 {1,2,3,5,6} 里挑
-  local r = rnd()
-  if r < 0.20 then return 1        -- 大
-  elseif r < 0.40 then return 2    -- 中
-  elseif r < 0.60 then return 3    -- 小
-  elseif r < 0.80 then return 5    -- 双小株组合
-  else return 6 end                -- 中+小组合
+--=============================================================================
+-- ★★★ 难度曲线 + 组宽预算（"有解"的几何保证）
+--=============================================================================
+
+--[[ 当前处于第几阶段（1~4）。按【已跑距离】分，不按分数。 ]]--
+local function stageOf(dist)
+  for i = 1, #G.STAGE_DIST do
+    if dist < G.STAGE_DIST[i] then return i end
+  end
+  return #G.STAGE_DIST + 1
 end
 
---[[ 障碍槽数量（4 个，够放同屏的障碍） ]]--
+local function ruleOf(stage)
+  return G.STAGE_RULES[stage] or G.STAGE_RULES[#G.STAGE_RULES]
+end
+
+--[[ ★★★ 当前速度下，恐龙能越过的障碍【最大宽度】（px）。
+
+     推导（这是"有解"的硬保证，不是手感调参）：
+
+       跳跃全程        T = 2|v|/g
+       恐龙盒底高于障碍顶的窗口 = 解 0.5*g*t^2 + v*t + need = 0
+         其中 need = 恐龙站立 top - 允许的最高 top
+                    = GROUND_Y - (GROUND_LINE - 障碍高 - DINO_HIT_B)
+
+       => 最大宽度 = speed x 窗口 - 恐龙盒宽 - 安全余量
+
+     ⚠️ 若障碍比这个还宽，玩家【无论怎么跳都会撞】——
+        而且游戏看起来完全正常、不报错。 ]]--
+local function maxClearWidth(obsH, speed)
+  local needTop = G.GROUND_LINE - obsH - G.DINO_HIT_B
+  local need = G.GROUND_Y - needTop          -- 需要上升的像素
+  if need <= 0 then return math.huge end     -- 站着就能过（如很高的鸟）
+
+  local a = 0.5 * G.GRAVITY
+  local b = G.JUMP_V
+  local c = need
+  local disc = b * b - 4 * a * c
+  if disc < 0 then return 0 end              -- 跳不了这么高
+
+  local t1 = (-b - math.sqrt(disc)) / (2 * a)
+  local t2 = (-b + math.sqrt(disc)) / (2 * a)
+  local window = t2 - t1
+  if window <= 0 then return 0 end
+
+  local w = speed * window - G.DINO_HIT_W
+  if w < 0 then w = 0 end
+  return w * G.WIDTH_SAFETY
+end
+
+--[[ ★★ 随机拼一株仙人掌组（1~maxStalks 株），并保证【组宽不超预算】。
+
+     做法：从 maxStalks 往下试 —— 拼出来的组若太宽就减一株，
+           直到宽度进入预算。（最少 1 株，而单株一定在预算内：
+           最高的大仙人掌 72px < 初始预算 109px。）
+
+     返回 { rects=, w=, h=, stalks=, hitL=, hitW=, hitT=, hitH= } ]]--
+local function makeCactus(maxStalks, speed)
+  -- 用最高的一档算预算（保守：组里可能有高株）
+  local tallest = 0
+  for _, k in ipairs(sprite.CACTUS_KINDS) do
+    if k.h > tallest then tallest = k.h end
+  end
+  local budget = maxClearWidth(tallest * CELL, speed)
+
+  local n = maxStalks
+  local grp
+  while n >= 1 do
+    grp = sprite.randomCactusGroup(n, rnd)
+    if grp.w * CELL <= budget then break end
+    n = n - 1
+  end
+
+  --[[ ★ 碰撞盒按【实际点阵】量，不能用控件尺寸。
+
+       点阵四周有空格（尤其组合后株与株之间的空隙），
+       用控件尺寸会导致"看着没撞却判死"。
+
+       这里逐列扫，找出【真正有填充格】的左右边界：
+         hitL = 最左填充列 x CELL
+         hitW = (最右填充列 - 最左填充列 + 1) x CELL ]]--
+  local rows = grp.rows
+  local minC, maxC = nil, nil
+  for y = 1, #rows do
+    local line = rows[y]
+    for x = 1, #line do
+      if line:sub(x, x) == "#" then
+        if not minC or x < minC then minC = x end
+        if not maxC or x > maxC then maxC = x end
+      end
+    end
+  end
+  minC = minC or 1
+  maxC = maxC or grp.w
+
+  return {
+    rects = grp.rects,
+    w     = grp.w,
+    h     = grp.h,
+    stalks = grp.stalks,
+    -- 碰撞盒：横向贴合实际填充；纵向整高（仙人掌是实心的）
+    hitL  = (minC - 1) * CELL,
+    hitW  = (maxC - minC + 1) * CELL,
+    hitT  = 0,
+    hitH  = grp.h * CELL,
+  }
+end
+
+--[[ 障碍槽数量。
+
+     ★ 不能是"同时最多几个障碍"，而是【节点池上限】：
+       槽位按最坏情况的矩形数建节点（4 株大仙人掌 = 通过）。
+       4 个槽足够：最密阶段波间隔 1450px，屏宽 1600 + 出屏余量，
+       同屏最多 2 个障碍。 ]]--
 local OBS_SLOTS = 4
 local DECO_SLOTS = 3
 
@@ -484,9 +697,15 @@ local function reset()
   S.dist, S.score = 0, 0
   S.over, S.started = false, false
   S.runPhase, S.runTimer = 1, 0
+  --[[ ★ 下一波的生成距离。reset 必须清掉 ——
+       否则重开一局时会沿用上一局的进度，第一波延迟出场。 ]]--
+  S.nextSpawnDist = G.STAGE_RULES[1].waveGap
   S.obs = {}
   for i = 1, OBS_SLOTS do
-    S.obs[i] = { x = -9999, active = false, kind = 1, birdY = 0 }
+    S.obs[i] = { x = -9999, active = false, isBird = false,
+                 birdY = 0, frame = 1, flapTimer = 0,
+                 rects = nil, w = 0, h = 0,
+                 hitL = 0, hitW = 0, hitT = 0, hitH = 0 }
   end
   S.clouds = {
     { x = 400,  y = 200, speed = 0.18 },
@@ -542,39 +761,36 @@ end
 
 --[[ 改变一个障碍槽的"外观"。
 
-     slot   1..OBS_SLOTS
-     kind   OBS_KINDS 的下标（1=大仙人掌 2=中 3=小 4=翼龙）
-     birdY  仅翼龙用：飞行高度（画布 top）
+     slot  1..OBS_SLOTS
+     o     障碍槽对象（含 rects / w / h / isBird / birdY / 碰撞盒）
 
      ★ 做法：
        ① 把旧精灵的多余矩形隐藏，再按新精灵的矩形表铺开（setPose）
        ② 改外层容器的尺寸与 top（让底边对齐地面，或放到空中）
 
-     ⚠️ 矩形节点是按【最大需求】建的？不是 —— 每个槽初始只用
-        "小仙人掌"的矩形数建了节点。换成大仙人掌（矩形更多）时，
-        节点不够用，多出来的矩形【画不出来】。
+     ★★ 与旧版的关键差别：障碍的【矩形表 / 尺寸 / 碰撞盒】
+        现在都存在 o 上 —— 因为仙人掌是运行时随机拼的（1~4 株），
+        不再是一张固定的 OBS_KINDS 表能描述的。
 
-     ★ 所以这里按【矩形数最多的那种】来建初始节点（见 HTML 生成处），
-       切换时只显示需要的前 N 个。
-]]--
-local function applyObstacle(slot, kind, birdY)
-  local k = OBS_KINDS[kind]
+     ⚠️ 矩形节点数必须 >= 本精灵的矩形数：
+        节点按【最坏情况】建（见 HTML 生成处的 OBS_MAX_RECTS），
+        这里只需显示前 N 个、其余隐藏。 ]]--
+local function applyObstacle(slot, o)
   local wrap = nodes["o" .. (slot - 1)]
-  if not wrap or not k then return end
+  if not wrap or not o then return end
 
   -- ① 先按新精灵的矩形表铺开（内部会 show/hide 到正确的数量）
-  setPose("o" .. (slot - 1) .. "R", k.rects, #k.rects)
+  setPose("o" .. (slot - 1) .. "R", o.rects, #o.rects)
 
   -- ② 定位：地面障碍底边贴地面线；翼龙放空中
-  local w = k.w * CELL
-  local h = k.h * CELL
-  if k.ground then
-    wrap:setStyle("top",   (G.GROUND_LINE - h) .. "px")
-    wrap:setStyle("left",  "0px")     -- 实际 x 由每帧 translateX 控制
+  local w = o.w * CELL
+  local h = o.h * CELL
+  if o.isBird then
+    wrap:setStyle("top",  (o.birdY or G.BIRD_YS[1]) .. "px")
   else
-    wrap:setStyle("top",   (birdY or G.BIRD_YS[1]) .. "px")
-    wrap:setStyle("left",  "0px")
+    wrap:setStyle("top",  (G.GROUND_LINE - h) .. "px")
   end
+  wrap:setStyle("left",  "0px")     -- 实际 x 由每帧 translateX 控制
   wrap:setStyle("width",  w .. "px")
   wrap:setStyle("height", h .. "px")
 end
@@ -630,14 +846,13 @@ local function tick(dt)
   if S.score > S.hi then S.hi = S.score end
 
   --===========================================================================
-  -- ③ 障碍移动
+  -- ③ 障碍移动（★ 出屏判定用障碍自己的宽度 o.w）
   --===========================================================================
   for i = 1, #S.obs do
     local o = S.obs[i]
     if o.active then
       o.x = o.x - S.speed * dt
-      local k = OBS_KINDS[o.kind]
-      local w = k and (k.w * CELL) or 72
+      local w = o.w * CELL
       if o.x < -w - 60 then
         o.active = false
         o.x = -9999
@@ -652,30 +867,72 @@ local function tick(dt)
   --
   --     为什么：若仙人掌和高飞的鸟同时挡在身前，
   --     玩家跳起来躲仙人掌就会撞上高飞的鸟，不跳又撞仙人掌
-  --     -> 【无解】。
+  --     -> 【无解】（实测公共安全区只有 15px，等同死局）。
   --
-  --     所以每次只派一个障碍，且下一个要等足够远
-  --     （WAVE_GAP）—— 保证玩家有时间回到地面再跳。
+  --     所以每次只派一个障碍，且下一个要等足够远（waveGap）——
+  --     保证玩家有时间回到地面再跳。
+  --
+  --   ★★★ 难度曲线（用户要求「开局只有单个仙人掌，往后加鸟和数量/密度」）：
+  --       阶段由【已跑距离】决定，逐级放开
+  --       【株数上限】【出鸟概率】【鸟档数】【波间隔】。
+  --       开局 STAGE_RULES[1].birdChance = 0 -> 绝不出鸟。
   --===========================================================================
-  local needSpawn = (S.dist % G.WAVE_GAP) < (S.speed * dt)
-  if needSpawn then
+  local stage = stageOf(S.dist)
+  local rule  = ruleOf(stage)
+
+  -- ★ 下一波的生成距离（记在 S 上，避免用 % 取模 —— 波间隔逐阶段变化）
+  if not S.nextSpawnDist then S.nextSpawnDist = rule.waveGap end
+  if S.dist >= S.nextSpawnDist then
     for i = 1, #S.obs do
       if not S.obs[i].active then
         local o = S.obs[i]
         o.active = true
         o.x = 1600 + 60
-        -- 约 25% 出翼龙，其余三种仙人掌随机
-        if rnd() < 0.25 then
-          o.kind = 4
-          -- 低飞（必须跳）/ 高飞（不能跳）
-          o.birdY = G.BIRD_YS[(rnd() < 0.5) and 1 or 2]
+
+        --[[ 出鸟概率按阶段放开。
+             ⚠️ 只在 rule.birdTiers > 0 时才可能出鸟（开局 birdTiers=0）。 ]]
+        local isBird = (rule.birdTiers > 0) and (rnd() < rule.birdChance)
+
+        if isBird then
+          o.isBird = true
+          local k = OBS_KINDS[2]                 -- bird
+          o.rects = k.rects
+          o.w, o.h = k.w, k.h
+          o.hitL, o.hitW = k.hitL, k.hitW
+          o.hitT, o.hitH = k.hitT, k.hitH
+
+          --[[ ★ 只从【本阶段开放的档位】里挑。
+
+               前 BIRD_LOW_COUNT 档 = "必须跳"，其余 = "不能跳"。
+               阶段 2 只开放前 2 档（都是"必须跳"）——
+               先让玩家学会"看到鸟就跳"，再引入"有的鸟不能跳"，
+               避免一上来就把两种相反的规则同时丢给玩家。 ]]
+          local nTiers = math.min(rule.birdTiers, #G.BIRD_YS)
+          local t = math.floor(rnd() * nTiers) + 1
+          if t > nTiers then t = nTiers end
+          if t < 1 then t = 1 end
+          o.birdY = G.BIRD_YS[t]
+
+          o.frame = 1                            -- ★ 三帧扇翅的当前帧
+          o.flapTimer = 0
         else
-          o.kind = pickKind()
+          --[[ ★★★ 仙人掌：运行时随机拼 1~maxStalks 株，
+                且组宽受【当前速度的预算】约束（见 makeCactus）。
+                这样"株数变多"永远不会变成死局。 ]]
+          o.isBird = false
+          local c = makeCactus(rule.maxStalks, S.speed)
+          o.rects = c.rects
+          o.w, o.h = c.w, c.h
+          o.hitL, o.hitW = c.hitL, c.hitW
+          o.hitT, o.hitH = c.hitT, c.hitH
+          o.stalks = c.stalks
           o.birdY = 0
         end
-        o.flap = 1          -- ★ 翼龙扇翅姿态
-        o.flapTimer = 0
-        applyObstacle(i, o.kind, o.birdY)
+
+        applyObstacle(i, o)
+
+        -- ★ 排下一波：用【本阶段的波间隔】，加一点随机抖动打散节奏
+        S.nextSpawnDist = S.dist + rule.waveGap * (0.85 + rnd() * 0.30)
         break
       end
     end
@@ -706,14 +963,15 @@ local function tick(dt)
   end
 
   --===========================================================================
-  -- ⑥ 碰撞检测（AABB，按【每个障碍的实际类型】算碰撞盒）
+  -- ⑥ 碰撞检测（AABB，用【每个障碍自己的碰撞盒】）
   --
-  --[[ ★★ 修正：之前用的是"控件实际尺寸"，而点阵四周有空格
-         （比如鸟的翅膀只占下半部）。
+  --[[ ★★ 为什么不能用"控件实际尺寸"：
+         点阵四周有空格（鸟的喙只占 2 格、仙人掌组合的株间有空隙）。
          用控件尺寸会导致：看着没碰上，实际已判死；或反过来漏判。
 
-       ★ 所以这里用【每个精灵自己的碰撞盒】（存在 OBS_KINDS 里），
-         它是按点阵内容量出来的。 ]]
+       ★ 所以碰撞盒存在 o 上：
+           翼龙        -> 取 OBS_KINDS.bird 的固定盒
+           仙人掌组合  -> makeCactus() 按实际点阵【逐列量】出来的盒 ]]
   local dinoL = G.DINO_X
   local dinoR = G.DINO_X + G.DINO_HIT_W
   local dinoT = S.y + G.DINO_HIT_T
@@ -722,17 +980,19 @@ local function tick(dt)
   for i = 1, #S.obs do
     local o = S.obs[i]
     if o.active then
-      local k = OBS_KINDS[o.kind]
-      local w = k.w * CELL
-      local h = k.h * CELL
+      local h = o.h * CELL
       -- 容器的 top：地面障碍贴地，翼龙在指定高度
-      local top = k.ground and (G.GROUND_LINE - h) or (o.birdY or G.BIRD_YS[1])
+      local top
+      if o.isBird then
+        top = o.birdY or G.BIRD_YS[1]
+      else
+        top = G.GROUND_LINE - h
+      end
 
-      -- ★ 碰撞盒：容器 top + 精灵自带的相对盒
-      local obsL = o.x + (k.hitL or 0)
-      local obsR = obsL + (k.hitW or w)
-      local obsT = top + (k.hitT or 0)
-      local obsB = obsT + (k.hitH or h)
+      local obsL = o.x + (o.hitL or 0)
+      local obsR = obsL + (o.hitW or (o.w * CELL))
+      local obsT = top + (o.hitT or 0)
+      local obsB = obsT + (o.hitH or h)
 
       if dinoR > obsL and dinoL < obsR and dinoB > obsT and dinoT < obsB then
         S.over = true
@@ -773,18 +1033,22 @@ local function tick(dt)
         nd:show()
         nd:setStyle("transform", string.format("translateX(%.1fpx)", o.x))
 
-        --[[ ★★ 翼龙扇翅：每 BIRD_FLAP 帧在两帧之间切换。
+        --[[ ★★ 翼龙扇翅：三帧循环（抬 -> 半收 -> 放 -> 半收 -> 抬）。
 
-             ★ 只在【是翼龙】时做 —— 仙人掌没有动画帧。
-             ⚠️ 换姿态要用 reimageNode（apply 内部会在"从隐藏变显示"时
-                重贴图），这里直接传进去。 ]]
-        if o.kind == 4 then
+             ★ 帧表统一从 sprite.birdFrames() 取 ——
+               避免"demo 里抄一份帧表、库里改一份"两边不一致。
+
+             ⚠️ 换姿态要传 reimageNode（apply 内部会在"从隐藏变显示"时
+                重贴图，否则控件池回收后图丢了 -> 缺一块）。 ]]
+        if o.isBird then
           o.flapTimer = (o.flapTimer or 0) + 1
           if o.flapTimer >= G.BIRD_FLAP then
             o.flapTimer = 0
-            o.flap = (o.flap == 1) and 2 or 1
-            local rects = (o.flap == 1) and sprite.birdRects()
-                                          or sprite.birdFlapRects()
+            local frames = sprite.birdFrames()
+            local f = (o.frame or 1) + 1
+            if f > #frames then f = 1 end
+            o.frame = f
+            local rects = frames[f]
             setPose("o" .. (i - 1) .. "R", rects, #rects)
           end
         end
@@ -960,10 +1224,14 @@ app = webui.mount{
     -- 恐龙初始朝右站好
     setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
 
-    -- 障碍槽先都铺成小仙人掌（隐藏状态，第一次生成时会 applyObstacle）
+    --[[ 障碍槽先按【最坏情况的矩形表】铺满（隐藏状态）。
+
+         ⚠️ 必须用 OBS_TEMPLATE_RECTS（= 矩形最多的那一组），
+            否则切到"矩形更多"的精灵时会缺一块。
+         第一次生成时 applyObstacle 会覆盖成实际精灵。 ]]
     for i = 1, OBS_SLOTS do
       setPose("o" .. (i - 1) .. "R",
-              OBS_KINDS[3].rects, #OBS_KINDS[3].rects)
+              OBS_TEMPLATE_RECTS, #OBS_TEMPLATE_RECTS)
     end
 
     -- 地面装饰：铺上各自的图案
@@ -974,8 +1242,8 @@ app = webui.mount{
       if nd then nd:setStyle("width", (dk.w * CELL) .. "px") end
     end
 
-    print(string.format("[dino] 就绪：恐龙 %d 矩形，障碍 %d 种，云 %d",
-        #SP.dino.rects, #OBS_KINDS, #SP.cloud.rects))
+    print(string.format("[dino] 就绪：恐龙 %d 矩形，障碍 %d 种，槽位上限 %d 矩形",
+        #SP.dino.rects, #OBS_KINDS, OBS_MAX_RECTS))
     print(string.format("[dino] 贴方形图 %d / %d（image 模式，绕开文本框圆角）",
         okCount, total))
     print("[dino] 按 空格 / ↑ 开始")

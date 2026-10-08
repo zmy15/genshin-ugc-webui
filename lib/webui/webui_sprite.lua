@@ -639,6 +639,27 @@ S.BIRD_FLAP_ROWS = {
   "........#...........",
 }
 
+--[[ ★★ 翼龙第三帧（翅膀半收）—— 让扇翅变成【三帧循环】而不是来回两帧。
+
+     为什么值得加：
+       两帧来回（A-B-A-B）看起来是"抖"，不像扇翅膀；
+       三帧循环（抬 -> 半收 -> 放下 -> 抬）才有"扑翼"的节奏感。
+
+     ★ 尺寸与另外两帧严格一致（20x10），否则扇翅时会横向跳动 ——
+       因为容器尺寸是按 20x10 格固定的，点阵宽度不一致就会错位。 ]]--
+S.BIRD_MID_ROWS = {
+  "......##............",
+  "....##.###..........",
+  "...###########......",
+  "##############......",
+  ".....##########.....",
+  ".......#############",
+  "........###########.",
+  "........##########..",
+  "........#####.......",
+  ".........##.........",
+}
+
 --[[ 云点阵（原版云是浅灰色轮廓，10x5）。 ]]--
 S.CLOUD_ROWS = {
   "...####...",
@@ -693,7 +714,19 @@ function S.cactusDoubleRects() return cachedRects("cactusD", S.CACTUS_DOUBLE_ROW
 function S.cactusMixRects()    return cachedRects("cactusX", S.CACTUS_MIX_ROWS)    end
 
 function S.birdRects()      return cachedRects("bird",     S.BIRD_ROWS)      end
-function S.birdFlapRects()  return cachedRects("birdFlap", S.BIRD_FLAP_ROWS) end
+function S.birdFlapRects()  return cachedRects("birdFlap", S.BIRD_FLAP_ROWS)  end
+function S.birdMidRects()   return cachedRects("birdMid",  S.BIRD_MID_ROWS)  end
+
+--[[ ★★ 翼龙的【三帧扇翅循环】。
+
+     顺序 = 抬翅(主帧) -> 半收 -> 放下(扇翅帧) -> 半收 -> 抬翅 ...
+     （demo 里按下标轮转，回到主帧后继续，形成连续扑翼）
+
+     ★ 只在这里定义一次，demo 与测试都从这里取 ——
+       避免"两处各写一份帧表、改了一处忘另一处"。 ]]--
+function S.birdFrames()
+  return { S.birdRects(), S.birdMidRects(), S.birdFlapRects() }
+end
 function S.cloudRects()     return cachedRects("cloud",    S.CLOUD_ROWS)     end
 
 -- 地面装饰
@@ -721,6 +754,155 @@ function S.decoVariants()
     { rects = S.pebbleRects(), w = 5, h = 2 },
     { rects = S.grassRects(),  w = 7, h = 2 },
     { rects = S.tuftRects(),   w = 3, h = 2 },
+  }
+end
+
+--=============================================================================
+-- ★★ 仙人掌组合：运行时随机拼 1~N 株
+--=============================================================================
+
+--[[ 把若干株仙人掌【底部对齐】并排拼成一个点阵。
+
+     stalks  数组，每项 = { rows = 点阵字符串数组, gap = 右侧间距(格) }
+             rows 必须是同宽的矩形点阵；「底部对齐」由本函数负责。
+     gap     株与株之间的默认间距（格），可被每株的 gap 覆盖
+
+     返回：{ rows = 拼接后的点阵字符串数组, w = 总宽(格), h = 总高(格) }
+
+     ★★ 为什么要底部对齐而不是顶部对齐：
+
+        仙人掌的脚都踩在地面线上，高度又各不相同（大 18 / 中 17 / 小 12 格）。
+        若顶部对齐，矮的那株脚就悬在半空 —— 真机上看起来"仙人掌浮起来了"，
+        而代码不会报错。这是本函数存在的唯一理由。
+
+     ★ 拼接策略：先算出总宽 = 所有株宽 + 间距，总高 = 最高的那株，
+       然后每株按 (总高 - 自身高) 行偏移写入 —— 这就是底部对齐。 ]]--
+function S.joinStalks(stalks, gap)
+  if type(stalks) ~= "table" or #stalks == 0 then
+    return { rows = {}, w = 0, h = 0 }
+  end
+  gap = gap or 1
+
+  -- ① 先量出总宽与总高
+  local totalW, totalH = 0, 0
+  for i = 1, #stalks do
+    local st = stalks[i]
+    local rows = st.rows or {}
+    local h = #rows
+    local w = 0
+    for y = 1, h do
+      if #rows[y] > w then w = #rows[y] end
+    end
+    st._w, st._h = w, h
+    totalW = totalW + w
+    if i < #stalks then totalW = totalW + (st.gap or gap) end
+    if h > totalH then totalH = h end
+  end
+  if totalW == 0 or totalH == 0 then
+    return { rows = {}, w = 0, h = 0 }
+  end
+
+  -- ② 准备空白画布（全部 '.'）
+  local canvas = {}
+  for y = 1, totalH do
+    canvas[y] = string.rep(".", totalW)
+  end
+
+  -- ③ 逐株按【底部对齐】贴上去
+  local cx = 0                                   -- 当前株的左边界（0 基）
+  for i = 1, #stalks do
+    local st = stalks[i]
+    local rows = st.rows
+    local yOffset = totalH - st._h               -- ★ 底部对齐的关键
+    for sy = 1, st._h do
+      local src = rows[sy]
+      local ty = yOffset + sy
+      local line = canvas[ty]
+      for sx = 1, st._w do
+        if src:sub(sx, sx) == "#" then
+          local tx = cx + sx                      -- 1 基列号
+          line = line:sub(1, tx - 1) .. "#" .. line:sub(tx + 1)
+        end
+      end
+      canvas[ty] = line
+    end
+    cx = cx + st._w + (st.gap or gap)
+  end
+
+  return { rows = canvas, w = totalW, h = totalH }
+end
+
+--[[ ★★ 随机拼一组仙人掌（运行时用，1~count 株）。
+
+     count    株数（1~4）
+     rndFn    取随机数的函数：返回 0..1（调用方传入，便于复现）
+     kinds    可选：株型表 { {rows=,w=,h=}, ... }，默认用大/中/小三种
+
+     返回：{ rects = 矩形表, w, h, stalks = 实际株型索引数组 }
+           w/h 单位是【格】，rects 是分解好的矩形表。
+
+     ★ 为什么在库里做而不是在 demo 里做：
+
+       拼接 + 底部对齐 + 分解这套逻辑与「点阵」强相关，
+       放在库里可以被测试单独覆盖（不必启动整个游戏）。
+       demo 只负责「随机挑几株」这一步的调用。
+
+     ★★ 密度：株间默认留 0 格间距（紧挨着），
+        因为原版里连排的仙人掌就是贴在一起的；
+        太宽会让玩家无处可跳（障碍越宽，跳过它需要的滞空越久）。 ]]--
+function S.randomCactusGroup(count, rndFn, kinds)
+  rndFn = rndFn or function() return 0.5 end
+  kinds = kinds or S.CACTUS_KINDS
+
+  if count < 1 then count = 1 end
+  if count > 4 then count = 4 end
+
+  local stalks, picked = {}, {}
+  for i = 1, count do
+    local k = math.floor(rndFn() * #kinds) + 1
+    if k > #kinds then k = #kinds end
+    if k < 1 then k = 1 end
+    picked[i] = k
+    stalks[i] = { rows = kinds[k].rows }
+  end
+
+  local joined = S.joinStalks(stalks, 0)
+  return {
+    rects  = cachedRects("grp:" .. table.concat(picked, ",") .. "",
+                         joined.rows),
+    w      = joined.w,
+    h      = joined.h,
+    rows   = joined.rows,
+    stalks = picked,
+  }
+end
+
+--[[ ★ 三种单株仙人掌（点阵原文），供 randomCactusGroup 挑选。
+
+     顺序 = 大 / 中 / 小，与 demo 里的观感一致。 ]]--
+S.CACTUS_KINDS = {
+  { name = "big",   rows = S.CACTUS_BIG_ROWS,   w = 9, h = 18 },
+  { name = "mid",   rows = S.CACTUS_MID_ROWS,   w = 6, h = 17 },
+  { name = "small", rows = S.CACTUS_SMALL_ROWS, w = 5, h = 12 },
+}
+
+--[[ 给一个组合规格（株型索引数组）算出确定性的组合结果。
+
+     用于测试与「按难度指定组合」（同一规格必须每次得到同一张矩形表）。 ]]--
+function S.cactusGroup(keys, gap)
+  local stalks = {}
+  for i = 1, #keys do
+    local k = S.CACTUS_KINDS[keys[i]]
+    if k then stalks[#stalks + 1] = { rows = k.rows, gap = gap } end
+  end
+  local joined = S.joinStalks(stalks, gap or 0)
+  return {
+    rects = cachedRects("grp:" .. table.concat(keys, ",") .. ":" ..
+                        tostring(gap or 0), joined.rows),
+    w     = joined.w,
+    h     = joined.h,
+    rows  = joined.rows,
+    stalks = keys,
   }
 end
 

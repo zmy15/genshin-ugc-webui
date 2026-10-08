@@ -190,16 +190,68 @@ check("恐龙点阵分解出合理数量的矩形（10~45）",
     dinoN >= 10 and dinoN <= 45, dinoN .. " 个")
 check("云分解为 6 个矩形", cloudN == 6, cloudN .. " 个")
 
---[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 组合 + 翼龙）。
-        每档的矩形数不同，所以断言"每档都合理"而不是某个固定值。 ]]
+--[[ ★★ R27 起：仙人掌不再写死成固定几档，而是【运行时随机拼 1~4 株】。
+
+     所以这里断言的是「三种单株 + 任意株数的组合都能拼出来」，
+     而不是"恰好有 5 档"。 ]]
 local variants = sprite.cactusVariants()
-check("仙人掌有 5 档（大/中/小 + 双株组合 + 中小组）", #variants == 5, #variants .. " 档")
-local allOk = true
-for i, v in ipairs(variants) do
-  local n = #v.rects
-  if n < 2 or n > 20 then allOk = false end
+check("三种单株仙人掌（大/中/小）", #sprite.CACTUS_KINDS == 3,
+    #sprite.CACTUS_KINDS .. " 种")
+local kindsOk = true
+for _, k in ipairs(sprite.CACTUS_KINDS) do
+  if #k.rows == 0 or k.w <= 0 or k.h <= 0 then kindsOk = false end
 end
-check("每档仙人掌的矩形数合理（2~20）", allOk)
+check("每种单株都有点阵与尺寸", kindsOk)
+
+-- ★ 1~4 株的组合都能拼出点阵，且【底部对齐】（末行必须有填充）
+local groupOk, groupBad = true, 0
+for n = 1, 4 do
+  local keys = {}
+  for i = 1, n do keys[i] = 1 end
+  local g = sprite.cactusGroup(keys)
+  if #g.rects == 0 or g.w <= 0 or g.h <= 0 then groupOk = false end
+  local last = g.rows[#g.rows]
+  if not last:find("#", 1, true) then groupBad = groupBad + 1 end
+end
+check("★ 1~4 株的组合都能拼出点阵", groupOk)
+check("★ 所有组合底边对齐（末行有填充）", groupBad == 0,
+    groupBad .. " 个组合末行是空的")
+
+--[[ ★ 随机拼株要真的产生【不同的株型组合】，而不是永远同一种。
+
+     ⚠️ 语义澄清：randomCactusGroup(n, rnd) 里的 n 是【调用方指定的株数】
+        （它一定返回 n 株），"随机"体现在【每株挑哪种仙人掌】。
+        真正决定"这一波出几株"的是 demo 的 makeCactus（按宽度预算递减）。
+
+     所以这里验的是：给定株数时，株型组合确实在变。 ]]
+local seed = 20261008
+local function rnd()
+  seed = (seed * 1103515245 + 12345) % 2147483648
+  return seed / 2147483648
+end
+local combos = {}
+for _ = 1, 200 do
+  local g = sprite.randomCactusGroup(3, rnd)
+  combos[table.concat(g.stalks, ",")] = true
+end
+local nCombos = 0
+for _ in pairs(combos) do nCombos = nCombos + 1 end
+check("★ 随机拼株能产出多种株型组合（>=5 种）", nCombos >= 5,
+    nCombos .. " 种组合")
+
+-- ★ 株数本身影响组宽（这是"限宽 -> 减株"能生效的前提）
+local nSizes = 0
+do
+  local sizes = {}
+  for n = 1, 4 do
+    local keys = {}
+    for i = 1, n do keys[i] = 1 end
+    sizes[sprite.cactusGroup(keys).w] = true
+  end
+  for _ in pairs(sizes) do nSizes = nSizes + 1 end
+end
+check("★ 不同株数的组合宽度不同（株数真的影响组宽）", nSizes >= 4,
+    nSizes .. " 种宽度")
 
 local birdN = #sprite.birdRects()
 check("翼龙分解出合理数量的矩形（2~20）", birdN >= 2 and birdN <= 20, birdN .. " 个")
@@ -220,18 +272,19 @@ check("地面装饰有 3 种", #decos == 3, #decos .. " 种")
         切换不同档），所以每个槽的节点数 = 最大档的矩形数。 ]]
 -- variants 已在上面声明（仙人掌三档那段）
 local birdRects = sprite.birdRects()
-local birdFlapRects = sprite.birdFlapRects()
+-- ★ R27：翼龙改成三帧循环（抬 / 半收 / 放）
+local birdFrames = sprite.birdFrames()
 
---[[ ★★ 障碍槽按【含扇翅帧】的最大矩形数建节点。
+--[[ ★★ 障碍槽按【最坏情况】的最大矩形数建节点（R27 起）。
 
-     ⚠️ 翼龙的扇翅帧矩形数比主帧多（实测 16 > 15），
-        漏了它就会在扇翅时少一块 —— 这里必须一致。 ]]
-local biggest = variants[1].rects
-for _, v in ipairs(variants) do
-  if #v.rects > #biggest then biggest = v.rects end
+     ⚠️ 现在是两个来源取最大：
+          · 翼龙【三帧】（15 / 14 / 12）—— 漏了哪一帧就会在扇翅时少一块
+          · 仙人掌【随机拼株】—— 按"最宽的组合（4 株大仙人掌）"算
+       宁可多建（空闲矩形 hide 掉），也不能少建（缺一块）。 ]]
+local biggest = sprite.cactusGroup({ 1, 1, 1, 1 }).rects
+for _, fr in ipairs(sprite.birdFrames()) do
+  if #fr > #biggest then biggest = fr end
 end
-if #birdRects > #biggest then biggest = birdRects end
-if #birdFlapRects > #biggest then biggest = birdFlapRects end
 
 -- ★★ 恐龙用独立的 DINO_CELL=5.67，其他全部 CELL=8
 local DINO_CELL = 5.67

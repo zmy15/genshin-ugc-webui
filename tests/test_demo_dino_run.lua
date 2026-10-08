@@ -202,35 +202,26 @@ end
 
      ★ 注意：仙人掌本身是 8 个矩形拼的，外层容器才是 72x112。
        这里数【外层容器】（有 3 个），不是矩形。 ]]--
---[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 翼龙），尺寸各不相同。
+--[[ ★★ R27 起：仙人掌是【运行时随机拼 1~4 株】的，尺寸不再可枚举。
 
-     所以不能像以前那样用固定尺寸(72x112)来认障碍。
-     这里改成：一个控件只要尺寸等于【某一档障碍】的尺寸，
-     就算障碍容器。 ]]--
-local OBS_SIZES = {}
-do
-  local sprite = require('webui_sprite')
-  local CELL, BLEED = 8, 1
-  local function add(rects, w, h)
-    -- 容器尺寸 = 逻辑尺寸 x CELL（容器不受 bleed 影响）
-    OBS_SIZES[w .. "x" .. h] = true
-  end
-  for _, v in ipairs(sprite.cactusVariants()) do
-    add(v.rects, v.w * CELL, v.h * CELL)
-  end
-  local br = sprite.birdRects()
-  -- 翼龙 20x10 格
-  add(br, 20 * CELL, 10 * CELL)
-end
+      所以不能靠"尺寸等于某一档"来认障碍了。改用【高度特征】：
 
+        · 翼龙      -> 恰好 160x80（20x10 格）
+        · 仙人掌    -> 高 >= 96px（最矮的小仙人掌 12 格），宽是 8 的倍数
+        · 排除      -> 地面装饰高 16px、云 80x40、恐龙 125x136（宽不是 8 的倍数）
+
+      ★ 用特征而不是枚举，是因为"随机拼株"本质上不可枚举。 ]]--
 local function obsCtrls()
   local out = {}
   for _, c in ipairs(E.controls) do
     local d = E.dataOf(c)
-    local key = string.format("%dx%d",
-        math.floor(d and d.fields.sizeDeltaX or 0),
-        math.floor(d and d.fields.sizeDeltaY or 0))
-    if d and OBS_SIZES[key] then out[#out+1] = d end
+    if d then
+      local w = d.fields.sizeDeltaX or 0
+      local h = d.fields.sizeDeltaY or 0
+      local isBird = math.abs(w - 160) < 0.01 and math.abs(h - 80) < 0.01
+      local isCactus = (h >= 96) and (math.abs(w % 8) < 0.01) and (w <= 320)
+      if isBird or isCactus then out[#out+1] = d end
+    end
   end
   return out
 end
@@ -249,14 +240,43 @@ print("\n=== 3. 按跳跃 -> 开始游戏，障碍开始生成 ===")
 --=============================================================================
 E.fireKey(root, "Enum.KeyEventType.KeyboardJumpKeyDown", {})   -- 第 1 次：started
 E.fireKey(root, "Enum.KeyEventType.KeyboardJumpKeyDown", {})   -- 第 2 次：起跳
-step(120)
 
+--[[ ★★ R27：开局【故意】有一段空场景（阶段1 波间隔 1100px ≈ 1.6s）。
+
+     所以不能像旧版那样固定跑 120 帧就要求"障碍已出现"——
+     改成：一直跑到第一波真的出现（上限 400 帧）。 ]]
 local visibleObs = 0
-for _, d in ipairs(obsCtrls()) do
-  if d.fields.active ~= false then visibleObs = visibleObs + 1 end
+local firstObsFrame = nil
+for f = 1, 400 do
+  step(1)
+  local n = 0
+  for _, d in ipairs(obsCtrls()) do
+    if d.fields.active ~= false then n = n + 1 end
+  end
+  if n > 0 then
+    firstObsFrame = f
+    visibleObs = n
+    break
+  end
 end
 check("★ 开始后障碍出现（至少 1 个可见）", visibleObs >= 1,
-    "visible=" .. tostring(visibleObs))
+    "visible=" .. tostring(visibleObs)
+    .. "（第 " .. tostring(firstObsFrame) .. " 帧）")
+
+--[[ ★★★ 用户要求：开局【只有单个仙人掌、没有鸟】。
+
+     这里做【端到端】验证：第一波出现时，屏幕上不能有任何翼龙。 ]]
+local birdsEarly = 0
+for _, d in ipairs(obsCtrls()) do
+  local w = d.fields.sizeDeltaX or 0
+  local h = d.fields.sizeDeltaY or 0
+  if math.abs(w - 160) < 0.01 and math.abs(h - 80) < 0.01
+     and d.fields.active ~= false then
+    birdsEarly = birdsEarly + 1
+  end
+end
+check("★★ 开局阶段不出现翼龙（开局只有仙人掌）", birdsEarly == 0,
+    birdsEarly .. " 只鸟")
 
 -- 分数应当涨了
 local scoreTxt = nil
