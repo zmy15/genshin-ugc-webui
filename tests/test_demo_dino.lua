@@ -141,11 +141,22 @@ local BLEED = 1        -- 与 sprite.toHTML 的默认值一致
      再和画面上该尺寸的 image 控件数逐一比对。
 
      返回：匹配到的总数, 尺寸不符的种类数 ]]--
-local function countRectsExact(rectTables)
+--[[ ★★ 精确计数：按【尺寸 -> 期望个数】映射比对。
+
+     参数改为 { rects=..., cell=... } 的表：
+     恐龙用 DINO_CELL=5.67，其他用 CELL=8 ——
+     每个精灵按自己的格宽算尺寸。 ]]
+local function countRectsExact(entries)
   local want = {}
-  for _, rects in ipairs(rectTables) do
+  for _, e in ipairs(entries) do
+    local rects, cell = e.rects, e.cell or CELL
     for _, r in ipairs(rects) do
-      local key = (r.w * CELL + BLEED * 2) .. "x" .. (r.h * CELL + BLEED * 2)
+      -- ★ floor 必须与渲染端一致：
+      --   引擎字段是整数，而 DINO_CELL=5.67 产生小数尺寸
+      --   不 floor 的话 want key 会成 "36.34x36.34" 而实际是 "36x36"
+      local key = string.format("%dx%d",
+          math.floor(r.w * cell + BLEED * 2),
+          math.floor(r.h * cell + BLEED * 2))
       want[key] = (want[key] or 0) + 1
     end
   end
@@ -179,10 +190,10 @@ check("恐龙点阵分解出合理数量的矩形（10~45）",
     dinoN >= 10 and dinoN <= 45, dinoN .. " 个")
 check("云分解为 6 个矩形", cloudN == 6, cloudN .. " 个")
 
---[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 翼龙）。
+--[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 组合 + 翼龙）。
         每档的矩形数不同，所以断言"每档都合理"而不是某个固定值。 ]]
 local variants = sprite.cactusVariants()
-check("仙人掌有 3 档（大/中/小）", #variants == 3, #variants .. " 档")
+check("仙人掌有 5 档（大/中/小 + 双株组合 + 中小组）", #variants == 5, #variants .. " 档")
 local allOk = true
 for i, v in ipairs(variants) do
   local n = #v.rects
@@ -222,15 +233,22 @@ end
 if #birdRects > #biggest then biggest = birdRects end
 if #birdFlapRects > #biggest then biggest = birdFlapRects end
 
+-- ★★ 恐龙用独立的 DINO_CELL=5.67，其他全部 CELL=8
+local DINO_CELL = 5.67
 local allRectTables = {
-  sprite.dinoRects(),
-  sprite.cloudRects(), sprite.cloudRects(),
-  sprite.pebbleRects(), sprite.grassRects(), sprite.tuftRects(),
+  { rects = sprite.dinoRects(),   cell = DINO_CELL },
+  { rects = sprite.cloudRects(),  cell = CELL },
+  { rects = sprite.cloudRects(),  cell = CELL },
+  { rects = sprite.pebbleRects(), cell = CELL },
+  { rects = sprite.grassRects(),  cell = CELL },
+  { rects = sprite.tuftRects(),   cell = CELL },
 }
-for _ = 1, 4 do allRectTables[#allRectTables + 1] = biggest end
+for _ = 1, 4 do
+  allRectTables[#allRectTables + 1] = { rects = biggest, cell = CELL }
+end
 
 local expectTotal = 0
-for _, t in ipairs(allRectTables) do expectTotal = expectTotal + #t end
+for _, e in ipairs(allRectTables) do expectTotal = expectTotal + #e.rects end
 
 local actual, badKinds = countRectsExact(allRectTables)
 

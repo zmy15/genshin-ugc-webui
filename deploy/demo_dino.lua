@@ -60,7 +60,20 @@ local sprite = require('webui_sprite')
 -- 精灵：把点阵转成矩形，再生成 HTML
 --=============================================================================
 
-local CELL = 8            -- 每个逻辑格 8px
+local CELL = 8            -- 每个逻辑格 8px（仙人掌/翼龙/云 用）
+
+--[[ ★★ 恐龙的格宽（浮点）
+
+     用户反馈 16x17 重采样后【眼睛丢了】。
+     8px/格 x 17行 = 136px，但重采样把 1 格的眼睛吞掉了。
+
+     解法：回到原版 22x24 点阵（含眼睛），
+     并把格宽缩小保持高度 136px：
+       cell = 136 / 24 = 5.67px
+
+     ★ 22 格 x 5.67 = 125px 宽，24 格 x 5.67 = 136px 高
+     眼睛 = 5.67 - 2*1(bleed) = 3.67px 可见 ]]--
+local DINO_CELL = 5.67
 
 --[[ ★ 相邻矩形外扩量（px）。
 
@@ -76,9 +89,9 @@ local BLEED = 1
 
 --[[ ★ 每个精灵：{ 矩形表, 宽(格), 高(格) } ]]--
 local SP = {
-  dino     = { rects = sprite.dinoRects(),     w = 16, h = 17 },
-  dinoRun  = { rects = sprite.dinoRunRects(),  w = 16, h = 17 },
-  dinoDead = { rects = sprite.dinoDeadRects(), w = 16, h = 17 },
+  dino     = { rects = sprite.dinoRects(),     w = 22, h = 24 },
+  dinoRun  = { rects = sprite.dinoRunRects(),  w = 22, h = 24 },
+  dinoDead = { rects = sprite.dinoDeadRects(), w = 22, h = 24 },
   cloud    = { rects = sprite.cloudRects(),    w = 10, h = 5  },
 }
 
@@ -118,6 +131,17 @@ local OBS_KINDS = {
     w = 5,  h = 12, ground = true,
     hitL = 5,  hitW = 30, hitT = 0, hitH = 96 },
 
+  --[[ ★★ 仙人掌组合：一次出 2 株（原版常见）。
+       双小株：13 格宽 = 104px；中+小：14 格宽 = 112px
+       碰撞盒覆盖两株（每株各留一点余量）。 ]]
+  { name = "cactusDouble", rects = sprite.cactusDoubleRects(),
+    w = 13, h = 12, ground = true,
+    hitL = 4, hitW = 96, hitT = 0, hitH = 96 },
+
+  { name = "cactusMix", rects = sprite.cactusMixRects(),
+    w = 14, h = 17, ground = true,
+    hitL = 4, hitW = 104, hitT = 0, hitH = 136 },
+
   { name = "bird",        rects = sprite.birdRects(),
     w = 20, h = 10, ground = false,
     hitL = 20, hitW = 120, hitT = 8, hitH = 72 },
@@ -148,12 +172,13 @@ local DECO_KINDS = {
         ⚠️ 代价：每个矩形要 SetImage 一次。但只需在【建控件时】做，
            换姿态只改尺寸/位置，不用重贴。
 ]]--
-local function spriteHTML(rects, prefix, wrapId, bodyId, color)
+local function spriteHTML(rects, prefix, wrapId, bodyId, cell)
+  cell = cell or CELL
   return string.format([[
 <div class="spr" id="%s"><div class="spr-body" id="%s">
 %s</div></div>
 ]], wrapId, bodyId,
-     sprite.toHTML(rects, { cell = CELL, prefix = prefix,
+     sprite.toHTML(rects, { cell = cell, prefix = prefix,
                             bleed = BLEED, asImage = true }))
 end
 
@@ -224,16 +249,16 @@ local HTML = ([[
 </div>
 ]]):format(
   -- 地面装饰：初始用三种不同的图案
-  spriteHTML(DECO_KINDS[1].rects, "p0R", "dc0", "dc0Body", "#8a8a8a"),
-  spriteHTML(DECO_KINDS[2].rects, "p1R", "dc1", "dc1Body", "#8a8a8a"),
-  spriteHTML(DECO_KINDS[3].rects, "p2R", "dc2", "dc2Body", "#8a8a8a"),
+  spriteHTML(DECO_KINDS[1].rects, "p0R", "dc0", "dc0Body"),
+  spriteHTML(DECO_KINDS[2].rects, "p1R", "dc1", "dc1Body"),
+  spriteHTML(DECO_KINDS[3].rects, "p2R", "dc2", "dc2Body"),
   -- 恐龙
-  spriteHTML(SP.dino.rects, "dR", "dino", "dinoBody"),
+  spriteHTML(SP.dino.rects, "dR", "dino", "dinoBody", DINO_CELL),
   -- 障碍槽（按最大矩形数建节点）
   obsSlotHTML(0), obsSlotHTML(1), obsSlotHTML(2), obsSlotHTML(3),
   -- 云
-  spriteHTML(SP.cloud.rects,  "k0R", "cl0", "cl0Body", "#c8cdd4"),
-  spriteHTML(SP.cloud.rects,  "k1R", "cl1", "cl1Body", "#c8cdd4")
+  spriteHTML(SP.cloud.rects,  "k0R", "cl0", "cl0Body"),
+  spriteHTML(SP.cloud.rects,  "k1R", "cl1", "cl1Body")
 )
 
 local CSS = [[
@@ -279,7 +304,7 @@ local CSS = [[
      中仙人掌 17 格 = 136px，恐龙 17 格 = 136px ✓
 
    ★ top = 地面 700 - 136 = 564（脚正好踩在地面线上） */
-#dino { left: 160px; top: 564px; width: 128px; height: 136px; }
+#dino { left: 160px; top: 564px; width: 125px; height: 136px; }
 
 /*[[ 障碍槽：尺寸与 top 由运行时按【实际类型】设置。
 
@@ -339,7 +364,7 @@ local G = {
          -> 站在地面时控件 top = 700 - 136 = 564
        仙人掌底边都对齐地面：top = 700 - 高度px ]]
   GROUND_Y   = 564,     -- 恐龙落地时的 top（= 地面 700 - 点阵高 136）
-  GRAVITY    = 4200,    -- 重力加速度 px/s^2
+  GRAVITY    = 6100,    -- 重力加速度 px/s^2
 
   --[[ ★★ 起跳初速：让跳跃峰值达到 ~210px
 
@@ -352,7 +377,7 @@ local G = {
          v = 1330 -> H = 1330^2/(2*4200) = 210  ✓
 
        ★ 210 还给了「高飞鸟」充足的可用空间（见 BIRD_YS）。 ]]
-  JUMP_V     = -1330,   -- 起跳初速度 px/s（负 = 向上）-> 峰值约 210px
+  JUMP_V     = -1600,   -- 起跳初速度 px/s（负 = 向上）-> 峰值约 210px
 
   BASE_SPEED = 620,     -- 障碍初始速度 px/s
   MAX_SPEED  = 1500,    -- 最高速度（封顶）
@@ -439,9 +464,14 @@ local function rnd()
 end
 
 local function pickKind()
-  -- 三种仙人掌等概率
+  -- 三种仙人掌 + 两种组合（双株小、中+小）等概率
+  -- ★ 4 是翼龙（空中），不走这里 —— 所以从 {1,2,3,5,6} 里挑
   local r = rnd()
-  if r < 0.34 then return 1 elseif r < 0.67 then return 2 else return 3 end
+  if r < 0.20 then return 1        -- 大
+  elseif r < 0.40 then return 2    -- 中
+  elseif r < 0.60 then return 3    -- 小
+  elseif r < 0.80 then return 5    -- 双小株组合
+  else return 6 end                -- 中+小组合
 end
 
 --[[ 障碍槽数量（4 个，够放同屏的障碍） ]]--
@@ -501,8 +531,9 @@ local function reimageNode(node)
   end
 end
 
-local function setPose(prefix, rects, count)
-  sprite.apply(spNodes[prefix] or {}, rects, CELL, count, BLEED, reimageNode)
+local function setPose(prefix, rects, count, cell)
+  cell = cell or CELL
+  sprite.apply(spNodes[prefix] or {}, rects, cell, count, BLEED, reimageNode)
 end
 
 --=============================================================================
@@ -572,7 +603,7 @@ local function tick(dt)
     end
     if not S._deadPosed then
       S._deadPosed = true
-      setPose("dinoDead", SP.dinoDead.rects, #SP.dinoDead.rects)
+      setPose("dinoDead", SP.dinoDead.rects, #SP.dinoDead.rects, DINO_CELL)
     end
     return
   end
@@ -729,7 +760,7 @@ local function tick(dt)
       S.runTimer = 0
       S.runPhase = (S.runPhase == 1) and 2 or 1
       local pose = (S.runPhase == 1) and SP.dino or SP.dinoRun
-      setPose("dino", pose.rects, #pose.rects)
+      setPose("dino", pose.rects, #pose.rects, DINO_CELL)
     end
   end
 
@@ -802,7 +833,7 @@ local function onJump()
     S.started = true
     S._deadPosed = false
     -- 恢复站立姿态
-    setPose("dino", SP.dino.rects, #SP.dino.rects)
+    setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
     return
   end
 
@@ -927,7 +958,7 @@ app = webui.mount{
     if nodes.over then nodes.over:hide() end
 
     -- 恐龙初始朝右站好
-    setPose("dino", SP.dino.rects, #SP.dino.rects)
+    setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
 
     -- 障碍槽先都铺成小仙人掌（隐藏状态，第一次生成时会 applyObstacle）
     for i = 1, OBS_SLOTS do

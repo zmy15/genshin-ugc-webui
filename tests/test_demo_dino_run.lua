@@ -91,7 +91,7 @@ print("\n=== 2. 未开始时：恐龙在地面，障碍隐藏 ===")
      仙人掌控件 9x14 格 x 8px = 72x112。
      （不再是旧版的 80x80 / 40x70 方块。） ]]
 local CELL = 8
-local DINO_W, DINO_H = 16 * CELL, 17 * CELL     -- 128 x 136
+local DINO_W, DINO_H = 125, 136   -- CSS #dino（22x24 格 x 5.67 ≈ 125x136）
 local OBS_W,  OBS_H  = 9  * CELL, 14 * CELL     -- 72 x 112
 
 local function ctrlByDelta(w, h)
@@ -106,11 +106,11 @@ end
 
 step(5)
 local dinoC, dinoD = ctrlByDelta(DINO_W, DINO_H)
-check(string.format("恐龙容器存在（%dx%d）", DINO_W, DINO_H), dinoC ~= nil)
+check(string.format("恐龙容器存在（%.0fx%.0f）", DINO_W, DINO_H), dinoC ~= nil)
 if dinoD then
   -- left:160 在 1600 宽父里居中 -> 偏移 = (160 + 176/2) - 800 = -552
   local expect = (160 + DINO_W / 2) - 800
-  check(string.format("恐龙 anchoredPositionX = %d（left:160 居中换算）", expect),
+  check(string.format("恐龙 anchoredPositionX = %.0f（left:160 居中换算）", expect),
       math.abs((dinoD.fields.anchoredPositionX or 0) - expect) < 1,
       "ax=" .. tostring(dinoD.fields.anchoredPositionX))
 end

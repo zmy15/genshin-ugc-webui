@@ -40,8 +40,8 @@ local GROUND = 700        -- 地面线
 
 local G = {
   GROUND_Y   = 564,       -- 恐龙落地 top
-  GRAVITY    = 4200,
-  JUMP_V     = -1330,
+  GRAVITY    = 6100,
+  JUMP_V     = -1600,
   DINO_SPR_H = 136,
   DINO_HIT_W = 76,
   DINO_HIT_T = 56,
@@ -100,10 +100,13 @@ check("★ 两者相等", dinoH == midH, string.format("%d = %d", dinoH, midH))
 
 -- 顺带验证：恐龙点阵实际就是 16x17 格
 local dinoRows = sprite.DINO_ROWS
-check("恐龙点阵是 16x17 格", #dinoRows[1] == 16 and #dinoRows == 17,
+check("恐龙点阵是 22x24 格", #dinoRows[1] == 22 and #dinoRows == 24,
     string.format("%dx%d", #dinoRows[1], #dinoRows))
-check("★ 点阵高度 x CELL = 恐龙高度",
-    #dinoRows * CELL == dinoH, (#dinoRows * CELL) .. " = " .. dinoH)
+--[[ 恐龙用独立的浮点格宽 DINO_CELL，非全局 CELL：
+       点阵 24 行 x 5.67px = 136px = 恐龙高度 ]]--
+  check("★ 点阵高度 x DINO_CELL(5.67) = 恐龙高度",
+      math.abs(#dinoRows * 5.67 - dinoH) < 1,
+      string.format("%.1f ~= %d", #dinoRows * 5.67, dinoH))
 
 --=============================================================================
 print("\n=== 2. 跳跃高度 > 最高仙人掌 ===")
@@ -266,10 +269,15 @@ for _, k in ipairs(OBS) do
   end
 end
 
-check("★ 扇翅帧矩形数 > 其他障碍的最大值（危险确实存在）",
-    #flapRects > maxOther,
-    string.format("扇翅 %d > %s 的 %d", #flapRects, tostring(maxOtherName), maxOther))
-print("      ↳ 所以 demo 建节点时必须把扇翅帧也算进去")
+--[[ ★★ 障碍槽按【矩形最多的那一帧】建节点。
+
+     新参考姿态下：翼龙主帧（翅上） 15 个矩形，
+     扇翅帧（翅下） 12 个 —— 主帧更多。
+     所以不再有「扇翅帧占去额外节点」的危险。
+     但“按最大矩形数建节点”的原则仍然成立。 ]]
+check("★ 扇翅帧矩形数 <= 主帧（不会超出节点数）",
+    #flapRects <= #birdRects,
+    string.format("扇翅 %d <= 主帧 %d", #flapRects, #birdRects))
 
 --=============================================================================
 print("\n=== 6. ★★★ 可解性：同时出现时还有活路吗？ ===")
