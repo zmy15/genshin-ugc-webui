@@ -288,6 +288,35 @@ end
 
 -- ★★ 恐龙用独立的 DINO_CELL=5.67，其他全部 CELL=8
 local DINO_CELL = 5.67
+
+--[[ ★ R28：星空层（月亮 + 每颗星）也是 image 控件矩形，
+     必须一起算进期望值 —— 漏了就会报"控件数不符"。
+
+     ⚠️ 星星的数量与大小（大星/小星）在 demo 的 SKY_STARS 里定义。
+        这里不硬抄那份表，而是【直接从 demo 源码解析】——
+        否则 demo 改一颗星、测试就假失败（"测试替身必须忠实"）。 ]]
+local skyRects = { { rects = sprite.moonRects(), cell = 5 } }
+do
+  local dsrc = io.open("deploy/demo_dino.lua", "r"):read("*a")
+  -- 解析 SKY_STARS 的每一项 { x, y, true/false }
+  local block = dsrc:match("SKY_STARS%s*=%s*{(.-)\n}")
+  local nBig, nSmall = 0, 0
+  if block then
+    --[[ ⚠️ 这里踩过一次：SKY_STARS 每项形如 { 120, 120, true }，
+         而 { 里的两个数字也会被 {[^}]*,(%s*%a+%s*)} 的贪婪匹配
+         扫成"以逗号分隔的字母位" —— 但每项只有一个字母位（true/false），
+         所以直接数 true/false 的出现次数最稳。 ]]
+    for m in block:gmatch("(true)") do nBig = nBig + 1 end
+    for m in block:gmatch("(false)") do nSmall = nSmall + 1 end
+  end
+  for _ = 1, nBig do
+    skyRects[#skyRects + 1] = { rects = sprite.starRects(), cell = 5 }
+  end
+  for _ = 1, nSmall do
+    skyRects[#skyRects + 1] = { rects = sprite.starSmallRects(), cell = 5 }
+  end
+end
+
 local allRectTables = {
   { rects = sprite.dinoRects(),   cell = DINO_CELL },
   { rects = sprite.cloudRects(),  cell = CELL },
@@ -296,6 +325,9 @@ local allRectTables = {
   { rects = sprite.grassRects(),  cell = CELL },
   { rects = sprite.tuftRects(),   cell = CELL },
 }
+for _, e in ipairs(skyRects) do
+  allRectTables[#allRectTables + 1] = e
+end
 for _ = 1, 4 do
   allRectTables[#allRectTables + 1] = { rects = biggest, cell = CELL }
 end

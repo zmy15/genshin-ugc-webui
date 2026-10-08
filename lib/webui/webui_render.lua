@@ -445,7 +445,28 @@ local function writeControl(control, node, dx, dy, last, kind)
     node._inlineDirty = nil
 
     local CLEAR_ALL = dirty["*"] == true
+    --[[ ★★ 清字段缓存时【必须保住颜色的 prev 值】（R28 修）。
+
+       ⚠️ 踩过的坑：transition（CSS 过渡）永远不生效。
+
+       原因链：
+         1) 脚本改 background-color -> 标记 dirty
+         2) 这里 clearField("bgColor") 把 last.bgColor 清成 nil
+         3) setColor 里 prev 为 nil -> isFirst = true
+         4) isFirst 为真时【不做过渡】，直接写值
+       => 因为"改颜色"这件事本身就会清掉 prev，
+          所以"改颜色触发的过渡"永远走不到 Tween 分支。
+
+       ★ 解法：颜色字段【保留 prev】。它本来就是"上一次写入的值"，
+         清掉的目的是"强制重写一次"，而 setColor 自己会按
+         分量比较决定要不要写 —— 保留 prev 不影响正确性，
+         反而让过渡有了插值起点。
+
+       ⚠️ 只对【颜色】这么做；尺寸/位置等仍按原样清
+         （那些字段没有过渡需求，清了无害）。 ]]
+    local KEEP_PREV = { bgColor = true, fontColor = true, imageColor = true }
     local function clearField(f)
+      if KEEP_PREV[f] then return end       -- ★ 颜色保 prev（见上）
       if last[f] ~= nil then last[f] = nil end
     end
 

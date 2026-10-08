@@ -361,10 +361,18 @@ function S.apply(nodes, rects, cell, visible, bleed, reimage)
     if n then
       local r = rects[i]
       if r and i <= visible then
-        local wasHidden = n._displayOverride == "none"
         n:show()
-        -- ★ 之前是隐藏的 -> 控件可能被回收过，重贴一次图
-        if wasHidden and type(reimage) == "function" then
+        --[[ ★★ 无论本次是否"从隐藏变显示"，都要重贴图 + 染色（R28 修）。
+
+             ⚠️ 旧实现只在 wasHidden 时才调 reimage，于是会产生【白色方块】：
+                · 方形图 100001 是白→灰渐变，控件没染色时就是【白的】
+                · 控件池是共享的 —— 一个【一直可见】的节点，
+                  它的控件也可能因为别处的隐藏/显示被换成池里另一个
+                  （那个控件可能没贴图、或 imageColor 是默认值）
+                · 旧实现认为"一直可见就不需要重贴" -> 白块留在屏幕上
+
+             真机症状：仙人掌/翼龙上冒出一块规整的白色矩形。 ]]
+        if type(reimage) == "function" then
           pcall(reimage, n)
         end
         n:setStyle("left",   ((r.x - 1) * cell - bleed) .. "px")
@@ -686,6 +694,60 @@ S.DECO_TUFT_ROWS = {       -- 小簇 3x2
   "###",
 }
 
+--[[ ★★ 星空：月亮与星星（R28 昼夜更替用）。
+
+     ★ 形状取自原版夜间模式的观感：
+         月亮 = 月牙（缺口在右下）
+         星星 = 十字闪光（不是实心点 —— 实心点缩到 8px 看不见）
+
+     ⚠️ 这些点阵【只在夜间显示】。白天隐藏时不要只靠颜色透明 ——
+        用 display:none（node:hide()）最省，也避免残留控件参与布局。
+
+     ★ 为什么星星是"十字"而不是实心方块：
+        真机上 1 格 = 8px，实心方块看起来是个"点"，缺乏闪烁感；
+        十字（5 格）在 8px 格宽下是 40x40px，更像原版的星芒。
+        代价是矩形数多几个，但星星数量少（见 demo），可接受。 ]]--
+
+--[[ 月亮 6x12（细长的月牙，缺口在右侧）。
+
+     ★ R28 修：「拉长一点」—— 原来的 8x8 太圆太短，
+       看着像被咬了一口的烧饼，不像月牙。
+       现在改为【高 12 格、宽 6 格】的细长弯月（高:宽 = 2:1），
+       与真机的月牙观感一致。
+
+     ★ 形状做法：左侧是外圆弧（从窄到宽再到窄），
+       右侧按行【内凹】形成月牙缺口 —— 越靠中间凹得越深。 ]]--
+S.MOON_ROWS = {
+  "..####",
+  ".#####",
+  "####..",
+  "####..",
+  "###...",
+  "###...",
+  "###...",
+  "###...",
+  "####..",
+  "####..",
+  ".#####",
+  "..####",
+}
+
+-- 星星 5x5（十字星芒 + 中心）
+S.STAR_ROWS = {
+  "..#..",
+  "..#..",
+  "#####",
+  "..#..",
+  "..#..",
+}
+
+--[[ 小星点 3x3（用于远景的细碎星，比十字更低调）。 ]]--
+S.STAR_SMALL_ROWS = {
+  ".#.",
+  "###",
+  ".#.",
+}
+
 --=============================================================================
 -- 预置：直接取矩形表（带缓存，避免重复分解）
 --=============================================================================
@@ -733,6 +795,11 @@ function S.cloudRects()     return cachedRects("cloud",    S.CLOUD_ROWS)     end
 function S.pebbleRects()    return cachedRects("pebble",   S.DECO_PEBBLE_ROWS) end
 function S.grassRects()     return cachedRects("grass",    S.DECO_GRASS_ROWS)  end
 function S.tuftRects()      return cachedRects("tuft",     S.DECO_TUFT_ROWS)   end
+
+-- ★ 星空（昼夜更替用，只在夜间显示）
+function S.moonRects()      return cachedRects("moon",     S.MOON_ROWS)      end
+function S.starRects()      return cachedRects("star",     S.STAR_ROWS)      end
+function S.starSmallRects() return cachedRects("starSm",   S.STAR_SMALL_ROWS) end
 
 --[[ ★ 仙人掌三档打包 + 组合，方便随机挑选。
 

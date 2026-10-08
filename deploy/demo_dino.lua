@@ -253,12 +253,63 @@ local function obsSlotHTML(slot)
                     "o" .. slot .. "R", "o" .. slot, "o" .. slot .. "Body")
 end
 
+--[[ ★ 星空：只在夜间显示的星星与月亮。
+
+     星星数量与位置【写死在 HTML 里】（不是运行时随机）——
+     理由：星星不参与碰撞、不移动（只用视差慢慢滚动），
+     写死可以让节点数在建控件时一次到位，运行时不新增控件。
+
+     ★ 位置刻意【避开】分数栏（右上角 ~1080..1520 x 60..98）
+       和障碍活动区（地面附近），免得挡住关键信息。 ]]--
+local SKY_STARS = {
+  -- { x, y, 用大星还是小星 }
+  {  120, 120, true  },
+  {  330,  70, false },
+  {  520, 190, false },
+  {  700, 100, true  },
+  {  880, 240, false },
+  { 1250, 300, false },
+  { 1420, 170, false },
+  { 1520, 330, false },
+  {  240, 330, false },
+  {  620, 360, true  },
+}
+
+local function skyHTML()
+  local out = {}
+  --[[ ★★ 星月统一用 5px 格宽。
+
+       ⚠️ 为什么不沿用默认的 CELL=8：
+         星星点阵是 5x5 / 3x3，8px 下会变成 42x42 / 26x26 的"大色块"，
+         不像星芒。5px 下大星 25x25、小星 15x15、月亮 40x40，
+         与原版观感接近。
+
+       ⚠️ 月亮也必须【显式传】5 —— 漏传会退回默认 CELL=8，
+         月亮变成 64x64，与星星比例失衡（写这段时刚踩过）。 ]]
+  local SKY_CELL = 5
+  -- 月亮：固定在左上偏中（与截图一致）
+  out[#out + 1] = spriteHTML(sprite.moonRects(), "mnR",
+                             "moon", "moonBody", SKY_CELL)
+  -- 星星
+  for i, s in ipairs(SKY_STARS) do
+    local rects = s[3] and sprite.starRects() or sprite.starSmallRects()
+    out[#out + 1] = spriteHTML(rects, "st" .. i .. "R",
+                               "st" .. i, "st" .. i .. "Body", SKY_CELL)
+  end
+  return table.concat(out, "\n")
+end
+
 local HTML = ([[
 <div class="stage" id="stage">
   <div class="scene" id="scene">
+    <!-- 星空：只在夜间显示（月亮 + 星星），白天整组隐藏 -->
+    <div class="sky" id="sky">
+%s
+    </div>
+
     <div class="score" id="score">HI 00000  00000</div>
 
-    <div class="ground"></div>
+    <div class="ground" id="ground"></div>
 
     <!-- 地面装饰：3 个点缀（石子/草丛/小簇），随场景滚动 -->
     %s
@@ -283,6 +334,7 @@ local HTML = ([[
   </div>
 </div>
 ]]):format(
+  skyHTML(),
   -- 地面装饰：初始用三种不同的图案
   spriteHTML(DECO_KINDS[1].rects, "p0R", "dc0", "dc0Body"),
   spriteHTML(DECO_KINDS[2].rects, "p1R", "dc1", "dc1Body"),
@@ -297,6 +349,28 @@ local HTML = ([[
 )
 
 local CSS = [[
+/* ==========================================================================
+   ★★ 昼夜过渡（R28）
+
+   给"承载颜色"的元素加 CSS transition —— 库会把它翻译成
+   引擎的 game.Tween（bgColor / fontColor 都是 Tweenable，见
+   webui_transition.lua 的说明），于是换主题时颜色【平滑插值】，
+   而不是"啪"地跳变。
+
+   ⚠️ 只给这几类元素加：
+       .scene / .ground / .score / .over / .hint
+     它们都是 textbox（有 bgColor / fontColor 字段）。
+
+   ⚠️ 不要给 .sky 加 —— 星月是 image 控件，靠 display 显隐，
+      transition 对它没有意义（而且 imageColor 的过渡会在
+      显示瞬间闪一下）。
+
+   ★ 时长取 0.8s：够看出"天在变"，又不至于拖到玩家以为卡了。
+   ========================================================================== */
+.scene, .ground, .score, .over, .hint {
+  transition: background-color 0.8s linear, color 0.8s linear;
+}
+
 /* 舞台：裁剪容器（overflow:hidden 用矩形图当遮罩）
    ★ 不设 background-color —— 它的填充不受自身遮罩约束，会溢出 */
 .stage {
@@ -363,6 +437,33 @@ local CSS = [[
 /* 云：10x5 格 x 8px = 80 x 40 */
 #cl0 { left: 400px; top: 200px; width: 80px; height: 40px; }
 #cl1 { left: 1100px; top: 300px; width: 80px; height: 40px; }
+
+/* ==========================================================================
+   ★★ 星空（昼夜更替）
+   ==========================================================================
+
+   .sky 是【纯容器】：不设 background-color（设了会盖住背景色），
+   只负责把星月分组，方便整组 show/hide。
+
+   ⚠️ 月亮的初始色由运行时按主题染色（image 控件用 imageColor），
+      这里不写颜色 —— 写了也没用（image 没有 bgColor 字段）。 */
+.sky { position: absolute; left: 0px; top: 0px;
+       width: 1600px; height: 700px; }
+
+/* 月亮：6x12 格 x 5px = 30x60（细长月牙，格宽与星星一致 SKY_CELL=5） */
+#moon { left: 300px; top: 100px; width: 30px; height: 60px; }
+
+/* 星星：位置与大小由 HTML 生成时决定，这里只补 top/left/尺寸 */
+#st1  { left: 120px;  top: 120px; width: 25px; height: 25px; }
+#st2  { left: 330px;  top:  70px; width: 15px; height: 15px; }
+#st3  { left: 520px;  top: 190px; width: 15px; height: 15px; }
+#st4  { left: 700px;  top: 100px; width: 25px; height: 25px; }
+#st5  { left: 880px;  top: 240px; width: 15px; height: 15px; }
+#st6  { left: 1250px; top: 300px; width: 15px; height: 15px; }
+#st7  { left: 1420px; top: 170px; width: 15px; height: 15px; }
+#st8  { left: 1520px; top: 330px; width: 15px; height: 15px; }
+#st9  { left: 240px;  top: 330px; width: 15px; height: 15px; }
+#st10 { left: 620px;  top: 360px; width: 25px; height: 25px; }
 
 /* Game Over：框高 80 >= 字号 40 x 1.9 = 76 ✓
    ★ 显式背景 + 居中（同 .score 的两个坑） */
@@ -535,6 +636,66 @@ local G = {
   RUN_FRAME  = 6,       -- 每多少帧换一次跑动姿态
   BIRD_FLAP  = 8,       -- ★ 翼龙扇翅膀的帧间隔（三帧循环）
   FPS        = 50,      -- 循环步长（固定）
+
+  --[[ ★★★ 昼夜更替（R28）
+
+       需求：「添加昼夜更替效果，黑天背景变成深色，天空加上星星和月亮」
+
+       ══════════════════════════════════════════════════════════════
+       为什么是【两套主题 + 按距离切换】，而不是连续插值
+       ══════════════════════════════════════════════════════════════
+
+         插值（渐变过渡）需要每帧改颜色，而颜色写入要走
+         Color.FromRGBA 新建表 + 引擎字段写入 —— 每帧多次写入
+         虽然便宜（44.9 微秒/次），但【diff 缓存会失效】：
+         颜色每次都是新表，渲染器按分量比较，若值不变则跳过。
+         插值意味着值一直在变 -> 每帧都写 -> 白花性能。
+
+         ★ 更关键的是：真机的颜色写入是否支持平滑过渡未经实测
+           （§4.6.2 的教训：不要假设未验证的行为）。
+
+         所以用【瞬切】—— 只在主题真正切换的那一帧写一次颜色。
+         视觉上"啪"地天黑了，反而更像原版的关卡切换。
+
+       ══════════════════════════════════════════════════════════════
+       两组主题的颜色对应关系（★ 必须同时改，漏一个就露馅）
+       ══════════════════════════════════════════════════════════════
+
+         背景 bg      ：浅 #f7f7f7  <->  深 #14161c
+         前景 fg      ：深 #535353  <->  浅 #d8dce6
+         精灵 sprite  ：深灰(83,83,83) <-> 浅灰(216,220,230)
+         地面 ground  ：同 fg（地面线跟字色一起走）
+         提示 hint    ：中灰 #6a6a6a <-> #8a93a8（★ 都要与背景有对比度）
+
+       ⚠️ 陷阱：文字框必须【显式】背景色（R21），所以 score/over/hint
+          的背景色也要跟着主题改 —— 否则深色主题下会出现三条浅色底。 ]]--
+  THEME = {
+    day = {
+      name    = "day",
+      bg      = "#f7f7f7",
+      fg      = "#535353",
+      sprite  = { 83, 83, 83 },      -- 精灵染色（r,g,b）
+      hint    = "#6a6a6a",
+      sky     = false,               -- 星月是否可见
+    },
+    night = {
+      name    = "night",
+      bg      = "#14161c",
+      fg      = "#d8dce6",
+      sprite  = { 216, 220, 230 },
+      hint    = "#8a93a8",
+      sky     = true,
+    },
+  },
+
+  --[[ ★ 昼夜切换节奏：按【已跑距离】来回切。
+
+       为什么不是按时间：分数/距离本身就是游戏进度，
+       按距离切能与难度阶段对齐（阶段边界也按距离）。
+
+       节奏：DIST 每跑 12000px 切一次（约 10~15 秒），
+             开局是白天（与原版一致），跑到阈值转夜。 ]]--
+  DAYNIGHT_DIST = 12000,
 }
 
 --=============================================================================
@@ -715,6 +876,12 @@ local function reset()
   for i = 1, DECO_SLOTS do
     S.decos[i] = { x = 300 + i * 420, kind = ((i - 1) % #DECO_KINDS) + 1 }
   end
+  --[[ ★ 昼夜状态：开局【白天】（与原版一致）。
+
+       S.dayPhase 记"已经切过几次"，用来算该用哪套主题：
+         math.floor(dist / DAYNIGHT_DIST) 为偶数 -> 白天，奇数 -> 夜晚 ]]--
+  S.dayPhase = 0
+  S.theme    = G.THEME.day
 end
 
 reset()
@@ -739,20 +906,203 @@ end
 local clipRef = nil      -- 延迟取 webui_clip
 local uiRef   = nil      -- onReady 里存 ui
 
+--[[ ★★ 当前精灵染色（随昼夜主题变化）。
+
+     ⚠️ reimageNode 与 onReady 的初次贴图【都要用这个值】——
+        否则换主题后，某个被控件池回收又重新显示的矩形
+        会用旧颜色重贴 -> 夜里冒出一块深灰。
+
+     ★ 用 S.theme 而不是常量：主题切换时它会先更新，
+       之后任何重贴都会拿到新颜色。 ]]--
+local function spriteColor()
+  local s = (S.theme and S.theme.sprite) or { 83, 83, 83 }
+  return Color.FromRGBA(s[1], s[2], s[3], 255)
+end
+
+--[[ ★★★ 矩形节点 -> 引擎控件 的引用表。
+
+     ⚠️⚠️ 只能用于【reimageNode】（换姿态时重贴方图）—— 那发生在
+        节点可见、控件稳定的时刻。
+
+     ★ 绝对不能拿它做长期染色（R28 两次踩坑）：
+       节点 display:none 时控件会被还回共享控件池，
+       引用会被别的节点取走 -> 染色写错对象且【不报错】。
+       染色一律走 rendered.live 现查（见 paintSprites）。 ]]--
+local spriteCtrls = {}     -- node -> control
+
+local function rememberCtrl(node, ctrl)
+  if node and ctrl then spriteCtrls[node] = ctrl end
+end
+
+--[[ 给一个矩形节点重贴方形图 + 染色（asImage 模式必需）。
+
+     ⚠️⚠️ 控件引用必须【现查 rendered.live】，不能用 spriteCtrls 缓存：
+        共享控件池会把控件换给别人（节点隐藏/显示时），
+        缓存的引用可能指向别人的控件 —— 那样会：
+          · 把别人的控件染色（它自己那个没染 -> 变成白色方块）
+          · 或者贴图贴错对象
+        这正是真机上"冒出白色方块"的成因之一。
+
+     ★ spriteCtrls 只作为【最后的兜底】，且用前检查 _orphan。 ]]--
 local function reimageNode(node)
   if not clipRef then clipRef = require('webui_clip') end
-  if not uiRef then return end
-  local e = uiRef.rendered and uiRef.rendered.live and uiRef.rendered.live[node]
-  local ctrl = e and e.control
+
+  local ctrl = nil
+  local e = uiRef and uiRef.rendered and uiRef.rendered.live
+            and uiRef.rendered.live[node]
+  ctrl = e and e.control
+  if not ctrl then
+    -- 兜底：用缓存的引用，但必须确认它没被还池
+    local cached = spriteCtrls[node]
+    if cached and not cached._orphan then ctrl = cached end
+  end
+  if ctrl then spriteCtrls[node] = ctrl end
+
   if ctrl and type(ctrl.SetImage) == "function" then
     pcall(function() ctrl:SetImage(clipRef.imageSource(), 100001) end)
-    pcall(function() ctrl.imageColor = Color.FromRGBA(83, 83, 83, 255) end)
+    pcall(function() ctrl.imageColor = spriteColor() end)
   end
 end
 
 local function setPose(prefix, rects, count, cell)
   cell = cell or CELL
   sprite.apply(spNodes[prefix] or {}, rects, cell, count, BLEED, reimageNode)
+end
+
+--=============================================================================
+-- ★★★ 昼夜更替：把主题写到所有受影响的控件上
+--=============================================================================
+
+--[[ 把某个主题应用到界面。
+
+     theme  = G.THEME.day 或 G.THEME.night
+
+     ★★ 必须同时改的五个地方（漏一个就在深色下露馅）：
+
+       ① 背景（.scene 的 bgColor）—— 它决定了整片天
+       ② 文字色（score / over / hint 的 fontColor）
+       ③ 文字框【自身背景】（★ R21：文字框必须显式背景色，
+          不跟着改就会出现"深色天 + 三条浅色底"）
+       ④ 地面线（.ground 的 bgColor）
+       ⑤ 所有精灵矩形的 imageColor（恐龙/仙人掌/云/装饰/翼龙/星月）
+
+     ★ 精灵染色为什么要遍历 spNodes：
+       它们是 image 控件，颜色存在 imageColor 上，
+       和 .scene 的 bgColor 是两条完全不同的通路。
+
+     ⚠️ 不要每帧调用！只在主题【真正切换】时调一次。
+        颜色写入虽然便宜（44.9 微秒/次），但这里一次要写
+        180+ 个矩形 —— 每帧写就是纯浪费。 ]]--
+--[[ 把当前主题的精灵色写到所有精灵矩形上。
+
+     ★★ 关键：这里【不缓存控件引用】，每次都用 rendered.live 现查。
+
+       为什么不能缓存（R28 两次踩坑）：
+         节点一旦 display:none，渲染器会把它的控件【还回控件池】
+         （标 _orphan），而池子是共享的 —— 那个控件随时会被
+         别的节点取走。缓存的引用就指向了别人，染色写错对象，
+         而且【不报错】，表现为颜色时对时坏（flaky）。
+
+       每帧现查则永远拿到"当前真正配给这个节点"的控件。
+       隐藏中的节点查不到 -> 跳过（它本来就不可见，不需要染色）。
+
+     ⚠️ 这也是"星月用 show/hide 显隐"能成立的前提：
+        必须在显示【之后】重新查引用再染色（见 applyTheme 的顺序）。 ]]--
+--[[ ★★ 主题切换后的【补染窗口】帧数。
+
+     ⚠️ 为什么需要跨帧补染：
+        sky:show() 只改了 DOM 的 display，
+        控件是【下一帧 flush】才从池里配给节点的 ——
+        那一帧之前渲染器还不知道这个节点，paintSprites 查不到控件。
+
+     所以切换后连着补几帧，直到渲染器把控件配好并染上正确颜色。
+     实测 3~6 帧足够；取 6 留余量。 ]]--
+local REASSERT_FRAMES = 6
+local reassertLeft = 0
+
+local function paintSprites()
+  local col = spriteColor()
+  for _, list in pairs(spNodes) do
+    for i = 1, #list do
+      local node = list[i]
+      if node then
+        local e = uiRef and uiRef.rendered and uiRef.rendered.live
+                  and uiRef.rendered.live[node]
+        local ctrl = e and e.control
+        if ctrl and type(ctrl.SetImage) == "function" then
+          pcall(function()
+            ctrl.imageColor = Color.FromRGBA(col.r, col.g, col.b, 255)
+          end)
+        end
+      end
+    end
+  end
+end
+
+local function applyTheme(theme)
+  S.theme = theme
+
+  -- ① 背景 + ③ 文字框背景（两者同色，视觉上"融"成一片天）
+  for _, id in ipairs({ "scene", "score", "over", "hint" }) do
+    local nd = nodes[id]
+    if nd then nd:setStyle("background-color", theme.bg) end
+  end
+
+  -- ② 文字色
+  local scoreNd = nodes.score
+  if scoreNd then scoreNd:setStyle("color", theme.fg) end
+  local overNd = nodes.over
+  if overNd then overNd:setStyle("color", theme.fg) end
+  local hintNd = nodes.hint
+  if hintNd then hintNd:setStyle("color", theme.hint) end
+
+  -- ④ 地面线：跟字色走（截图里地面线就是白色）
+  local gnd = nodes.ground
+  if gnd then gnd:setStyle("background-color", theme.fg) end
+
+-- ⑤ 所有精灵矩形重新染色
+  --
+  --[[ ⚠️ 用 spriteCtrls 缓存 + rendered.live 兜底，两者都可能拿不到：
+         · display:none 的节点被移出 live
+         · 缓存引用的控件可能已被还池、被别的节点取走（_orphan）
+       星月常驻显示，所以下一帧就能拿到引用；这里跳过不会留下错色。 ]]
+  paintSprites()
+
+  --[[ ★★★ 星月显隐：先 show/hide，再染色（顺序不能反）。
+
+       ⚠️⚠️ 顺序是关键：
+         1) 先 sky:show()  -> DOM 的 display 变回 block
+         2) 再 paintSprites() -> 此时【下一帧】渲染器才把控件配给节点 …
+            ……所以这里要立刻染一次 + 靠 tick 里的补染窗口再补几帧。
+
+       ★ 为什么不用 imageColor 的 alpha=0 当"隐形"：
+         实测真机上【无效】—— 白天仍然看得见星月（截图已证）。
+         R16 那次 alpha=0 生效是因为那是【裁剪容器（enableMask）】，
+         语义是"遮住遮罩图自身的白边"，与"普通图片控件调透明度"不是一回事。
+         => 不要从一个场景的实测外推到另一个场景。 ]]--
+  local sky = nodes.sky
+  if sky then
+    if theme.sky then sky:show() else sky:hide() end
+  end
+
+  -- 立刻染一次（当天这次能覆盖到非隐藏的普通精灵）
+  paintSprites()
+
+  -- 开补染窗口：星月刚显示，控件要下一帧才配好
+  reassertLeft = REASSERT_FRAMES
+end
+
+--[[ 按已跑距离决定当前该是哪套主题，变了才切。
+
+     ★ 返回 true 表示【这一帧发生了切换】（调用方可用于调试打印）。 ]]--
+local function updateDayNight()
+  local phase = math.floor(S.dist / G.DAYNIGHT_DIST)
+  if phase == S.dayPhase then return false end
+  S.dayPhase = phase
+  -- 偶数 -> 白天，奇数 -> 夜晚
+  local isNight = (phase % 2) == 1
+  applyTheme(isNight and G.THEME.night or G.THEME.day)
+  return true
 end
 
 --=============================================================================
@@ -800,6 +1150,15 @@ end
 --=============================================================================
 
 local function tick(dt)
+  --[[ ★ 补染窗口：主题刚切换的几帧里继续补色。
+
+       ⚠️ 放在【最前面】且在 started/over 早退之前 ——
+          否则游戏结束/未开始时窗口不推进，星月可能停在池里的旧色。 ]]--
+  if reassertLeft > 0 then
+    reassertLeft = reassertLeft - 1
+    paintSprites()
+  end
+
   -- 分数栏（两种状态都要刷新）
   if nodes.score then
     nodes.score:setText(string.format("HI %s  %s", pad5(S.hi), pad5(S.score)))
@@ -844,6 +1203,12 @@ local function tick(dt)
   S.dist = S.dist + S.speed * dt
   S.score = S.score + S.speed * dt * 0.012
   if S.score > S.hi then S.hi = S.score end
+
+  --[[ ★ 昼夜更替：按已跑距离决定该白天还是夜里。
+
+       ★ 只在【跨越阈值的那一帧】真正写颜色（updateDayNight 内部判等），
+         不在每帧写 —— 见 applyTheme 的注释。 ]]--
+  updateDayNight()
 
   --===========================================================================
   -- ③ 障碍移动（★ 出屏判定用障碍自己的宽度 o.w）
@@ -1098,6 +1463,17 @@ local function onJump()
     S._deadPosed = false
     -- 恢复站立姿态
     setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
+    --[[ ★★ 重开必须【立刻回到白天】（R28 修）。
+
+         ⚠️ 踩过的坑：死在黑天时重开，背景仍是黑的。
+           原因：reset() 只是把 S.dayPhase / S.theme 改成白天，
+           但【没有把主题写进 DOM】—— 真正改颜色的是 applyTheme。
+           而 updateDayNight 只在 phase【变化】时才调 applyTheme，
+           reset 后 dist=0 -> phase=0 与 S.dayPhase=0 相同 ->
+           它认为"没变化"，于是永远不刷新。
+
+         ★ 所以这里显式应用一次白天主题。 ]]--
+    applyTheme(G.THEME.day)
     return
   end
 
@@ -1171,7 +1547,13 @@ app = webui.mount{
       p0R = #DECO_KINDS[1].rects,
       p1R = #DECO_KINDS[2].rects,
       p2R = #DECO_KINDS[3].rects,
+      -- ★ 星空：月亮 + 每颗星（前缀与 skyHTML 的生成一致）
+      mnR = #sprite.moonRects(),
     }
+    for i = 1, #SKY_STARS do
+      prefixes["st" .. i .. "R"] =
+        SKY_STARS[i][3] and #sprite.starRects() or #sprite.starSmallRects()
+    end
     for s = 0, OBS_SLOTS - 1 do
       prefixes["o" .. s .. "R"] = maxObsRects
     end
@@ -1201,12 +1583,15 @@ app = webui.mount{
           local e = ui.rendered and ui.rendered.live and ui.rendered.live[node]
           local ctrl = e and e.control
           if ctrl and type(ctrl.SetImage) == "function" then
+            --[[ ★★★ 立刻把控件引用存下来（R28）。
+                 这是昼夜更替能工作的前提 —— 之后 applyTheme
+                 直接写这个引用，不再依赖 rendered.live
+                 （星月白天隐藏会被移出 live，反查会失败）。 ]]
+            rememberCtrl(node, ctrl)
             if pcall(function() ctrl:SetImage(
                 clip.imageSource(), 100001) end) then
-              -- 染成深灰（方形图是白→灰渐变，需染色才有正确颜色）
-              pcall(function()
-                ctrl.imageColor = Color.FromRGBA(83, 83, 83, 255)
-              end)
+              -- 染成当前主题的精灵色（白天深灰 / 夜里浅灰）
+              pcall(function() ctrl.imageColor = spriteColor() end)
               okCount = okCount + 1
             end
           end
@@ -1242,10 +1627,22 @@ app = webui.mount{
       if nd then nd:setStyle("width", (dk.w * CELL) .. "px") end
     end
 
+    --[[ ★★ 应用初始主题（开局是白天）。
+
+         ⚠️ 必须放在【所有精灵都贴完图之后】——
+            applyTheme 会遍历 spNodes 染色，先于贴图调用的话
+            那些控件的 imageColor 会被贴图流程用 spriteColor() 覆盖，
+            结果虽然也对（spriteColor 读的就是 S.theme），
+            但会多写一遍 180+ 个控件。
+         这里放在最后，一次到位。 ]]--
+    applyTheme(G.THEME.day)
+
     print(string.format("[dino] 就绪：恐龙 %d 矩形，障碍 %d 种，槽位上限 %d 矩形",
         #SP.dino.rects, #OBS_KINDS, OBS_MAX_RECTS))
     print(string.format("[dino] 贴方形图 %d / %d（image 模式，绕开文本框圆角）",
         okCount, total))
+    print(string.format("[dino] 昼夜：每 %dpx 切换一次（开局白天）",
+        G.DAYNIGHT_DIST))
     print("[dino] 按 空格 / ↑ 开始")
   end,
 

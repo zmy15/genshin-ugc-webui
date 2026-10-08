@@ -29,6 +29,9 @@ function EngineMock.new(prefabs)
   local controls = {}
   local dataMap = {}      -- proxy -> 内部数据
   local externalRoots = {}  -- ★ 模拟"编辑器里搭好的"根控件
+  local tweenCalls = 0    -- ★ game.Tween 被 Play 的次数（R28）
+  local tweenSeqs = {}    -- ★ 创建过的 tween 对象
+  local lastTween = nil   -- ★ 最近一次 Play 的 { control, props, duration }
 
   local COMMON = {
     anchorMinX=1, anchorMinY=1, anchorMaxX=1, anchorMaxY=1,
@@ -97,6 +100,30 @@ function EngineMock.new(prefabs)
     ]]--
     if kind == "textbox" then
       data.fields.bgColor = { r = 83, g = 83, b = 83, a = 255 }
+    end
+
+    --[[ ★★★ 图片控件的"未贴图"状态是【可见的默认外观】（R29 补）
+
+         ⚠️ 为什么必须模拟：真机上 image 控件从模板实例化后，
+            【本来就会显示模板自带的图】，不是"什么都不显示"。
+            我们用的方形图 100001 是【白→灰渐变】——
+            所以一个【没被 SetImage + 没被染色】的矩形控件，
+            在屏幕上就是【一块白】。
+
+         这正是用户报的「固定间隔出现一个白色障碍」的成因：
+           生成障碍发生在 onTick 里，而控件要等同一帧的 flush 才建出来
+           -> 那一帧的 reimage 查不到控件，静默跳过
+           -> flush 建出的新控件没图没色 = 白块。
+
+         ★ 若 mock 让 imageId 停在 nil（无图 = 透明），
+           本地就【永远测不出】这个 bug —— 与 §"测试替身必须忠实"
+           是同一个方法学问题（对照 textbox 默认底色的处理）。
+
+         ★ mock 的表示：imageId = nil 视为"模板默认图"，
+           即渲染出来是白色。渲染器/应用层必须把它换成 100001 + 染色。 ]]--
+    if kind == "image" then
+      data.fields.imageId = nil          -- 模板默认图（视觉上 = 白）
+      data.fields.imageColor = nil       -- 未染色 -> 显示原色（白）
     end
 
     local allowed = {}
@@ -280,6 +307,54 @@ function EngineMock.new(prefabs)
       for i, r in ipairs(externalRoots) do out[i] = r end
       return out
     end,
+
+    --[[ ★★ game.Tween —— 属性平滑过渡（R28 补）
+
+         API（client_control_api.md 第 249-274 行）：
+            game.Tween(control, { field = target }, duration)
+                  :SetEase(Enum.EaseTypeXxx)
+                  :SetRelative(bool)
+                  :SetOnComplete(fn)
+                  :Play()
+
+         ⚠️ 为什么必须补进 mock（"测试替身必须忠实"）：
+            渲染器在属性声明了 CSS transition 时【改用 game.Tween】
+            做插值（render.lua 的 setColor 分支）：
+              if tr and tr.duration > 0 and type(game.Tween) == "function"
+           若 mock 没有 game.Tween，那段代码【永远不执行】——
+            本地全绿，真机才走 Tween 路径。
+
+         ★ mock 的简化：不做真实插值（那需要逐帧驱动器），
+           而是【在 Play() 时直接写入目标值】——
+           对"最终颜色对不对"这类断言足够，
+           且能证明"代码确实走了 Tween 分支而不是直写"。
+           用 E.tweenCalls 可以查证走了几次。 ]]--
+    Tween = function(control, props, duration)
+      local tw = {}
+      local d = dataMap[control]
+      tw._played = false
+      tw._props = props
+      tw._duration = duration
+      function tw:SetEase() return self end
+      function tw:SetRelative() return self end
+      function tw:SetOnComplete(fn) self._onComplete = fn; return self end
+      function tw:SetLoops() return self end
+      function tw:SetDelay() return self end
+      function tw:Play()
+        self._played = true
+        tweenCalls = tweenCalls + 1
+        lastTween = { control = control, props = props, duration = duration }
+        -- 直接落到目标值（mock 不做逐帧插值）
+        if d then
+          for k, v in pairs(props) do d.fields[k] = v end
+        end
+        if self._onComplete then pcall(self._onComplete) end
+        return self
+      end
+      function tw:Kill() return self end
+      tweenSeqs[#tweenSeqs + 1] = tw
+      return tw
+    end,
   }
 
   --[[ ★ 关于 game 的类型（实测结论，2026-10-07）：
@@ -319,6 +394,17 @@ function EngineMock.new(prefabs)
     createdCount = function() return created end,
     makeControl = makeControl,
     dataOf = function(c) return dataMap[c] end,
+
+    --[[ ★★ game.Tween 的观测接口（R28）
+
+         用途：验证「声明了 CSS transition 的属性确实走了 Tween 分支」。
+         真机上过渡由引擎插值，mock 只记调用并直接落值 ——
+         但"有没有走这条路"是可验证的（这正是关键）。 ]]--
+    tweenCount = function() return tweenCalls end,
+    lastTween  = function() return lastTween end,
+    resetTween = function()
+      tweenCalls, tweenSeqs, lastTween = 0, {}, nil
+    end,
 
     --[[ ★ 模拟按下某个按键：把所有绑定了该 eventType 的回调叫一遍。
 
