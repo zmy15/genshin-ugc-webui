@@ -299,6 +299,58 @@ function S.setImages(clip, dom, doc, prefix, count, shapeId, rendered)
   return n
 end
 
+--[[ ★★★ 补贴图：给一组矩形节点重新贴图 + 染色（每帧可安全重复调用）。
+
+     ══════════════════════════════════════════════════════════════════════
+     为什么需要它（R29 白块根因）
+     ══════════════════════════════════════════════════════════════════════
+
+       asImage 模式下，矩形控件要靠 `SetImage(方形图)` + `imageColor`
+       才有外观。而方形图 100001 是【白→灰渐变】—— 没被处理过的控件
+       显示出来就是【一块白】。
+
+       ⚠️ 关键时序坑（真机必现，固定间隔复现）：
+
+         引擎每帧顺序是【先 onTick（游戏逻辑/生成障碍）后 flush（渲染）】
+         （见 webui.lua 的 startLoop）。
+
+         于是"生成一个障碍"那一帧：
+           ① onTick -> applyObstacle -> setPose -> S.apply -> reimage
+              ▲ 此刻渲染器【还没】给这些节点建控件
+                （节点上一帧还是 display:none，不在 rendered.live 里）
+              => reimage 查不到控件，静默跳过 —— 不报错
+           ② flush  -> 渲染器才建出控件（图/色都是默认值 = 白）
+
+         而 S.apply 只在【换姿态】时被调用：
+           · 仙人掌生成后【再也不换姿态】-> 白块一直留到它出屏
+           · 翼龙扇翅会周期性换姿态 -> 白块过一会儿"自己好了"
+
+       ★ 所以正确判据不是"换姿态时贴一次"，而是
+         「可见的矩形，每一帧都得确保它有图有色」。
+
+     nodes    矩形节点表（S.collect 的结果）
+     reimage  function(node) -> 贴图 + 染色（与 S.apply 的参数相同）
+     skip     function(node) -> true 表示本帧跳过该节点（如不可见）
+
+     返回：本次实际处理的节点数
+
+     ★ 与 S.apply 的分工：
+         apply    = 几何（位置/尺寸/显隐）+ 贴图（换姿态时）
+         reassert = 只补【贴图 + 染色】（每帧）
+       两者都会调 reimage；reimage 内部按值 diff，重复调用无害。 ]]--
+function S.reassert(nodes, reimage, skip)
+  if type(reimage) ~= "function" then return 0 end
+  local n = 0
+  for i = 1, #nodes do
+    local node = nodes[i]
+    if node and not (skip and skip(node)) then
+      pcall(reimage, node)
+      n = n + 1
+    end
+  end
+  return n
+end
+
 --[[ 生成配套 CSS（矩形绝对定位在父容器里）。
 
      ⚠️ 现在 toHTML 已经把 position 写成内联样式了，

@@ -959,8 +959,61 @@ local function reimageNode(node)
   if ctrl then spriteCtrls[node] = ctrl end
 
   if ctrl and type(ctrl.SetImage) == "function" then
+    --[[ ★★ 不加 diff 缓存 —— 每次都真写（R29）。
+
+         ⚠️ 为什么不能用 node 上的缓存来"避免重复写"：
+            缓存是挂在【节点】上的，而节点的控件会被共享池换掉
+            （节点隐藏 -> 还池 -> 别的节点取走 -> 再取回来可能是另一个）。
+            于是"上次已经染过"的记录会撒谎：
+              · 控件换了，但缓存说"颜色没变" -> 跳过 -> 白块留下
+
+         ★ 这里写入很便宜（44.9 微秒/次，见 webui_sprite 的性能依据），
+           而且只在【可见矩形】上写（隐藏的由 skip 回调挡掉）。
+           用正确性换这点开销是划算的。 ]]
     pcall(function() ctrl:SetImage(clipRef.imageSource(), 100001) end)
     pcall(function() ctrl.imageColor = spriteColor() end)
+  end
+end
+
+--[[ ★★★ 补贴图：保证【当前可见】的精灵矩形都有图有色。
+
+     ══════════════════════════════════════════════════════════════════════
+     为什么必须有这一层（R29 白块根因）
+     ══════════════════════════════════════════════════════════════════════
+
+       引擎每帧顺序 = onTick（游戏逻辑）-> flush（渲染）。
+       而"生成障碍"发生在 onTick 里（applyObstacle -> setPose ->
+       sprite.apply -> reimage）—— 那一帧渲染器【还没】给这些节点建控件
+       （它们上一帧还是 display:none，不在 rendered.live 里）。
+
+       => reimage 查不到控件 -> 静默跳过 -> flush 建出来的控件
+          图/色都是默认值（方形图 100001 是白→灰渐变）= 【一块白】。
+
+       ⚠️ 而 sprite.apply 只在【换姿态】时调用：
+          · 仙人掌生成后再也不换姿态 -> 白块一直留到出屏
+          · 翼龙扇翅周期性换姿态 -> 白块过一会儿自己好了
+       => 用户看到「固定间隔出现、一个白一个正常」正是这个组合。
+
+       ★ 修法：每帧对【显示的】精灵矩形补一次贴图+染色。
+         隐藏的节点跳过（它们本来就不显示，控件可能已还池）。 ]]--
+--[[ ★★ 对【全部精灵】补帖图（每帧调用）。
+
+     ⚠️ 恐龙有 4 个别名（dR / dino / dinoRun / dinoDead）指向【同一份】节点表，
+        重复处理会白白多写两遍 —— 所以这里按【节点表身份】去重。
+
+     ★ 障碍槽同理：o0R..o3R 是 4 份独立表，逐个处理。
+
+     ★ 星月在白天整组 display:none —— skip 回调会跳过它们的矩形，
+       所以这个函数在白天不会去碰已经还池的星月控件（安全）。 ]]--
+local function reassertSprites()
+  local done = {}
+  for _, list in pairs(spNodes) do
+    if list and not done[list] then
+      done[list] = true
+      sprite.reassert(list, reimageNode, function(node)
+        return node._displayOverride == "none"
+      end)
+    end
   end
 end
 
@@ -1158,6 +1211,23 @@ local function tick(dt)
     reassertLeft = reassertLeft - 1
     paintSprites()
   end
+
+  --[[ ★★★ 每帧补帖图（R29 白块根因修复）。
+
+       ⚠️⚠️ 位置很关键：必须在 tick 的【最开头】。
+
+       原因：引擎每帧 = onTick（本函数）-> flush（渲染建控件）。
+          · 生成障碍在【上一帧】的 tick 里发生，那时控件还没建 ->
+            reimage 查不到，静默跳过
+          · 控件要到那一帧的 flush 才建出来
+          => 本帧开头补一次，正好覆盖上一帧刚建出来的控件。
+
+       ★ 覆盖【全部精灵】：恐龙/障碍/云/装饰/星月。
+         隐藏的节点由 reassertSprites 内部跳过（其控件可能已还池）。
+
+       ⚠️ 初始（未开始）状态也要补 —— 恐龙此时就该是可见的，
+          否则开局第一帧恐龙是白的。所以这行在 S.started 早退之前。 ]]--
+  reassertSprites()
 
   -- 分数栏（两种状态都要刷新）
   if nodes.score then
