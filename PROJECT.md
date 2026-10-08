@@ -102,7 +102,7 @@ lua verify_external.lua "<external_lua_file 路径>"
 
 ---
 
-## 四、测试（43 个套件）
+## 四、测试（44 个套件）
 
 ```bash
 lua test_xxx.lua
@@ -138,6 +138,7 @@ lua test_xxx.lua
 | **`test_dino_rules`** | ★ **游戏可解性**：跳跃/障碍/翼龙高度的几何约束，含与 demo 源码的常量交叉校验 |
 | `test_demo_feature` | 功能展示页 demo 自检（形状 / 裁剪数 / 文字硬约束） |
 | `test_probe` | 统一探针自检（`key` 模块含真实按键回调断言） |
+| **`test_align_enum`** | ★★ **水平对齐枚举真名**（R23）：文档的扁平名在真机上是 `nil`，库曾因此静默失效。用 `tests/enum_kit.lua` 按**真机形态**造 Enum 来守 |
 | **`test_signal`** | ★ **服务器信号**：签名校验（个数/类型/顺序）、事件展开、接收缓冲与重放顺序、冷却限流、字节/条数预算顺延、解绑防叠加、JSON 往返 |
 | **`test_demo_dino_quit`** | ★ **退出/结算窗口**：弹窗按钮必须有点击回调、暂停期间计时不走、上报整数秒+最高分、防连点、结算后重开 |
 | **`test_demo_dino_style`** | ★ 文字视觉回归（含弹窗文字必须被采样到 —— 防有人改回 `display:none` 导致假阳性） |
@@ -177,6 +178,13 @@ local ACTIVE = "key"     -- 改这里：key / perf / align
 
 **本地试跑**：`lua test_probe.lua`（用 mock 验证探针模块能跑通）；
 `lua test_probe_align.lua`（align 模块专项自检）
+
+> ★★ **枚举类测试必须用 `tests/enum_kit.lua` 造 Enum**，不要自己手写。
+> 各测试原先自己写枚举表、且写的是**文档的扁平形式** ——
+> mock 里可用、测试全绿，真机上却是 `nil`，于是
+> `text-align:center` 失效了好几轮都没被发现（R23）。
+> `enum_kit` 按**真机实测形态**构造（扁平名故意为 `nil`），
+> 这是「测试替身必须忠实」在枚举上的落实。
 
 ---
 

@@ -83,37 +83,42 @@
     R15~R18 的复现模块已移除，见上面「已移除的模块」。
        结论本身仍有效（来自真机实测），只是当前无现成复现手段。
 
-    R23  ★★ 文字居中：真机上【写不进去】（2026-10-09，模块 align，真机实测）
+    R23  ★★★ 水平对齐枚举真名（2026-10-09，模块 align，真机实测）—— 已定位并修复
 
-         第一次真机跑的读回表（六组对照）：
+         起因：demo_dino 结算窗口的文字永远贴框左边。
 
-           id      声明宽  实际框宽  ha读回                             判定
-           al-a1   400     400.0     Enum.TextHorizontalAlignment.Left  全部
-           al-b1   400     400.0     Enum.TextHorizontalAlignment.Left  Left
-           al-c1   400     400.0     Enum.TextHorizontalAlignment.Left  ——
-           al-d1   400     400.0     Enum.TextHorizontalAlignment.Left  位置
-           al-e1   120     120.0     Enum.TextHorizontalAlignment.Left  尺寸
-           al-l1   400     400.0     Enum.TextHorizontalAlignment.Left  全对
+         第一次真机（六组对照）：框宽/位置/控件类型全部正确，
+         但 horizontalAlignment 六组【全部停在默认 Left】。
 
-         ★ 结论（推翻"库这一层没问题"的初步判断）：
-             · 框宽/位置【全部正确】（400/120 与声明一致，截图位置也对）
-             · 但 horizontalAlignment 六组【全部停在默认 Left】
-               => CSS 的 text-align:center 算出来了，写进控件【没生效】
-             · 库用 pcall 包着这次写入 -> 失败被【静默吞掉】，
-               所以从 R21 起一直没人发现"居中"这条其实是失效的
+         第二次真机（枚举形态实验）—— 根因：
 
-         ⚠️ 连带修正一条旧认知：
-            之前认为 .over（GAME OVER）在真机上"居中正常"，
-            据此判断"写法同构所以库没问题"。真机数据表明
-            那个"看着居中"很可能是【误判】—— 它的框宽 800 里
-            只有 9 个字符，左对齐时视觉上也接近中间。
-            教训：不要把"看着对"当成证据（§七"截图比体感可靠"）。
+           Enum.TextHorizontalAlignment        = 子表（可索引）
+           Enum.TextHorizontalAlignment.Middle = 可用 ✅   ← 真名
+           Enum.TextHorizontalAlignmentMiddle  = nil      ❌ ← 文档写法
 
-         ★ 本模块已加【枚举形态实验】：逐个尝试各种取法并读回，
-           找出哪种能真正写进去，或证明都写不进去。
-           下一轮真机把该段日志回传即可定位。
+         ★ 所以 text-align:center 从来没生效过：库写的是文档的扁平名
+           （nil），而那次写入被 pcall 包着 -> 失败【静默吞掉】。
 
-         ⏳ 待填：枚举实验的结果（哪种取法生效 / 是否全部失效）。
+         ★ 修复：webui_render.lua 新增 resolveAlign()，按
+           「子表形式 -> 扁平形式」取，取不到就 util.warn（不再静默）。
+           两个调用点（普通文本框 / 裁剪容器文字子控件）共用。
+
+         ★ 这是本项目第三例「文档枚举名不可用」——
+           R16 Enum.ImageSource.StaticReference、
+           R23 Enum.TextHorizontalAlignment.Middle。
+           凡枚举一律运行时显式取 + 失败告警，禁止照文档写死。
+
+         ★★ 为什么藏了这么久：各测试自己手写 Enum 表且写的是
+            【文档扁平形式】-> mock 里可用、测试全绿、真机全错。
+            已抽出 tests/enum_kit.lua 按【真机形态】统一构造
+            （扁平名故意为 nil），并加 tests/test_align_enum.lua 守着。
+
+         ⚠️ 另修两个探针自身的缺陷（都会产出假结论）：
+            ① 判定写成 ha ~= "Left" 就算通过 -> 真机六组全 Left
+               却全打印 ✅，自己发假绿勾。改成正面匹配 Middle。
+            ② 枚举实验每条候选前没重置字段 -> 第一条成功后，
+               后面"取值=nil、写入=false"也读回 Middle 被判成功，
+               一次骗了 7 条。现在每步先重置为 Left。
 
   ══════════════════════════════════════════════════════════════════════════
   硬性约束（真机实测，写探针时必须遵守）
@@ -1241,23 +1246,44 @@ function M.align.probeEnum(ui)
   --[[ ⚠️ 必须在【一个控件】上依次试，每次试完读回。
        如果一次试多个，无法区分是哪个生效的。 ]]
 
+  --[[ ★★ 逐个尝试写入，读回看哪个生效。
+
+       ⚠️⚠️ 每次尝试【之前必须把字段重置成一个"已知不等于目标"的值】，
+          否则会出现假阳性：上一条把值写成 Middle 之后，
+          后面即使"取值=nil、写入=false"，读回【仍然是 Middle】，
+          被判成"✅ 生效"—— 第一次真机跑就这么骗了我 7 条。
+
+       ★ 重置值也要挑：用 Left（不是 Middle、也不是 nil）。
+         真机上 Left 能取到（见下面的实测），是合适的基线。 ]]--
+  local function resetToLeft()
+    local lv = safeCall(function() return Enum.TextHorizontalAlignment.Left end)
+    if lv == nil then
+      lv = safeCall(function() return Enum.TextHorizontalAlignmentLeft end)
+    end
+    if lv ~= nil then
+      safeCall(function() ctrl.horizontalAlignment = lv end)
+    end
+    return lv
+  end
+
   local function tryWrite(label, getter)
+    -- ★ 先重置，再取值、写入、读回
+    resetToLeft()
+
     local v = safeCall(getter)
     local vstr = tostring(v)
     local typeOK = (v ~= nil)
     local wrote = false
-    local back = "?"
 
     if typeOK then
       wrote = safeCall(function()
         ctrl.horizontalAlignment = v
         return true
       end) == true
-      back = tostring(safeCall(function() return ctrl.horizontalAlignment end))
     end
 
-    -- 判定：读回值是否表示"居中"（同读回表的口径 —— 见那里的说明）
     local back = tostring(safeCall(function() return ctrl.horizontalAlignment end))
+    -- 判定：读回值是否表示"居中"（同读回表的口径 —— 见那里的说明）
     local ok = type(back) == "string"
       and (back:find("Middle", 1, true) ~= nil
            or back == "C" or back == "M" or back == "center")
@@ -1301,7 +1327,7 @@ function M.align.probeEnum(ui)
   }
 
   for _, c in ipairs(CANDIDATES) do
-    safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentLeft end)
+    -- ★ 重置已由 tryWrite 内部完成（见那里的假阳性说明）
     if tryWrite(c[1], c[2]) then winners[#winners + 1] = c[1] end
   end
 

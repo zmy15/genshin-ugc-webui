@@ -116,6 +116,81 @@ local function colorChanged(a, b)
 end
 
 --=============================================================================
+-- 水平对齐枚举（★ R23 真机实证）
+--
+--   ⚠️⚠️ 真名是【带点的子表形式】：
+--        Enum.TextHorizontalAlignment.Middle   ✅
+--        Enum.TextHorizontalAlignmentMiddle    ❌ nil（文档写的就是这个）
+--
+--   库原先用扁平名 + pcall -> 失败被静默吞掉 -> text-align:center
+--   从 R21 起一直是失效的，直到 R23 真机探针才逮到。
+--
+--   ★ 放在【模块级】而不是某个函数内部：有两个调用点
+--     （普通文本框、裁剪容器里的文字子控件），
+--     写在内部会让另一个调用点取不到（已踩：test_clip 直接崩）。
+--=============================================================================
+
+local ALIGN_KEYS = { "middle", "right", "left" }
+local alignCache = nil
+local alignWarnedMissing, alignWarnedReject = false, false
+
+--[[ 取水平对齐枚举值。按优先级尝试，返回 { middle=, right=, left=, _ok= }。 ]]--
+local function resolveAlign()
+  if alignCache ~= nil then return alignCache end
+
+  local tbl = nil
+  pcall(function() tbl = Enum.TextHorizontalAlignment end)
+
+  local out = {}
+  local ok = true
+  for i = 1, #ALIGN_KEYS do
+    local k = ALIGN_KEYS[i]
+    local cap = k:sub(1, 1):upper() .. k:sub(2)   -- middle -> Middle
+    local v = nil
+
+    -- ① 子表形式（真机实测可用）
+    if type(tbl) == "table" then
+      pcall(function() v = tbl[cap] end)
+    end
+    -- ② 扁平形式（文档写法，保底：某些版本可能是这个）
+    if v == nil then
+      pcall(function() v = Enum["TextHorizontalAlignment" .. cap] end)
+    end
+
+    if v == nil then ok = false end
+    out[k] = v
+  end
+
+  out._ok = ok
+  alignCache = out
+  return out
+end
+
+--[[ 写一次水平对齐；失败时【告警】而不是静默吞掉。
+
+     ⚠️ 告警标记用独立 upvalue，不要挂在函数上 ——
+        本文件因此抛过 "attempt to index a function value"。 ]]--
+local function setAlign(control, key)
+  local v = resolveAlign()[key]
+  if v == nil then
+    if not alignWarnedMissing then
+      alignWarnedMissing = true
+      util.warn("水平对齐枚举取不到（Enum.TextHorizontalAlignment.Middle 与 "
+          .. "Enum.TextHorizontalAlignmentMiddle 都是 nil）—— "
+          .. "文字将无法居中。请跑 deploy/probe.lua 的 align 模块取证。")
+    end
+    return false
+  end
+  local ok = pcall(function() control.horizontalAlignment = v end)
+  if not ok and not alignWarnedReject then
+    alignWarnedReject = true
+    util.warn("写入 horizontalAlignment 失败（值取到了但控件拒绝）—— "
+        .. "文字将无法居中")
+  end
+  return ok
+end
+
+--=============================================================================
 -- Render 实例
 --=============================================================================
 
@@ -620,6 +695,9 @@ local function writeControl(control, node, dx, dy, last, kind)
     return supported[field] == true
   end
 
+  -- ★ 水平对齐的 resolveAlign / setAlign 已提到【模块级】（见文件上方）——
+  --   原来写在这里，导致裁剪容器那条调用路径取不到它（test_clip 崩过）。
+
   --[[ 只在值变化时写入。
 
     ⚠️ 两个陷阱：
@@ -782,13 +860,10 @@ local function writeControl(control, node, dx, dy, last, kind)
       else alignVal = "left" end
       if last.__align ~= alignVal then
         last.__align = alignVal
-        if alignVal == "middle" then
-          pcall(function() control.horizontalAlignment = Enum.TextHorizontalAlignmentMiddle end)
-        elseif alignVal == "right" then
-          pcall(function() control.horizontalAlignment = Enum.TextHorizontalAlignmentRight end)
-        else
-          pcall(function() control.horizontalAlignment = Enum.TextHorizontalAlignmentLeft end)
-        end
+        -- ★ 走 resolveAlign（见上面的说明）—— 不再直接用扁平枚举名，
+        --   那种写法在真机上是 nil，且失败被 pcall 静默吞掉。
+        setAlign(control, alignVal == "middle" and "middle"
+                 or (alignVal == "right" and "right" or "left"))
       end
     else
       -- 无文本：清掉，避免残留
@@ -1141,13 +1216,9 @@ function Renderer:update(root, domChanged)
             elseif ta == "right" then alignVal = "right" end
             if tl.__align ~= alignVal then
               tl.__align = alignVal
-              if alignVal == "middle" then
-                pcall(function() tc.horizontalAlignment = Enum.TextHorizontalAlignmentMiddle end)
-              elseif alignVal == "right" then
-                pcall(function() tc.horizontalAlignment = Enum.TextHorizontalAlignmentRight end)
-              else
-                pcall(function() tc.horizontalAlignment = Enum.TextHorizontalAlignmentLeft end)
-              end
+              -- ★ 同上面：走 resolveAlign，不再用真机上为 nil 的扁平枚举名
+              setAlign(tc, alignVal == "middle" and "middle"
+                       or (alignVal == "right" and "right" or "left"))
             end
           end
 

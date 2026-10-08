@@ -11,7 +11,7 @@ lib/webui/   库本体（13 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       43 个测试套件
+tests/       44 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -40,7 +40,8 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 |---|---|
 | **文字框高 ≥ 字号 × 1.9** | 框太矮 → 引擎字号自适应把字压没，**文字凭空消失** |
 | **文本框必须显式写 `background-color`** | 不写 → 引擎给**默认深色底**；字色若也是深色 → **文字看不见**（实测对比度 3） |
-| **要居中必须写 `text-align`** | 默认 `left` → 文字贴框左边（实测左右边距差 470px）。⚠️ **R23 真机实测：写了也未必生效**——六组对照的 `horizontalAlignment` 全部读回 `Left`，框宽/位置却全对。库的写入被 `pcall` 静默吞掉，正在定位。见 `docs/引擎能力与限制.md` §4.4.2 |
+| **要居中必须写 `text-align`** | 默认 `left` → 文字贴框左边（实测左右边距差 470px） |
+| **★★ 枚举名一律运行时取，禁止照文档写死** | 已踩三例：`Enum.ImageSource.StaticReference`（R16）、**`Enum.TextHorizontalAlignment.Middle` —— 文档写的扁平名 `…AlignmentMiddle` 在真机上是 `nil`**（R23）。配上 `pcall` 就成了「写入失败但静默」，`text-align:center` 因此失效好几轮。**必须显式取 + 取不到就 `warn`**。测试替身也要照**真机形态**造（见 `tests/enum_kit.lua`） |
 | **多控件拼图：矩形必须 `position:absolute`** | 否则 inline 的 `left/top` 无效 → 全堆成一列（实测宽 47px，应为 176px） |
 | **多控件拼图：相邻矩形要外扩 1px** | 真机色块实际宽比声明值略小 → 相邻块之间露 1.25~4.38px 背景缝 |
 | **★★ 文本框模板自带圆角（半径 ≥8px）** | 8px 的色块被画成**圆形**；33 个矩形里 **88% 变形**。圆角来自模板，代码改不了（6 个 radius 字段写入全失败）→ **拼像素图必须用 `image` 控件**（模板是方的） |
@@ -54,7 +55,6 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **字段按控件类型封死** | 容器/按钮写 `bgColor`/`text` 静默失败 |
 | **`fontSize` 必须整数** | 浮点写入失败 |
 | **`OnUpdate` 不驱动** | 逐帧靠递归 `TweenSequence` |
-| **枚举名不能照文档猜** | 真名 `Enum.ImageSource.StaticReference` |
 | **真机读 `.gil` 不是文件夹** | 复制文件不生效，须编辑器导入 |
 | **根控件缩放必须 `1.01`** | 编辑器里手工设。`1.00` 时界面**四周留一圈缝**；库改不了 `localScale` |
 | **必须有名为 `Root` 的容器节点 + 脚本挂在其下** | 库靠 `FindClientUIRoot("Root")` 找挂载点；缺了/名字不对 → **界面空白且无日志** |
@@ -74,7 +74,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-43 个套件，路径自包含（任何目录可跑）。关键回归：
+44 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -90,6 +90,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_demo_dino_quit` — ★ **退出/结算窗口**（弹窗按钮可点、暂停计时、上报整数秒+分数）
 - `test_demo_dino_style` — ★ 文字视觉回归（含弹窗文字必须被采样到，防 `display:none` 回归）
 - `test_probe_align` — ★ align 探针自检（确认真机能拿到正确的读回表）
+- `test_align_enum` — ★★ **水平对齐枚举真名**（用 `tests/enum_kit.lua` 按真机形态造 Enum，扁平名为 nil）
 
 ## 真机探针
 
