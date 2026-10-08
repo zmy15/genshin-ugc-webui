@@ -29,6 +29,30 @@ local function check(name, cond, detail)
   else fail=fail+1; print(string.format("  [XX] %-50s %s", name, detail or "")) end
 end
 
+--[[ ★ 对齐判定统一走 enum_kit —— 不要写死 "C" / "R" 这种短 token。
+
+     ⚠️ 本文件原先断言 `horizontalAlignment == "C"`。它一直通过，
+        但那是【mock 的短 token】—— 真机上这个字段的值形如
+        "Enum.TextHorizontalAlignment.Middle"，而且 R23 发现
+        库当时压根没写进去（枚举名是 nil，被 pcall 吞了）。
+        写死 token 的断言既拦不住"没写入"，也认不出真机的形态。 ]]
+local enumkit = require('enum_kit')
+
+local function haIs(d, want)
+  if not d then return false end
+  local v = d.fields.horizontalAlignment
+  if v == nil then return false end
+  local s = tostring(v)
+  if want == "middle" then
+    return s:find("Middle", 1, true) ~= nil or s == "C" or s == "M"
+  elseif want == "right" then
+    return s:find("Right", 1, true) ~= nil or s == "R"
+  elseif want == "left" then
+    return s:find("Left", 1, true) ~= nil or s == "L"
+  end
+  return false
+end
+
 local E = EngineMock.new(PREFABS)
 local keyEnum = {}
 for _, n in ipairs({"KeyboardJumpKeyDown","KeyboardJumpKeyUp"}) do
@@ -179,9 +203,8 @@ check("找到 Game Over 控件", overD ~= nil)
 
 if overD then
   -- 居中：horizontalAlignment 应为 Middle
-  local ha = overD.fields.horizontalAlignment
   check("★ Game Over 水平居中（horizontalAlignment=Middle）",
-      ha == "C", "ha=" .. tostring(ha))
+      haIs(overD, "middle"), "ha=" .. tostring(overD.fields.horizontalAlignment))
 
   -- 背景：必须与页面底色一致（视觉上无底条）
   local bg = overD.fields.bgColor
@@ -212,7 +235,7 @@ print("\n=== 3. 分数栏：靠右对齐 ===")
 check("找到分数控件", scoreD ~= nil)
 if scoreD then
   check("分数靠右（horizontalAlignment=Right）",
-      scoreD.fields.horizontalAlignment == "R",
+      haIs(scoreD, "right"),
       "ha=" .. tostring(scoreD.fields.horizontalAlignment))
   check("分数有显式背景色", scoreD.fields.bgColor ~= nil)
 end
@@ -222,7 +245,7 @@ print("\n=== 4. 提示文字：居中 + 显式背景 ===")
 --=============================================================================
 check("找到提示控件（未开始时采样）", hintD ~= nil)
 if hintD then
-  check("提示居中", hintD.fields.horizontalAlignment == "C",
+  check("提示居中", haIs(hintD, "middle"),
       "ha=" .. tostring(hintD.fields.horizontalAlignment))
   check("提示有显式背景色", hintD.fields.bgColor ~= nil)
 end
@@ -246,7 +269,7 @@ do
     if not d then
       problems[#problems+1] = ui[i][2] .. "(没找到)"
     else
-      if d.fields.horizontalAlignment ~= "C" then
+      if not haIs(d, "middle") then
         problems[#problems+1] = ui[i][2] .. "(没居中)"
       end
       if d.fields.bgColor == nil then

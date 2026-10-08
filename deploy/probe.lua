@@ -103,6 +103,13 @@
            「子表形式 -> 扁平形式」取，取不到就 util.warn（不再静默）。
            两个调用点（普通文本框 / 裁剪容器文字子控件）共用。
 
+         ★★ 修复已真机验证（同日 02:56 第三轮）：
+            五组对照（B/C/D/E + 长文本）ha 全部读回 Middle，
+            截图确认文字全部居中（含 120x54 的「退出」按钮）。
+            ⚠️ al-a1（A 组基线）显示 Left 是【探针自身副作用】——
+               枚举实验反复写过它，而还原时又误用了扁平名（也是 nil）。
+               已修（改用子表形式还原）。其余五组未被触碰，结论有效。
+
          ★ 这是本项目第三例「文档枚举名不可用」——
            R16 Enum.ImageSource.StaticReference、
            R23 Enum.TextHorizontalAlignment.Middle。
@@ -1256,7 +1263,12 @@ function M.align.probeEnum(ui)
        ★ 重置值也要挑：用 Left（不是 Middle、也不是 nil）。
          真机上 Left 能取到（见下面的实测），是合适的基线。 ]]--
   local function resetToLeft()
-    local lv = safeCall(function() return Enum.TextHorizontalAlignment.Left end)
+    -- ★ 优先用子表形式（真机可用）；扁平名保底（mock 用）
+    local lv = nil
+    local sub = safeCall(function() return Enum.TextHorizontalAlignment end)
+    if type(sub) == "table" then
+      lv = safeCall(function() return sub.Left end)
+    end
     if lv == nil then
       lv = safeCall(function() return Enum.TextHorizontalAlignmentLeft end)
     end
@@ -1293,8 +1305,16 @@ function M.align.probeEnum(ui)
     return ok
   end
 
-  -- 先置回 Left，确保每次实验的起点一致
-  safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentLeft end)
+  -- 先置回 Left，确保每次实验的起点一致。
+  -- ⚠️ 同样不能用扁平名 —— 真机上是 nil，写了等于没置。
+  safeCall(function()
+    local sub = Enum.TextHorizontalAlignment
+    if type(sub) == "table" then
+      ctrl.horizontalAlignment = sub.Left
+    else
+      ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentLeft
+    end
+  end)
   log(string.format("    （起点已置为 %s）",
       tostring(safeCall(function() return ctrl.horizontalAlignment end))))
 
@@ -1338,20 +1358,34 @@ function M.align.probeEnum(ui)
           会把实验的副作用当成"库没写进去"，得出错误结论。
           （第一次跑就踩了：读回表显示 al-a1 = Left 而其余五组 = C。）
 
-       ★ 还原办法：重新写一次"库本该写的值"。
-         库写的是 Enum.TextHorizontalAlignmentMiddle，但真机上
-         这个取法可能失效 —— 那就把 A 组排除出读回表，
-         而不是让它污染结论。这里两种都做：先尝试还原，
-         再在读回表里对 al-a1 标注"本控件做过枚举实验"。 ]]
-  safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentMiddle end)
-  if type(ctrl.horizontalAlignment) == "string"
-     and not tostring(ctrl.horizontalAlignment):find("Middle", 1, true)
-     and tostring(ctrl.horizontalAlignment) ~= "C" then
+       ★ 还原办法：用【实验刚刚证明可用的那个取法】写回去。
+
+         ⚠️⚠️ 这里踩过一次：还原时写的是
+              Enum.TextHorizontalAlignmentMiddle（文档的扁平名），
+              而那个名字在真机上是 nil —— 于是"还原"本身失败，
+              读回表里 al-a1 依然显示 Left，白白多报一条假不符。
+              （2026-10-09 真机：实验证明 .Middle 可用、扁平名不可用。）
+         现在按子表形式还原；万一还失败，就标记 dirtyA 让读回表跳过它。 ]]
+  local restored = false
+  safeCall(function()
+    local sub = Enum.TextHorizontalAlignment
+    if type(sub) == "table" then
+      ctrl.horizontalAlignment = sub.Middle
+      restored = true
+    end
+  end)
+  -- 兼容 mock（短 token "C"）
+  if not restored then
+    safeCall(function() ctrl.horizontalAlignment = Enum.TextHorizontalAlignmentMiddle end)
+  end
+
+  local back = tostring(safeCall(function() return ctrl.horizontalAlignment end))
+  if not (back:find("Middle", 1, true) or back == "C") then
     M.align.dirtyA = true
     log("")
-    log("  ⚠️ A 组控件无法还原成 Middle（真机取不到该枚举）——")
-    log("     下面的读回表里 al-a1 会显示 Left，那是【本实验的副作用】，")
-    log("     不代表库的写入结果。其余五组未被本实验触碰，依然有效。")
+    log("  ⚠️ A 组控件无法还原成 Middle（读回 " .. back .. "）——")
+    log("     下面的读回表里 al-a1 会被跳过，因为它做过枚举写入实验，")
+    log("     读回值不代表库的结果。其余五组未被本实验触碰，依然有效。")
   end
 
   --===========================================================================

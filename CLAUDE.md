@@ -41,7 +41,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **文字框高 ≥ 字号 × 1.9** | 框太矮 → 引擎字号自适应把字压没，**文字凭空消失** |
 | **文本框必须显式写 `background-color`** | 不写 → 引擎给**默认深色底**；字色若也是深色 → **文字看不见**（实测对比度 3） |
 | **要居中必须写 `text-align`** | 默认 `left` → 文字贴框左边（实测左右边距差 470px） |
-| **★★ 枚举名一律运行时取，禁止照文档写死** | 已踩三例：`Enum.ImageSource.StaticReference`（R16）、**`Enum.TextHorizontalAlignment.Middle` —— 文档写的扁平名 `…AlignmentMiddle` 在真机上是 `nil`**（R23）。配上 `pcall` 就成了「写入失败但静默」，`text-align:center` 因此失效好几轮。**必须显式取 + 取不到就 `warn`**。测试替身也要照**真机形态**造（见 `tests/enum_kit.lua`） |
+| **★★ 枚举名一律运行时取，禁止照文档写死** | 已踩三例：`Enum.ImageSource.StaticReference`（R16）、**`Enum.TextHorizontalAlignment.Middle` —— 文档写的扁平名 `…AlignmentMiddle` 在真机上是 `nil`**（R23，已修并真机验证）。配上 `pcall` 就成了「写入失败但静默」，`text-align:center` 因此失效好几轮。**必须显式取 + 取不到就 `warn`**。测试替身也要照**真机形态**造（见 `tests/enum_kit.lua`） |
 | **多控件拼图：矩形必须 `position:absolute`** | 否则 inline 的 `left/top` 无效 → 全堆成一列（实测宽 47px，应为 176px） |
 | **多控件拼图：相邻矩形要外扩 1px** | 真机色块实际宽比声明值略小 → 相邻块之间露 1.25~4.38px 背景缝 |
 | **★★ 文本框模板自带圆角（半径 ≥8px）** | 8px 的色块被画成**圆形**；33 个矩形里 **88% 变形**。圆角来自模板，代码改不了（6 个 radius 字段写入全失败）→ **拼像素图必须用 `image` 控件**（模板是方的） |
