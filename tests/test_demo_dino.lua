@@ -173,10 +173,10 @@ end
 local dinoN   = #sprite.dinoRects()
 local cloudN  = #sprite.cloudRects()
 
---[[ ★ 不硬编码数量：点阵改一次数量就变（实测 31~34）。
-       这里断言数量合理，而不是某个固定值。 ]]--
-check("恐龙点阵分解出合理数量的矩形（20~45）",
-    dinoN >= 20 and dinoN <= 45, dinoN .. " 个")
+--[[ ★ 不硬编码数量：点阵改一次数量就变。
+       恐龙缩到 16x17 后只有 16 个矩形（原 22x24 时 31 个）。 ]]--
+check("恐龙点阵分解出合理数量的矩形（10~45）",
+    dinoN >= 10 and dinoN <= 45, dinoN .. " 个")
 check("云分解为 6 个矩形", cloudN == 6, cloudN .. " 个")
 
 --[[ ★★ 障碍现在是【多档】的（大/中/小仙人掌 + 翼龙）。
@@ -207,14 +207,20 @@ check("地面装饰有 3 种", #decos == 3, #decos .. " 种")
 
      ⚠️ 障碍槽是按【矩形最多的那档】建节点的（运行时要在同一槽里
         切换不同档），所以每个槽的节点数 = 最大档的矩形数。 ]]
-local variants = sprite.cactusVariants()
+-- variants 已在上面声明（仙人掌三档那段）
 local birdRects = sprite.birdRects()
+local birdFlapRects = sprite.birdFlapRects()
 
+--[[ ★★ 障碍槽按【含扇翅帧】的最大矩形数建节点。
+
+     ⚠️ 翼龙的扇翅帧矩形数比主帧多（实测 16 > 15），
+        漏了它就会在扇翅时少一块 —— 这里必须一致。 ]]
 local biggest = variants[1].rects
 for _, v in ipairs(variants) do
   if #v.rects > #biggest then biggest = v.rects end
 end
 if #birdRects > #biggest then biggest = birdRects end
+if #birdFlapRects > #biggest then biggest = birdFlapRects end
 
 local allRectTables = {
   sprite.dinoRects(),

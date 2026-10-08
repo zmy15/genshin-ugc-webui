@@ -11,7 +11,7 @@ lib/webui/   库本体（12 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md 是权威版）
-tests/       34 个测试套件
+tests/       35 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -45,6 +45,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **多控件拼图：相邻矩形要外扩 1px** | 真机色块实际宽比声明值略小 → 相邻块之间露 1.25~4.38px 背景缝 |
 | **★★ 文本框模板自带圆角（半径 ≥8px）** | 8px 的色块被画成**圆形**；33 个矩形里 **88% 变形**。圆角来自模板，代码改不了（6 个 radius 字段写入全失败）→ **拼像素图必须用 `image` 控件**（模板是方的） |
 | **拼图用 image 时不能写 `background-color`** | 写了会被 `chooseKind` 选回 **textbox** → 圆角又回来 |
+| **★★ 游戏可解性要自己算** | 障碍高度/跳跃高度/碰撞盒一改就可能**死局**，而且不报错。实测「大仙人掌+高飞鸟」的公共安全区只有 **15px**（等同死局）→ **一波只能出一种障碍**。见 `docs/引擎能力与限制.md` §4.8 |
 | **裁剪容器不设 `background-color`** | 填充不受自身遮罩约束 → 溢出到裁剪区外 |
 | **容器高度要装得下内容** | 溢出内容**仍可见但失去父背景** → "背景颜色不同" |
 | **新控件 `active` 默认 `false`** | 必须 `SetActive(true)`，否则不可见但字段写入成功 |
@@ -70,13 +71,14 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-34 个套件，路径自包含（任何目录可跑）。关键回归：
+35 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
 - `test_real` — 真机仿真（用 `tools/engine_mock.lua`，严格模拟真机限制）
 - `test_probe` — 统一探针自检
 - `test_build_check` — `tools/build.lua --check` 真的能发现过期产物（见下）
+- `test_dino_rules` — ★ **游戏可解性**（纯数值验算 + 与 demo 源码交叉校验常量）
 
 ## 真机探针
 

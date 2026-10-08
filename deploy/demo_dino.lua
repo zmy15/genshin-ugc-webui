@@ -76,9 +76,9 @@ local BLEED = 1
 
 --[[ ★ 每个精灵：{ 矩形表, 宽(格), 高(格) } ]]--
 local SP = {
-  dino     = { rects = sprite.dinoRects(),     w = 22, h = 24 },
-  dinoRun  = { rects = sprite.dinoRunRects(),  w = 22, h = 24 },
-  dinoDead = { rects = sprite.dinoDeadRects(), w = 22, h = 24 },
+  dino     = { rects = sprite.dinoRects(),     w = 16, h = 17 },
+  dinoRun  = { rects = sprite.dinoRunRects(),  w = 16, h = 17 },
+  dinoDead = { rects = sprite.dinoDeadRects(), w = 16, h = 17 },
   cloud    = { rects = sprite.cloudRects(),    w = 10, h = 5  },
 }
 
@@ -93,10 +93,34 @@ local SP = {
      ★ 它们的【底边都对齐地面线】，所以 top 要按各自高度算：
          top = 地面 700 - 高度px ]]--
 local OBS_KINDS = {
-  { name = "cactusBig",   rects = sprite.cactusBigRects(),   w = 9,  h = 18, ground = true },
-  { name = "cactusMid",   rects = sprite.cactusMidRects(),   w = 6,  h = 17, ground = true },
-  { name = "cactusSmall", rects = sprite.cactusSmallRects(), w = 5,  h = 12, ground = true },
-  { name = "bird",        rects = sprite.birdRects(),        w = 20, h = 10, ground = false },
+  --[[ ★ 障碍四种。字段含义：
+
+       w, h     逻辑尺寸（格），实际像素 = w*CELL x h*CELL
+       ground   true = 底边对齐地面线；false = 在空中（用 BIRD_YS）
+
+       hitL/hitW/hitT/hitH  ★ 碰撞盒（相对控件左上角）
+         点阵的图形周围总有空格，碰撞盒比控件小一圈
+         手感更接近原版（看着没撞就不该判死）。
+
+       ★ 这四组数值都经数值验证：
+           三种仙人掌 -> 站着必撞 ✓  跳到峰值能过 ✓
+           低飞鸟     -> 站着撞 ✓    峰值安全 ✓（必须跳）
+           高飞鸟     -> 站着安全 ✓  峰值撞 ✓（不能跳） ]]
+  { name = "cactusBig",   rects = sprite.cactusBigRects(),
+    w = 9,  h = 18, ground = true,
+    hitL = 10, hitW = 52, hitT = 0, hitH = 144 },
+
+  { name = "cactusMid",   rects = sprite.cactusMidRects(),
+    w = 6,  h = 17, ground = true,
+    hitL = 6,  hitW = 36, hitT = 0, hitH = 136 },
+
+  { name = "cactusSmall", rects = sprite.cactusSmallRects(),
+    w = 5,  h = 12, ground = true,
+    hitL = 5,  hitW = 30, hitT = 0, hitH = 96 },
+
+  { name = "bird",        rects = sprite.birdRects(),
+    w = 20, h = 10, ground = false,
+    hitL = 20, hitW = 120, hitT = 8, hitH = 72 },
 }
 
 --[[ ★ 地面装饰：贴在地面线上的小图案，打破"一条直线"的单调。 ]]--
@@ -144,19 +168,28 @@ end
         多出来的矩形没有控件可画 -> 缺一块。
 
      ★ 初始用哪种都行（都会被隐藏），这里用矩形最多的那种，
-       保证节点数一次到位。 ]]--
+       保证节点数一次到位。
+
+     ⚠️【翼龙的扇翅帧矩形数可能比主帧多】（实测 16 > 15）——
+        所以必须把扇翅帧也纳入比较，
+        否则扇翅时会缺一块（多出的那个矩形没控件可画）。 ]]--
 local OBS_MAX_RECTS = 0
-local OBS_TEMPLATE = nil
+local OBS_TEMPLATE_RECTS = nil
+local obsAllRects = {}
 for _, k in ipairs(OBS_KINDS) do
-  if #k.rects > OBS_MAX_RECTS then
-    OBS_MAX_RECTS = #k.rects
-    OBS_TEMPLATE = k
+  obsAllRects[#obsAllRects + 1] = k.rects
+end
+obsAllRects[#obsAllRects + 1] = sprite.birdFlapRects()   -- ★ 扇翅帧也算上
+for _, rects in ipairs(obsAllRects) do
+  if #rects > OBS_MAX_RECTS then
+    OBS_MAX_RECTS = #rects
+    OBS_TEMPLATE_RECTS = rects
   end
 end
 
 local function obsSlotHTML(slot)
-  -- 用"矩形最多"的模板生成，保证节点够用
-  return spriteHTML(OBS_TEMPLATE.rects,
+  -- 用"矩形最多"的那组生成，保证节点够用
+  return spriteHTML(OBS_TEMPLATE_RECTS,
                     "o" .. slot .. "R", "o" .. slot, "o" .. slot .. "Body")
 end
 
@@ -241,9 +274,12 @@ local CSS = [[
 .spr      { position: absolute; left: 0px; top: 0px; }
 .spr-body { position: absolute; left: 0px; top: 0px; }
 
-/* 恐龙：22x24 格 x 8px = 176 x 192
-   ★ top=508 让【点阵的脚】正好落在地面线 700 上（508 + 192 = 700） */
-#dino { left: 160px; top: 508px; width: 176px; height: 192px; }
+/* ★★ 恐龙：16x17 格 x 8px = 128 x 136
+   为什么是这个尺寸：需求要求「恐龙高度 = 中仙人掌高度」
+     中仙人掌 17 格 = 136px，恐龙 17 格 = 136px ✓
+
+   ★ top = 地面 700 - 136 = 564（脚正好踩在地面线上） */
+#dino { left: 160px; top: 564px; width: 128px; height: 136px; }
 
 /*[[ 障碍槽：尺寸与 top 由运行时按【实际类型】设置。
 
@@ -299,48 +335,69 @@ local G = {
   --[[ ★★ 摆放几何（必须与点阵尺寸一致，否则恐龙会悬空/陷地）
 
        地面线 .ground top = 700
-       恐龙点阵 22x24 格 x 8px = 176x192，脚在控件顶 +192
-         -> 站在地面时控件 top = 700 - 192 = 508
-       仙人掌点阵 9x14 格 x 8px = 72x112，底在控件顶 +112
-         -> 贴地时控件 top = 700 - 112 = 588
-
-       ⚠️ 之前 GROUND_Y=620 是按旧的 80x80 方块算的，
-          换成 192 高的点阵后恐龙会【陷到地面下 112px】。 ]]
-  GROUND_Y   = 508,     -- 恐龙落地时的 top（= 地面 700 - 点阵高 192）
+       恐龙 16x17 格 x 8px = 128x136，脚在控件顶 +136
+         -> 站在地面时控件 top = 700 - 136 = 564
+       仙人掌底边都对齐地面：top = 700 - 高度px ]]
+  GROUND_Y   = 564,     -- 恐龙落地时的 top（= 地面 700 - 点阵高 136）
   GRAVITY    = 4200,    -- 重力加速度 px/s^2
-  JUMP_V     = -1150,   -- 起跳初速度 px/s（负 = 向上）
+
+  --[[ ★★ 起跳初速：让跳跃峰值达到 ~210px
+
+       为什么要 210：需求要求「跳跃必须高过最高的仙人掌」
+         大仙人掌 = 144px
+         旧参数峰值 146px -> 只高出 2px，碰巧就撞，太勉强
+
+       峰值公式：H = v^2 / (2g)
+         v = 1150 -> H = 1150^2/(2*4200) = 157
+         v = 1330 -> H = 1330^2/(2*4200) = 210  ✓
+
+       ★ 210 还给了「高飞鸟」充足的可用空间（见 BIRD_YS）。 ]]
+  JUMP_V     = -1330,   -- 起跳初速度 px/s（负 = 向上）-> 峰值约 210px
+
   BASE_SPEED = 620,     -- 障碍初始速度 px/s
   MAX_SPEED  = 1500,    -- 最高速度（封顶）
   ACCEL      = 32,      -- 每秒加速 px/s
 
-  --[[ ★ 碰撞盒：只取【身体主体】，不含头部最上和尾巴尖。
+  --[[ ★★ 碰撞盒：只取【身体主体】，不含头部最上和尾巴尖。
 
-       恐龙点阵里躯干+腿大致在格 y 12..21 -> 像素 88..168（相对控件顶）。
-       取这个区间做碰撞盒，手感更接近原版：
-         · 站着时 画布 y = 508+88 .. 508+168 = 596..676
-         · 跳到峰值（146px）时 = 450..530，低于仙人掌顶 -> 安全 ✓ ]]
+       恐龙点阵 16x17，躯干+腿大致在格 y 7..14
+         -> 像素 56..112（相对控件顶）
+       站着时 画布 y = 564+56 .. 564+112 = 620..676
+       峰值时 = 564-210+56 .. 564-210+112 = 410..466
+
+       ★ 寬度取 76（比控件 128 窄：点阵左右有空格） ]]
   DINO_X     = 160,
-  DINO_SPR_H = 192,     -- 恐龙点阵总高
-  DINO_HIT_W = 92,      -- 碰撞盒宽（比控件 176 窄：点阵左右有空格）
-  DINO_HIT_T = 88,      -- 碰撞盒顶（相对控件顶）
-  DINO_HIT_B = 168,     -- 碰撞盒底（相对控件顶）
+  DINO_SPR_H = 136,     -- 恐龙点阵总高
+  DINO_HIT_W = 76,      -- 碰撞盒宽
+  DINO_HIT_T = 56,      -- 碰撞盒顶（相对控件顶）
+  DINO_HIT_B = 112,     -- 碰撞盒底（相对控件顶）
 
   --[[ ★★ 障碍：三种仙人掌 + 翼龙，尺寸各不同。
 
-       所有【地面】障碍的底边都对齐地面线 700：
-         top = 700 - 高度px
-       翼龙在【空中】，两个高度来回飞（原版就是这么设计的）：
-         低飞 -> 必须跳过去（或蹲下，本版没做蹲）
-         高飞 -> 站着也能过，但跳起来会撞
-       ⚠️ 所以翼龙不能设成"必须跳"，否则玩家没解法。 ]]
+       所有【地面】障碍的底边都对齐地面线 700：top = 700 - 高度px ]]
   GROUND_LINE = 700,
   OBS_HIT_PAD = 13,     -- 碰撞盒比控件每边窄这么多（点阵左右有空格）
 
-  -- 翼龙的两个飞行高度（画布 top）
-  BIRD_YS = { 470, 402 },   -- 低飞 / 高飞
+  --[[ ★★★ 翼龙的两个飞行高度（算出来的，不是拍的）
+
+       恐龙碰撞盒：  站立 620..676   跳到峰值 410..466
+       翼龙高 80px
+
+       低飞=603（区间 603..683）：
+         ✓ 与站立盒重叠  -> 不跳就撞（必须跳）
+         ✓ 与峰值盒不重叠 -> 跳起来能躲
+
+       高飞=405（区间 405..485）：
+         ✓ 与站立盒不重叠 -> 站着就能过（不用跳）
+         ✓ 与峰值盒重叠  -> 跳了反而撞
+
+       ★ 两者都用数值搜索验证过有解，且余量充足。 ]]
+  BIRD_YS = { 603, 405 },   -- 低飞（必须跳）/ 高飞（不能跳）
 
   SPAWN_GAP  = 760,     -- 障碍之间的最小水平间距
+  WAVE_GAP   = 1500,    -- ★ 两波障碍的间隔（保证不会"仙人掌+鸟"同时挡路）
   RUN_FRAME  = 6,       -- 每多少帧换一次跑动姿态
+  BIRD_FLAP  = 8,       -- ★ 翼龙扇翅膀的帧间隔
   FPS        = 50,      -- 循环步长（固定）
 }
 
@@ -560,24 +617,33 @@ local function tick(dt)
   --===========================================================================
   -- ④ 生成障碍
   --
-  --   ★ 偶尔派翼龙（空中），其余派三种仙人掌之一。
-  --     翼龙的飞行高度二选一 —— 低飞必须跳，高飞站着也能过。
+  --   ★★ 关键约束：一波只出【一种】障碍
+  --
+  --     为什么：若仙人掌和高飞的鸟同时挡在身前，
+  --     玩家跳起来躲仙人掌就会撞上高飞的鸟，不跳又撞仙人掌
+  --     -> 【无解】。
+  --
+  --     所以每次只派一个障碍，且下一个要等足够远
+  --     （WAVE_GAP）—— 保证玩家有时间回到地面再跳。
   --===========================================================================
-  local needSpawn = (S.dist % G.SPAWN_GAP) < (S.speed * dt)
+  local needSpawn = (S.dist % G.WAVE_GAP) < (S.speed * dt)
   if needSpawn then
     for i = 1, #S.obs do
       if not S.obs[i].active then
         local o = S.obs[i]
         o.active = true
         o.x = 1600 + 60
-        -- 约 22% 概率出翼龙
-        if rnd() < 0.22 then
+        -- 约 25% 出翼龙，其余三种仙人掌随机
+        if rnd() < 0.25 then
           o.kind = 4
+          -- 低飞（必须跳）/ 高飞（不能跳）
           o.birdY = G.BIRD_YS[(rnd() < 0.5) and 1 or 2]
         else
           o.kind = pickKind()
           o.birdY = 0
         end
+        o.flap = 1          -- ★ 翼龙扇翅姿态
+        o.flapTimer = 0
         applyObstacle(i, o.kind, o.birdY)
         break
       end
@@ -610,7 +676,13 @@ local function tick(dt)
 
   --===========================================================================
   -- ⑥ 碰撞检测（AABB，按【每个障碍的实际类型】算碰撞盒）
-  --===========================================================================
+  --
+  --[[ ★★ 修正：之前用的是"控件实际尺寸"，而点阵四周有空格
+         （比如鸟的翅膀只占下半部）。
+         用控件尺寸会导致：看着没碰上，实际已判死；或反过来漏判。
+
+       ★ 所以这里用【每个精灵自己的碰撞盒】（存在 OBS_KINDS 里），
+         它是按点阵内容量出来的。 ]]
   local dinoL = G.DINO_X
   local dinoR = G.DINO_X + G.DINO_HIT_W
   local dinoT = S.y + G.DINO_HIT_T
@@ -625,12 +697,11 @@ local function tick(dt)
       -- 容器的 top：地面障碍贴地，翼龙在指定高度
       local top = k.ground and (G.GROUND_LINE - h) or (o.birdY or G.BIRD_YS[1])
 
-      -- ★ 碰撞盒比控件窄（点阵左右有空格），上下取全高
-      local padX = G.OBS_HIT_PAD
-      local obsL = o.x + padX
-      local obsR = obsL + (w - padX * 2)
-      local obsT = top
-      local obsB = top + h
+      -- ★ 碰撞盒：容器 top + 精灵自带的相对盒
+      local obsL = o.x + (k.hitL or 0)
+      local obsR = obsL + (k.hitW or w)
+      local obsT = top + (k.hitT or 0)
+      local obsB = obsT + (k.hitH or h)
 
       if dinoR > obsL and dinoL < obsR and dinoB > obsT and dinoT < obsB then
         S.over = true
@@ -670,6 +741,22 @@ local function tick(dt)
       if o.active then
         nd:show()
         nd:setStyle("transform", string.format("translateX(%.1fpx)", o.x))
+
+        --[[ ★★ 翼龙扇翅：每 BIRD_FLAP 帧在两帧之间切换。
+
+             ★ 只在【是翼龙】时做 —— 仙人掌没有动画帧。
+             ⚠️ 换姿态要用 reimageNode（apply 内部会在"从隐藏变显示"时
+                重贴图），这里直接传进去。 ]]
+        if o.kind == 4 then
+          o.flapTimer = (o.flapTimer or 0) + 1
+          if o.flapTimer >= G.BIRD_FLAP then
+            o.flapTimer = 0
+            o.flap = (o.flap == 1) and 2 or 1
+            local rects = (o.flap == 1) and sprite.birdRects()
+                                          or sprite.birdFlapRects()
+            setPose("o" .. (i - 1) .. "R", rects, #rects)
+          end
+        end
       else
         nd:hide()
       end
@@ -780,10 +867,8 @@ app = webui.mount{
           因为运行时会在同一槽里切换大/中/小仙人掌和翼龙，
           节点不够时多出来的矩形画不出来（会缺一块）。
           HTML 里已经按最大需求生成了，这里也按最大数收。 ]]
-    local maxObsRects = 0
-    for _, k in ipairs(OBS_KINDS) do
-      if #k.rects > maxObsRects then maxObsRects = #k.rects end
-    end
+    -- ★ 与 HTML 生成处保持一致（OBS_MAX_RECTS 已含翼龙扇翅帧）
+    local maxObsRects = OBS_MAX_RECTS
 
     local prefixes = {
       dR  = #SP.dino.rects,

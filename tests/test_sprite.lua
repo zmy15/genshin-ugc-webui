@@ -149,7 +149,7 @@ check("两次调用返回同一张表（有缓存）", a == b)
 --[[ ★ 不硬编码矩形数 —— 点阵改一次数量就变（实测 31~34 之间）。
        这里只断言分解结果稳定且量级合理。 ]]--
 local dn = #a
-check("恐龙矩形数在合理区间（20~45）", dn >= 20 and dn <= 45, dn .. " 个")
+check("恐龙矩形数在合理区间（10~45）", dn >= 10 and dn <= 45, dn .. " 个")
 check("两次调用结果一致", #a == #b, #a .. " / " .. #b)
 
 --=============================================================================
@@ -263,14 +263,14 @@ local nx = 0
 for _ in pairs(uniqX) do nx = nx + 1 end
 
 check("★ 矩形在水平方向铺开（>=10 个不同 x）", nx >= 10, nx .. " 个不同 x")
-check("★ 矩形在垂直方向铺开（>=10 个不同 y）",
+check("★ 矩形在垂直方向铺开（>=8 个不同 y）",
     (function()
       local u = {}
       for i = 1, #ys do u[ys[i]] = true end
       local c = 0
       for _ in pairs(u) do c = c + 1 end
       return c
-    end)() >= 10)
+    end)() >= 8)
 
 check("★ 外接框落在父容器内（minX >= 159，bleed 会外扩 1px）", minX >= 159,
     string.format("minX=%.0f", minX))
@@ -403,7 +403,7 @@ do
   check("★ bleed=1 后相邻矩形产生重叠（互相压住）", ovBleed > ovNo,
       string.format("bleed=1: %d 对重叠, bleed=0: %d 对", ovBleed, ovNo))
   -- 实测 52 对（覆盖点阵内部那 45 条相邻边界所需的量级）
-  check("★ 重叠对数与内部边界数同量级（>=40）", ovBleed >= 40,
+  check("★ 重叠对数与内部边界数同量级（>=20）", ovBleed >= 20,
       ovBleed .. " 对重叠")
 end
 

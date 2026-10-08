@@ -91,7 +91,7 @@ print("\n=== 2. 未开始时：恐龙在地面，障碍隐藏 ===")
      仙人掌控件 9x14 格 x 8px = 72x112。
      （不再是旧版的 80x80 / 40x70 方块。） ]]
 local CELL = 8
-local DINO_W, DINO_H = 22 * CELL, 24 * CELL     -- 176 x 192
+local DINO_W, DINO_H = 16 * CELL, 17 * CELL     -- 128 x 136
 local OBS_W,  OBS_H  = 9  * CELL, 14 * CELL     -- 72 x 112
 
 local function ctrlByDelta(w, h)
@@ -142,8 +142,8 @@ end
 if dinoD then
   local top = canvasTopOf(dinoD)
   local left = canvasLeftOf(dinoD)
-  check("★ 恐龙顶边 = 508（脚正好落在地面 700 上）",
-      math.abs(top - 508) < 1, string.format("top=%.1f（期望 508）", top))
+  check("★ 恐龙顶边 = 564（脚正好落在地面 700 上）",
+      math.abs(top - 564) < 1, string.format("top=%.1f（期望 564）", top))
   check("★ 恐龙左边 = 160", math.abs(left - 160) < 1,
       string.format("left=%.1f", left))
   check("★ 恐龙脚 = 地面线 700", math.abs((top + DINO_H) - 700) < 1,
