@@ -313,35 +313,6 @@ local HTML = ([[
     <div class="quit-btn" id="quitBtn" onclick="openQuit"
          onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">退出</div>
 
-    <!--=========================================================================
-        ★ 结算窗口（默认隐藏，点退出才显示）
-
-        ⚠️ 放在最后 = 在 DOM 顺序里最靠上，会盖住场上的恐龙与障碍。
-           引擎没有全局 z-index，只能靠同父内的顺序（见库 README）。
-    ==========================================================================-->
-    <div class="modal off" id="modal">
-      <!-- 半透明遮罩层：压暗底下的游戏画面。
-           ★ 容器没有 bgColor，所以这里必须用一个有背景色的色块来铺 -->
-      <div class="modal-mask" id="modalMask"></div>
-
-      <div class="modal-panel" id="modalPanel">
-        <!-- ★ 面板底色层：面板本体是容器（无 bgColor），
-             底色必须由一个铺满的色块承载 -->
-        <div class="modal-bg" id="modalBg"></div>
-
-        <div class="modal-title"  id="modalTitle">结算</div>
-        <div class="modal-time"   id="modalTime">本局时间 00:00</div>
-        <div class="modal-warn"   id="modalWarn">不足 2 分钟，结算将判定为失败</div>
-
-        <div class="modal-row">
-          <div class="modal-btn ok" id="btnSettle" onclick="doSettle"
-               onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">结算</div>
-          <div class="modal-btn" id="btnResume" onclick="doResume"
-               onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">继续</div>
-        </div>
-      </div>
-    </div>
-
     <div class="ground" id="ground"></div>
 
     <!-- 地面装饰：3 个点缀（石子/草丛/小簇），随场景滚动 -->
@@ -364,6 +335,41 @@ local HTML = ([[
 
     <div class="over" id="over">G A M E   O V E R</div>
     <div class="hint" id="hint">按 空格 / ↑ 开始</div>
+
+    <!--=========================================================================
+        ★★ 结算窗口 —— 必须是 .scene 的【最后一个子元素】。
+
+        ⚠️⚠️ 图层规则（真机踩过）：引擎没有全局 z-index，
+            同父内【靠 DOM 顺序】决定谁盖住谁 —— 后出现的在上层。
+            它一度被放在 .ground 之前，结果真机上：
+              · GAME OVER 压在弹窗上面（它在 DOM 里更靠后）
+              · 恐龙/云/地面装饰 也从弹窗里透出来
+            看起来就是"弹窗层级不对、遮罩不生效"。
+
+        ★ 所以：任何"要盖住全场的弹窗"，都必须放在最后。
+          要再往上加东西（比如结算结果弹窗），继续往它后面排。
+    ==========================================================================-->
+    <div class="modal off" id="modal">
+      <!-- 遮罩：压暗底下的游戏画面。
+           ★ 容器没有 bgColor，所以底色必须由一个铺满的色块承载 -->
+      <div class="modal-mask" id="modalMask"></div>
+
+      <div class="modal-panel" id="modalPanel">
+        <!-- ★ 面板底色层：面板本体是容器（无 bgColor） -->
+        <div class="modal-bg" id="modalBg"></div>
+
+        <div class="modal-title"  id="modalTitle">结算</div>
+        <div class="modal-time"   id="modalTime">本局时间 00:00</div>
+        <div class="modal-warn"   id="modalWarn">不足 2 分钟，结算将判定为失败</div>
+
+        <div class="modal-row">
+          <div class="modal-btn ok" id="btnSettle" onclick="doSettle"
+               onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">结算</div>
+          <div class="modal-btn" id="btnResume" onclick="doResume"
+               onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">继续</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 ]]):format(
@@ -920,14 +926,18 @@ local S = {
 
   --[[ ★★ 本局游玩时间（秒）—— 结算窗口要显示，结算信号要上报。
 
+       ⚠️⚠️ 语义（真机反馈后改正）：
+         · 从【进入关卡】就开始计时 —— 不是"按空格开始游戏"才计。
+           因为"不足 2 分钟判失败"考核的是【这一局待了多久】，
+           玩家在开始界面发呆同样算在局内。
+         · 【不因 reset() 清空】—— 重开一局不会把时间倒回去。
+           时间轴是"进入关卡 -> 离开"，与开了几局无关。
+         · 只在【弹窗打开时】暂停：开着结算窗口发呆不该继续涨，
+           否则"少于 2 分钟判失败"这个判定形同虚设。
+
        ★ 用【累加 dt】而不是 os.clock()/os.time() 的差值：
          · dt 是固定步长 1/fps，累加结果可复现（与物理一致）
-         · 弹窗打开时我们【暂停累加】—— 看结算窗口的时间不该算进
-           "游玩时间"，否则玩家开着窗口发呆就能凑够 2 分钟，
-           而需求是"小于 2 分钟结算判失败"，那等于给了个漏洞。
-         · os.clock 在真机沙箱里可用但语义是 CPU 时间，不适合计时长
-
-       ⚠️ 只在 S.started 且未结束且未暂停时累加。 ]]
+         · os.clock 在真机沙箱里语义是 CPU 时间，不适合计时长 ]]
   playTime = 0,
 
   -- 结算窗口是否打开（打开时暂停游戏逻辑 + 停止计时）
@@ -1072,10 +1082,19 @@ local function reset()
   S.dist, S.score = 0, 0
   S.over, S.started = false, false
   S.runPhase, S.runTimer = 1, 0
-  -- ★ 新的一局：计时归零、关掉弹窗、清掉结算标记
-  --   （settleSent/settled 必须清 —— 否则下一局点结算会被当成"已发过"而不上报）
-  S.playTime, S.paused = 0, false
-  S.settleSent, S.settled = false, false
+  --[[ ★★ 计时与结算标记【不在这里清】。
+
+       ⚠️⚠️ playTime 必须保留 —— 它的语义是"进入关卡后过了多久"，
+          不是"本局跑了多久"。重开一局不会把时间倒回去（真机反馈过：
+          之前 reset 清空 playTime，导致重开后计时从 0 重新开始）。
+
+       ★ settleSent/settled 也保留：它们是"本次进入关卡是否已上报"，
+         与重开无关。若清掉，同一个信号会被重复上报。
+         （要"再结算一次"的唯一途径是重新进入关卡 -> 整个脚本重挂载）
+
+       ★ paused 必须清：reset 意味着"回到可以玩的状态"，
+         窗口已由调用方关闭，不能还停在暂停态。 ]]
+  S.paused = false
   --[[ ★ 下一波的生成距离。reset 必须清掉 ——
        否则重开一局时会沿用上一局的进度，第一波延迟出场。 ]]--
   S.nextSpawnDist = G.STAGE_RULES[1].waveGap
@@ -1429,6 +1448,19 @@ end
 -- 每帧逻辑
 --=============================================================================
 
+--[[ ★★ 前向声明：这些函数定义在文件【更下方】，但 tick 里要调用。
+
+     ⚠️⚠️ Lua 的 local 只对【它之后】的函数体可见。若 tick 里直接写
+        updateQuitPanel() 而该 local 在下面才声明，tick 里的那个名字
+        会被当成【全局变量】（nil）—— 每帧抛
+        "attempt to call a nil value"，而且被 util.try 的 pcall 吞成
+        一行 warn：游戏照跑，只是弹窗永远不刷新。
+
+     ★ 本文件因同类问题已踩过两次（doSettle 里的 app、openQuit 里的
+       updateQuitPanel）。所以统一在【所有使用者之前】声明，
+       后面只赋值 —— 这是 Lua 里跨函数共享句柄的标准写法。 ]]--
+local updateQuitPanel, openQuit, closeQuit, doSettle, doResume
+
 local function tick(dt)
   --[[ ★ 补染窗口：主题刚切换的几帧里继续补色。
 
@@ -1461,25 +1493,44 @@ local function tick(dt)
     nodes.score:setText(string.format("HI %s  %s", pad5(S.hi), pad5(S.score)))
   end
 
+  --[[ ★★ 计时：从进入关卡就一直在涨。
+
+       ⚠️ 位置在 S.started 早退【之前】—— 否则"还没按空格开始"
+          那段时间不计入，与"进入即计时"的语义不符（真机反馈过）。
+
+       ★ 返回前也要继续累加（见下面 tick 里的 UnstartedTick 分支）：
+         本函数被拆成"计时"与"游戏逻辑"两段，
+         未开始 / 已结束 / 暂停 都只影响后半段。 ]]
+  local function tickTime(dt)
+    -- 弹窗开着时不计（开着窗口发呆不该凑时长）
+    if S.paused then return end
+    S.playTime = S.playTime + dt
+  end
+
+  --===========================================================================
+  -- 结算窗口每次打开都要刷新文字（时间在走，标题可能翻转）
+  --===========================================================================
+  if nodes.modal and S.paused then
+    updateQuitPanel()
+  end
+
+  tickTime(dt)
+
   -- 未开始：只显示提示
   if not S.started then
     return
   end
 
-  --[[ ★★ 结算窗口打开时【暂停游戏逻辑与计时】。
+  --[[ ★★ 暂停：停掉【游戏逻辑】。
 
-       ⚠️ 停在这儿而不是更前面：上面的 reassertSprites / 分数栏是
+       ⚠️ 计时已在上面 tickTime 里处理（它也受 paused 管），
+          所以这里只管玩法本身。
+
+       ★ 停在这儿而不是更前面：上面的 reassertSprites / 分数栏是
           "维持画面正确"的，暂停时也要继续跑（否则弹窗期间
-          控件池换手会把精灵染回透明，露出白块）。
-
-       ★ 暂停必须在计时【之前】—— 否则看着结算窗口发呆也算游玩时间。 ]]--
+          控件池换手会把精灵染回透明，露出白块）。 ]]--
   if S.paused then
     return
-  end
-
-  -- ★ 本局游玩时间（只在真正跑着的时候累加）
-  if not S.over then
-    S.playTime = S.playTime + dt
   end
 
   --===========================================================================
@@ -1805,7 +1856,7 @@ local SETTLE_MIN_SEC = 120
 
      ★ 和 openQuit 分开是因为职责不同：
        openQuit = "显示"，这里 = "内容正确"（时间在走，要能反复刷）。 ]]--
-local function updateQuitPanel()
+updateQuitPanel = function()
   local t = S.playTime
   if nodes.modalTime then
     nodes.modalTime:setText(string.format("本局时间 %s", fmtTime(t)))
@@ -1843,13 +1894,13 @@ end
         -> 里面的按钮控件被回收、【点击事件也没了】，
            窗口显示出来之后点"结算"毫无反应（且不报错）。
         详见 CSS 里 .modal.off 的说明。 ]]--
-local function openQuit()
+openQuit = function()
   S.paused = true
   updateQuitPanel()
   if nodes.modal then nodes.modal:removeClass("off") end
 end
 
-local function closeQuit()
+closeQuit = function()
   S.paused = false
   if nodes.modal then nodes.modal:addClass("off") end
 end
@@ -1870,7 +1921,7 @@ end
 
      ★ 发完【不关闭窗口】—— 让玩家看到"已上报"，
        也避免重复点击时重复发送（见下面的 settled 标记）。 ]]--
-local function doSettle()
+doSettle = function()
   if S.settleSent then
     -- 已经发过了：只更新提示，不重复发（防连点）
     if nodes.modalWarn then
@@ -1923,7 +1974,7 @@ end
 
      ⚠️ 已经结算过的局不再恢复 —— 那局的分数已经交出去了，
        继续玩会让"已上报的最高分"与实际不符。 ]]--
-local function doResume()
+doResume = function()
   if S.settled then
     -- 已结算：等价于重开一局（保留最高分）
     local hi = S.hi
@@ -1931,7 +1982,8 @@ local function doResume()
     S.hi = hi
     S.started = true
     S._deadPosed = false
-    S.settleSent = false
+    -- ⚠️ 【不要】清 settleSent —— 它是"本次进入关卡已上报"的标记，
+    --    清掉会让同一个信号被重复上报（reset 里也不清，见那里的说明）
     setPose("dino", SP.dino.rects, #SP.dino.rects, DINO_CELL)
     applyTheme(G.THEME.day)
     if nodes.modal then nodes.modal:addClass("off") end

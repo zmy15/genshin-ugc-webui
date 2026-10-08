@@ -133,6 +133,23 @@ local function click(cb)
   return true
 end
 
+--[[ 读弹窗上的「本局时间 mm:ss」，换算成秒。
+
+     ★ 用弹窗【文字】而不是再发一次信号来读时间：
+       settleSent 会让第二次结算静默不发（防重复上报），
+       拿它当"读时间"的手段会误判成"时间没涨"。 ]]
+local function modalTime()
+  for _, c in ipairs(E.controls) do
+    local d = E.dataOf(c)
+    if d and d.kind == "textbox" and d.fields.text
+       and d.fields.text:find("本局时间 ", 1, true) then
+      local m, s = d.fields.text:match("本局时间 (%d+):(%d+)")
+      if m then return tonumber(m) * 60 + tonumber(s), d.fields.text end
+    end
+  end
+  return nil, nil
+end
+
 --=============================================================================
 print("\n=== 1. 退出按钮存在且绑了点击 ===")
 --=============================================================================
@@ -211,99 +228,61 @@ step(5)
 check("继续后没有多余的信号", E.sentCount() == before,
     string.format("%d -> %d", before, E.sentCount()))
 
-print("\n=== 8. ★ 游玩时间真的在累加（跑满 2 分钟后提示翻转）===")
+print("\n=== 8. ★ 计时语义：进入即开始，且不因重开而清空 ===")
 do
-  -- 重开一局（点继续之后 S.settled 会走重置分支）
-  E.resetSent()
+  --[[ ★★ 计时【不依赖"按空格开始游戏"】，也【不因重开归零】。
 
-  --[[ ★ 先按跳跃键开始游戏。
-       demo 用键盘绑定开始（S.started = true），
-       这里直接触发 root 上的 KeyboardJumpKeyDown 监听。 ]]
-  local started = E.fireKey(root, Enum.KeyEventType.KeyboardJumpKeyDown, {})
-  check("按键已绑定到 root", E.keyListenerCount(root) > 0,
-      E.keyListenerCount(root))
+       ⚠️ 注意：settleSent 是"本次进入关卡已上报"的标记，一旦发过
+          就不再发（防重复上报）。所以本节【不能】靠再发一次信号来
+          读时间 —— 改为读弹窗上的「本局时间」文字。
 
-  -- 跑 1 秒（fps=50 -> 50 帧），时间应该 ≈ 1 秒
-  step(50)
+       判据：从头到尾没按过任何开始键，弹窗时间也应该在涨；
+             且重开一局后继续涨，而不是回到 00:00。 ]]
+  click(handlers.btnResume)   -- 先关掉上一节的窗口
+  step(100)                   -- 完全不按键，跑 2 秒
   click(handlers.quitBtn)
   step(2)
+  local t1, txt1 = modalTime()
+  check("★ 未按开始键也计时（进入即开始）",
+      t1 ~= nil and t1 >= 1, tostring(txt1))
 
-  -- 从弹窗文字里读出时间（modalTime 的 text）
-  local function modalText(id)
-    local found = nil
-    -- demo 的 nodes 表是局部的，这里从 DOM 找
-    return found
-  end
-
-  -- 直接点结算，读回上报的秒数（这是最可靠的判据）
-  E.resetSent()
-  click(handlers.btnSettle)
-  step(3)
-  local r = E.lastSent("settle_game")
-  check("上报的秒数 ≈ 1 秒（跑 50 帧后）", r and r.params[1] >= 0 and r.params[1] <= 3,
-      r and r.params[1])
-  check("秒数是整数（签名要求 int）",
-      r and math.type(r.params[1]) == "integer", r and math.type(r.params[1]))
-
-  -- 点继续 -> 会走"已结算则重开"分支
+  -- 重开一局（此时弹窗是"开"的，点继续会因未结算而只关窗）
   click(handlers.btnResume)
+  step(100)                   -- 再跑 2 秒
+  click(handlers.quitBtn)
   step(2)
-
-  -- 新一局：时间应该归零
-  E.resetSent()
-  click(handlers.btnSettle)
-  step(3)
-  local r2 = E.lastSent("settle_game")
-  check("重开后时间已归零", r2 and r2.params[1] == 0, r2 and r2.params[1])
-  check("重开后能再次上报（settleSent 已清）", E.sentCount("settle_game") == 1,
-      E.sentCount("settle_game"))
+  local t2, txt2 = modalTime()
+  check("★ 时间持续累加、不因关窗/重开归零",
+      t1 and t2 and t2 > t1, string.format("%s -> %s",
+          tostring(txt1), tostring(txt2)))
 end
 
-print("\n=== 9. ★ 弹窗打开时【暂停】：计时不走 ===")
+print("\n=== 9. ★ 暂停：弹窗开着时计时不走 ===")
 do
-  -- 从"已结算"状态点继续 -> 会重开一局（时间归零、窗口关闭）
-  click(handlers.btnResume)
-  step(5)
-  E.resetSent()
+  -- 弹窗此刻是开着的（上一节结尾），先记下时间
+  step(2)
+  local t0 = modalTime()
 
-  --[[ ★★ 核心断言：开着弹窗跑很多帧，时间【不应该】增加。
+  --[[ ★★ 开着弹窗干等 400 帧（8 秒），时间【不应该】涨。
 
-       ⚠️ 这防的是"玩家开着窗口发呆凑够 2 分钟"的漏洞 ——
+       ⚠️ 这防的是"开着窗口发呆凑够 2 分钟"的漏洞 ——
           需求是"小于 2 分钟结算判失败"，若暂停期间照样计时，
-          这个判定就形同虚设。
-       做法：开窗 -> 跑 200 帧 -> 结算，读回上报的秒数应为 0。 ]]
-  click(handlers.quitBtn)      -- 开窗（暂停）
-  step(200)                    -- 干等 4 秒（200 帧 / 50fps）
+          这个判定就形同虚设。 ]]
+  step(400)
+  local t1, txt1 = modalTime()
+  check("★ 暂停期间跑 400 帧，弹窗时间不变",
+      t0 ~= nil and t1 == t0,
+      string.format("%d -> %d（%s）", t0 or -1, t1 or -1, tostring(txt1)))
 
-  click(handlers.btnSettle)
-  step(3)
-  local r = E.lastSent("settle_game")
-  check("★ 弹窗开着跑 200 帧，上报秒数仍为 0（暂停生效）",
-      r and r.params[1] == 0, r and r.params[1])
-end
-
-print("\n=== 10. ★ 关掉弹窗后计时恢复 ===")
-do
-  -- 上一节点了结算 -> 再点继续会重开新局
+  -- 关窗后跑 100 帧（2 秒），时间应恢复增长
   click(handlers.btnResume)
-  step(5)
-  E.resetSent()
-
-  -- 按跳跃开始，然后跑 100 帧（2 秒）
-  E.fireKey(root, Enum.KeyEventType.KeyboardJumpKeyDown, {})
   step(100)
-
   click(handlers.quitBtn)
-  step(3)
-  click(handlers.btnSettle)
-  step(3)
-  local r = E.lastSent("settle_game")
-  check("★ 恢复后跑 100 帧，上报秒数 ≈ 2",
-      r and r.params[1] >= 1 and r.params[1] <= 3, r and r.params[1])
-  check("秒数仍是整数", r and math.type(r.params[1]) == "integer",
-      r and math.type(r.params[1]))
-  check("最高分也是整数（score 是浮点累加的，必须 floor）",
-      r and math.type(r.params[2]) == "integer", r and math.type(r.params[2]))
+  step(2)
+  local t2, txt2 = modalTime()
+  check("★ 关窗后计时恢复增长",
+      t1 and t2 and t2 > t1,
+      string.format("%d -> %d（%s）", t1 or -1, t2 or -1, tostring(txt2)))
 end
 
 print("\n" .. string.format("=== 合计: %d 通过, %d 失败 ===", pass, fail))
