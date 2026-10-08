@@ -335,23 +335,33 @@ check("头像容器是 image 类型（要裁剪）",
 
 if avCtrl then
   local ok, col = pcall(function() return avCtrl.imageColor end)
-  --[[ "未填充"的两种合法表现：
-       · nil          -> 从未被写入（最常见）
-       · a == 0       -> 被写入但完全透明
-       两者都表示裁剪容器没有底色。
-  ]]--
+  --[[ ★★ 裁剪容器必须被【显式写成全透明】，不能只是"从没写过"。
+
+       ⚠️ 为什么这条要收紧（2026-10-09，用突变测试发现旧断言有洞）：
+          旧断言接受两种表现：`nil`（从未写入）或 `a==0`（写成透明）。
+          但**真机上 nil 是危险的** —— 裁剪容器也是 image 控件，
+          它会显示模板/遮罩图（白→灰渐变），不置透明就在裁剪边缘
+          **露出一圈白边**（§4.5.2 的 A 组实测：白色月牙）。
+
+          旧断言之所以"看起来过了"，是因为库确实写了透明值；
+          但它**没能守住**"必须显式写"这件事 ——
+          把写入那段代码删掉，断言照样全绿（突变测试实测如此）。
+
+       ★ 所以现在只接受 `a == 0`：必须【显式】置透明。 ]]
   local notFilled = false
   local desc = "nil"
   if ok then
     if col == nil then
-      notFilled = true
-      desc = "nil（从未写入）"
+      notFilled = false            -- ★ 不再接受 nil（真机会露白边）
+      desc = "nil（从未写入 -> 真机会露白边！）"
     elseif type(col) == "table" then
-      notFilled = ((col.a or 0) == 0)
-      desc = string.format("a=%s", tostring(col.a))
+      local transparent = ((col.a or 255) == 0)
+      notFilled = transparent
+      desc = string.format("a=%s%s", tostring(col.a),
+          transparent and "（显式透明）" or "（不透明 -> 会露白边）")
     end
   end
-  check("裁剪容器 imageColor 未被填充", notFilled, desc)
+  check("★★ 裁剪容器 imageColor 被【显式】置为全透明（防白边）", notFilled, desc)
 end
 
 local plCtrl, plEntry = ctrlOf("pl1")

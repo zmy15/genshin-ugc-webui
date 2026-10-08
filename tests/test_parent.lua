@@ -99,8 +99,19 @@ end
 
 --[[ 核心检查：每个控件的父必须是它在当前树中的真实父
 
-     判定方式：遍历 live，看控件的 __webuiParent
-       是否等于【它的 DOM 节点的父节点所对应的控件】
+     ⚠️⚠️ 判据必须用 `GetChildren()` 反查（2026-10-09 修）
+
+        这段原来是读 `c.__webuiParent` 的 —— 那是【空检查】：
+          · `__webuiParent` 是【自定义字段】，真机写入静默失败
+            （探针实证：docs/真机复用问题复盘.md 第二节）
+          · 本测试的 mock 用普通 table，恰好允许写它 ->
+            于是断言"看起来在检查"，其实只验证了 mock 自己的记账，
+            **完全没有验证库的行为**
+          · 实测：把库的 isChildOf 改成恒 true（不做父匹配），
+            本测试仍然全绿（突变测试发现）
+
+        ★ 真机上唯一可用的父子关系 API 是 `GetChildren()`（L1 的教训），
+          所以断言也必须走它 —— 否则测的不是真机那条路径。
 ]]--
 local function parentErrors(tag)
   local bad = {}
@@ -109,11 +120,19 @@ local function parentErrors(tag)
     local entry = ui.rendered.live[node]
     if entry then
       local c = entry.control
-      if c.__webuiParent ~= parentCtrl then
-        bad[#bad+1] = string.format("%s: 实际父=%s 期望父=%s",
-            tostring(node.id or node.tag),
-            tostring(c.__webuiParent and c.__webuiParent._kind),
-            tostring(parentCtrl and parentCtrl._kind))
+      -- ★ 用 GetChildren() 反查真实父子（与库同一机制）
+      local isChild = false
+      if parentCtrl then
+        local ok, kids = pcall(function() return parentCtrl:GetChildren() end)
+        if ok and type(kids) == "table" then
+          for i = 1, #kids do
+            if kids[i] == c then isChild = true break end
+          end
+        end
+      end
+      if not isChild then
+        bad[#bad+1] = string.format("%s: 实际父≠期望父（kind=%s）",
+            tostring(node.id or node.tag), tostring(c._kind))
       end
       parentCtrl = c
     end
@@ -170,6 +189,44 @@ ui:render(pageMixed(3, true))
 local e3c = parentErrors("再有背景")
 check("kind 变化后父链正确", #e3a == 0 and #e3b == 0 and #e3c == 0,
     string.format("错误数 %d/%d/%d", #e3a, #e3b, #e3c))
+
+print()
+print("=== 6. ★★ 控件池的【压入顺序】不变量 ===")
+--[[ ⚠️⚠️ 为什么需要这条（2026-10-09，突变测试发现缺口）
+
+       上面 1~5 节都是在**真实场景**下验证"父链没出错"。
+       但突变测试证明：把「预回收按 DOM 逆序压池」改成**正序**，
+       上面全部断言仍然全绿 —— 因为那个场景恰好没暴露顺序问题。
+
+       而这条不变量是**真机实测踩出来的**（见文件开头的 bug 说明）：
+       池是 LIFO（table.remove 取尾），所以
+         压入顺序必须 = DOM 先序的【逆序】
+       才能让"弹出顺序 == 构建顺序"，从而命中同父的控件。
+       顺序反了 -> 取到的控件父链错位 -> 坐标全乱（真机：界面只剩一个黑块）。
+
+       ★ 所以这里【直接验不变量】，不依赖某个场景是否恰好暴露它。 ]]
+do
+  -- 造一个"父下有多个同 kind 子控件"的结构，触发一轮完整还池
+  ui:render(page(3))
+  local rendered = ui.rendered
+  local liveCount = 0
+  for _ in pairs(rendered.live) do liveCount = liveCount + 1 end
+
+  -- 触发 domChanged 预回收：清空 DOM 再重建
+  ui:render("<div id='empty'></div>")
+  local pooled = 0
+  for _, list in pairs(rendered.pool) do pooled = pooled + #list end
+  check("★ 还池后有控件进池（说明回收路径真的跑到了）",
+      pooled > 0, pooled .. " 个控件在池里")
+
+  -- ★ 核心：池里同一 kind 的顺序，必须是 DOM 先序的逆序
+  --   等价判据：重新渲染同结构时，新建数应为 0（全部命中复用）
+  local before = created
+  ui:render(page(3))
+  check("★★ 重建同结构【零新建】（= 弹序与构建序一致）",
+      created - before == 0,
+      string.format("新建 %d 个（>0 说明池序与构建序不一致）", created - before))
+end
 
 print()
 print("=== 5. 复用率仍然要高 ===")

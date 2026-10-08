@@ -312,6 +312,47 @@ do
   print()
 end
 
+--[[ ★★ flex row 里 margin 只能算【一次】（2026-10-09 补）
+
+     ⚠️ 上一条断言只守住了 intrinsicWidth 本身，
+        没有守住**调用方**会不会又加一次 margin。
+        突变测试证明：把 flex row 的 `outerW` 改成多算一次 margin，
+        整个 test_layout 仍然全绿 —— 说明这个位置【没有守卫】。
+
+     真机症状（原 bug）：子项被多推一个 margin 的距离，
+     行内元素逐级错位，右侧露出默认白底。
+]]--
+print("=== flex row：margin 只算一次 ===")
+do
+  local doc = html.parse([[<div id="row" style="display:flex">
+    <div id="ra" style="width:100px;height:50px;margin-right:20px"></div>
+    <div id="rb" style="width:100px;height:50px"></div>
+  </div>]])
+  style.apply(doc, {})
+  layout.compute(doc, 1000, 500)
+
+  local function find(n, id)
+    if n.id == id then return n end
+    for i = 1, #n.children do
+      local r = find(n.children[i], id)
+      if r then return r end
+    end
+  end
+  local ra, rb = find(doc, "ra"), find(doc, "rb")
+  print(string.format("  ra.x=%.1f  rb.x=%.1f（期望 ra=0, rb=120）",
+      ra.box.x, rb.box.x))
+
+  check("flex row 首项在 x=0", math.abs(ra.box.x - 0) < 1,
+      string.format("%.1f", ra.box.x))
+  --[[ ★★★ 关键断言：rb.x = ra宽(100) + margin-right(20) = 120
+
+       ⚠️ 若 outerW 多算一次 margin，这里会是 140 —— 差 20px。 ]]
+  check("★★ flex row 第二项 x = 前项宽 + margin（margin 只算一次）",
+      math.abs(rb.box.x - 120) < 1,
+      string.format("%.1f（期望120；若为140则 margin 被算两次）", rb.box.x))
+  print()
+end
+
 print("=== 性能：1000 个节点 ===")
 local parts = {}
 for i = 1, 200 do
