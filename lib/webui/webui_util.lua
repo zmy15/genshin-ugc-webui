@@ -132,23 +132,74 @@ end
 -- 画布
 --=============================================================================
 
---[[ 取画布尺寸，带缓存 + 兜底 ]]--
+--[[ 取画布尺寸，带缓存 + 兜底
+
+     ★★ 缓存必须可刷新（多分辨率适配的前提）
+
+       原来是"首次取值就永久锁死"，换分辨率 / 窗口化后永远返回旧值 ——
+       在多比例屏幕上会导致布局全错（实测：1600x900 的页面显示在
+       非 16:9 屏幕上时四周露边且内容不缩放）。
+
+     现在：
+       - 默认走缓存（逐帧调用不重复问引擎，性能不受影响）
+       - U.canvasSize(true) 强制重新取（resize 时由 fit 模块调用）
+       - U.resetCanvasCache() 清缓存
+
+     ⚠️ 兜底 1600x900 只在引擎完全取不到时使用。
+        真机返回的是浮点（1599.9998 x 899.9998），不要用 == 比较。
+]]--
 local _canvasW, _canvasH
 
-function U.canvasSize()
-  if _canvasW then return _canvasW, _canvasH end
+function U.canvasSize(forceRefresh)
+  if _canvasW and not forceRefresh then return _canvasW, _canvasH end
+
   local w, h = nil, nil
   U.try(function()
-    w, h = game.GetUICanvasSize()
+    local gw, gh = game.GetUICanvasSize()
+    w, h = gw, gh
   end)
+
   if not U.isFinite(w) or w <= 0 then w = 1600 end
   if not U.isFinite(h) or h <= 0 then h = 900 end
+
+  -- 真机给的是浮点，轻微抖动不该触发重算；但明显变化必须更新
   _canvasW, _canvasH = w, h
   return w, h
 end
 
 function U.resetCanvasCache()
   _canvasW, _canvasH = nil, nil
+end
+
+--[[ 探测画布尺寸是否发生变化。
+
+     返回 changed, w, h。
+     逐帧调用是安全的：只有在尺寸真的变了的时候才重新取一次。
+     多比例屏幕（16:10 / 4:3 / 21:9）下窗口大小可能变化，
+     布局必须跟着重算。
+]]--
+function U.refreshCanvasIfChanged()
+  local prevW, prevH = _canvasW, _canvasH
+  if not prevW then
+    local w, h = U.canvasSize(true)
+    return true, w, h
+  end
+
+  -- 先问引擎拿一次，和缓存比较
+  local w, h = nil, nil
+  U.try(function()
+    local gw, gh = game.GetUICanvasSize()
+    w, h = gw, gh
+  end)
+  if not U.isFinite(w) or w <= 0 then return false, prevW, prevH end
+  if not U.isFinite(h) or h <= 0 then return false, prevW, prevH end
+
+  -- 容差 0.5：真机浮点抖动（1599.9998）不算变化
+  if math.abs(w - prevW) > 0.5 or math.abs(h - prevH) > 0.5 then
+    _canvasW, _canvasH = w, h
+    return true, w, h
+  end
+  return false, prevW, prevH
 end
 
 --=============================================================================

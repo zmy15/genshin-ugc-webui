@@ -122,6 +122,7 @@ function E.bind(node, control, handlers, opts)
 
   local attrs = node.attrs or {}
   local bound = 0
+  local fit = opts.fit        -- ★ 渲染器的适配参数（缩放/留边反变换用）
 
   local function tryBind(eventName, fn)
     local ev = Enum and Enum.CursorEventType and Enum.CursorEventType[eventName]
@@ -141,6 +142,21 @@ function E.bind(node, control, handlers, opts)
           pcall(function() info.dx, info.dy = data:GetUIPosDelta() end)
           pcall(function() info.dragging = data.dragging end)
           pcall(function() info.touchId = data.touchId end)
+        end
+
+        --[[ ★★ 适配反变换后的设计坐标（多屏幕比例）
+
+             info.x / info.y 是【画布坐标】，直接拿去和 node.box 比
+             在缩放/留边下会错位。
+
+             info.lx / info.ly 是【设计坐标】（左上原点、Y 向下），
+             与 node.box 同一坐标系 —— 应用层要做命中判断请用它。
+
+             ★ 无适配器时 lx/ly 就等于翻转后的 x/y，向后兼容。
+        ]]--
+        if info.x and info.y then
+          local lx, ly = E.toLocal(info.x, info.y, fit)
+          info.lx, info.ly = lx, ly
         end
         -- 元素自身信息，便于命中判断
         if node.box then
@@ -181,7 +197,10 @@ end
 -- 命中检测辅助
 --=============================================================================
 
---[[ 判断某个 UI 坐标落在哪个元素的 box 内（从后往前，模拟 z 序）]]--
+--[[ 判断某个 UI 坐标落在哪个元素的 box 内（从后往前，模拟 z 序）
+
+     ⚠️ x, y 必须是【设计坐标】（已反变换）。
+        调用方若不确定，先用 E.toLocal(uiX, uiY, fit) 转换。]]--
 function E.hitTest(root, x, y)
   local best = nil
   local dom = require('webui_dom')
@@ -205,26 +224,57 @@ end
 --    命中检测、拖拽计算都需要转换。
 --=============================================================================
 
---[[ 把光标 UI 坐标转成库内部坐标 ]]--
-function E.toLocal(uiX, uiY)
+--[[ 把引擎的【画布坐标】转成【设计坐标】
+
+     ⚠️ 这里有两个独立的变换，别搞混：
+
+       ① Y 轴翻转
+          引擎：左下原点、Y 向上
+          库内：左上原点、Y 向下
+
+       ② 适配缩放（多屏幕比例）
+          画面被等比缩放居中后，引擎给的光标坐标是【画布坐标】，
+          而布局盒子是【设计坐标】。必须反变换回去：
+              design = (canvas - offset) / k
+
+     ★ 不做 ② 的后果：留边 / 缩放下所有点击都错位
+       （偏移越大错得越多，2560x1600 上垂直方向差 80px+）。
+
+     ★ fit 从渲染器取（rendered.fit），没有适配器时 k=1、offset=0，
+       行为与旧版完全一致。
+]]--
+function E.toLocal(uiX, uiY, fit)
   local util = require('webui_util')
   local _, ch = util.canvasSize()
-  return uiX, ch - uiY
+
+  -- ① Y 翻转（画布坐标 -> 左上原点的画布坐标）
+  local x, y = uiX, ch - uiY
+
+  -- ② 适配反变换（画布坐标 -> 设计坐标）
+  if fit then
+    local fitMod = require('webui_fit')
+    x, y = fitMod.toDesign(fit, x, y)
+  end
+
+  return x, y
 end
 
---[[ 判断一个光标坐标是否落在某节点的盒子里 ]]--
-function E.hitBox(box, uiX, uiY)
+--[[ 判断一个光标坐标是否落在某节点的盒子里
+
+     fit：可选，渲染器的适配参数（rendered.fit）。
+          ★ 传了才能正确处理缩放/留边下的命中。]]--
+function E.hitBox(box, uiX, uiY, fit)
   if not box then return false end
-  local x, y = E.toLocal(uiX, uiY)
+  local x, y = E.toLocal(uiX, uiY, fit)
   return x >= box.x and x <= box.x + box.w
      and y >= box.y and y <= box.y + box.h
 end
 
 --[[ 取光标在某个盒子内的相对位置（0..1）
      用于进度条 / 滑块的拖拽换算 ]]--
-function E.ratioInBox(box, uiX, uiY, horizontal)
+function E.ratioInBox(box, uiX, uiY, horizontal, fit)
   if not box or box.w <= 0 or box.h <= 0 then return 0 end
-  local x, y = E.toLocal(uiX, uiY)
+  local x, y = E.toLocal(uiX, uiY, fit)
   local r
   if horizontal == false then
     r = (y - box.y) / box.h

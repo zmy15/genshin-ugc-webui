@@ -19,7 +19,7 @@
 
 local MODULES = {
   "util", "dom", "html", "css", "color", "style", "transition", "layout", "render",
-  "clip", "sprite", "event", "signal", "init",
+  "clip", "sprite", "fit", "event", "signal", "init",
 }
 
 local LIB_DIR  = "lib/webui"

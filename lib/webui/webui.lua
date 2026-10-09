@@ -77,6 +77,20 @@ function M.new(opts)
   self.prefabs     = opts.prefabs     -- { container=, textbox=, button=, image= }
   self.boundCount  = 0
 
+  --[[ ★★ 多屏幕比例适配（等比缩放 + 留边）
+
+       designSize = { 1600, 900 }   页面写的逻辑分辨率
+       fit        = "letterbox"     等比缩放居中（默认）
+                    "stretch"       拉伸铺满（★ 像素精灵会变形，慎用）
+                    "none"          不缩放（按画布尺寸直接铺）
+       fitBg      = "#f7f7f7"       留边填充色（建议与页面背景一致）
+
+       ★ 不传 designSize 时行为与旧版完全一致（16:9 屏幕上无差别）。
+  ]]--
+  self.designSize = opts.designSize
+  self.fit        = opts.fit or "letterbox"
+  self.fitBg      = opts.fitBg
+
   if not self.rootControl then
     util.warn("webui.new: 未提供 root 控件，渲染会失败")
   end
@@ -157,7 +171,12 @@ function Instance:flush()
 
   -- 3. 渲染（控件池 + diff 写入）
   if not self.rendered then
-    self.rendered = render.new(self.rootControl, { prefabs = self.prefabs })
+    self.rendered = render.new(self.rootControl, {
+      prefabs    = self.prefabs,
+      designSize = self.designSize,
+      fit        = self.fit,
+      fitBg      = self.fitBg,
+    })
     -- 容器开启光标门控（CursorEvent 的前提）
     event.enableCursor(self.rootControl)
 
@@ -206,7 +225,10 @@ function Instance:_bindEvents()
         if target then
           -- 只在尚未绑定时绑定（避免重复注册）
           if not node._eventsBound then
-            local n = event.bind(node, target, self.handlers)
+            -- ★ 传 fit：事件回调用它把画布坐标反变换成设计坐标
+            local n = event.bind(node, target, self.handlers, {
+              fit = self.rendered and self.rendered.fit,
+            })
             if n > 0 then
               node._eventsBound = true
               bound = bound + n
@@ -485,6 +507,10 @@ function M.mount(opts)
       root     = root,
       prefabs  = opts.prefabs,
       handlers = app.handlers,
+      -- ★ 多屏幕比例适配也要透传（否则 mount 用户传了 designSize 不生效）
+      designSize = opts.designSize,
+      fit        = opts.fit,
+      fitBg      = opts.fitBg,
     })
     app.ui = ui
 

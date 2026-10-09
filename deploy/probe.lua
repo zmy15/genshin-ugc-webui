@@ -15,6 +15,9 @@
     "align"   ★ 文字居中/坐标系   —— 弹窗里的文字为什么不居中？
                                     A 直接放 / B 嵌容器 / C 显式 width /
                                     D 嵌两层 / E 按钮尺寸，五组对照
+    "fit"     ★★ 多屏幕比例适配   —— 非 16:9 屏幕上内容没铺满？
+                                    读回真实画布尺寸 + 算 k/留边 +
+                                    反变换自检（16:10 / 4:3 / 21:9）
 
   ══════════════════════════════════════════════════════════════════════════
   ⚠️ 已移除的模块（text / mask / glyph / clip / mount）
@@ -126,6 +129,55 @@
             ② 枚举实验每条候选前没重置字段 -> 第一条成功后，
                后面"取值=nil、写入=false"也读回 Middle 被判成功，
                一次骗了 7 条。现在每步先重置为 Left。
+
+    R24  ★★ 多屏幕比例适配（2026-10-09，模块 fit）
+
+         起因：非 16:9 屏幕上页面【没铺满】，四周露出游戏画面。
+
+         真机截图逐像素量得（16:10 屏）：
+           可见面板区域 = 2151 x 1209 px
+           面板宽高比   = 1.7792
+           屏幕宽高比   = 1.7778
+           ★ 两者几乎相等 -> 不是"拉伸变形"，
+             而是【内容尺寸没跟着画布缩放】，四周留空。
+
+         根因（三处，全在库侧）：
+           ① util.canvasSize() 首次取值就【永久缓存】——
+              换分辨率后布局全错
+           ② render 把根控件 sizeDelta 直接写死成 canvasSize()
+           ③ parseLength 不认 vw / vh，CSS 尺寸全是绝对值
+
+         ★★ 绝对不能用"拉伸铺满"：像素精灵被非等比压扁，
+            8px 格子变 7.3px，§4.5 那条"外扩 1px 盖缝"立刻失效。
+
+         ★ 正确做法 = 等比缩放 + 居中留边（letterbox）：
+              k = min(画布宽/设计宽, 画布高/设计高)
+              留边 = (画布 - 设计 x k) / 2
+
+           | 屏幕      | k    | 缩放后    | 留边        |
+           |-----------|------|----------|-------------|
+           | 2560x1440 | 1.60 | 2560x1440| 无          |
+           | 2560x1600 | 1.60 | 2560x1440| 上下各 80   |
+           | 1920x1440 | 1.20 | 1920x1080| 上下各 180  |
+           | 3440x1440 | 1.60 | 2560x1440| 左右各 440  |
+
+         ★ 取【任意倍】而非整数倍：整数倍在 2560x1440 上 k 掉到 1，
+           画面缩成居中小窗，代价不可接受。
+
+         ★ 留边必须填色（否则露出草地/天空，像渲染 bug）。
+           库用【四条边条】覆盖留边区（矩形环、中间镂空）——
+           不用一整块铺满，因为引擎没有可靠置底手段，会盖住内容。
+
+         ★ 光标坐标必须反变换：
+             设计坐标 = (画布坐标 - 留边偏移) / k
+           不做则缩放下所有点击错位（2560x1600 上垂直差 80px+）。
+           事件回调改用 info.lx / info.ly。
+
+         库侧开关：webui.new{ designSize, fit, fitBg }。
+         不传 designSize 时行为与旧版完全一致（16:9 无差别）。
+
+         ⏳ 待真机验证：模块 fit 用于在真机上读回画布尺寸、
+            算 k/留边、自检反变换。截图判读四边是否贴齐。
 
   ══════════════════════════════════════════════════════════════════════════
   硬性约束（真机实测，写探针时必须遵守）
@@ -1630,6 +1682,148 @@ M.align.report = function(ui, items)
 end
 
 --=============================================================================
+-- 模块 fit ——  ★★ 多屏幕比例适配取证
+--=============================================================================
+--[[ 目的：在【当前这台设备】上确认真实画布尺寸与适配参数。
+
+     这个模块【不做实验】，只读回环境事实 + 算一遍适配参数：
+       ① game.GetUICanvasSize() 到底返回什么（不同屏幕不一样！）
+       ② 设计尺寸 1600x900 在该画布下的 k / 留边
+       ③ 实测：页面按适配铺开后，四边是否真的贴边（靠截图判读）
+       ④ 光标反变换自检（反变换回来的设计坐标是否落在预期）
+
+     ★ 为什么重要：非 16:9 屏幕上画布比例会变，
+       不做适配就会"内容没铺满、四周露出游戏画面"。
+       真机实测数据见 docs/引擎能力与限制.md §6.4。
+]]--
+
+M.fit = {}
+
+-- 设计尺寸（页面 CSS 里写的逻辑分辨率）
+M.fit.DESIGN = { 1600, 900 }
+
+--[[ 页面：一个铺满设计尺寸的底色层 + 四角标记 + 中心十字。
+
+     判读方式（截图）：
+       · 底色层应当【四边贴齐】内容区边缘（不留缝、不溢出）
+       · 四角标记应当正好在内容区四角
+       · 中心十字应当正好在屏幕中心
+     若底色层没有贴边 -> 适配没生效（k 算错或没传 designSize）
+]]--
+M.fit.CSS = [[
+<style>
+  .stage { width: 1600px; height: 900px; background-color: #10141c; }
+
+  /* 内容区边框：四个 1px 细条，用于判断"内容区边界到底在哪" */
+  .edge-t { position: absolute; left: 0px;   top: 0px;    width: 1600px; height: 2px;  background-color: #ff4444; }
+  .edge-b { position: absolute; left: 0px;   top: 898px;  width: 1600px; height: 2px;  background-color: #ff4444; }
+  .edge-l { position: absolute; left: 0px;   top: 0px;    width: 2px;    height: 900px; background-color: #44ff44; }
+  .edge-r { position: absolute; left: 1598px; top: 0px;   width: 2px;    height: 900px; background-color: #44ff44; }
+
+  /* 中心十字：应当落在屏幕正中 */
+  .cx { position: absolute; left: 780px; top: 440px; width: 40px; height: 20px; background-color: #ffd23f; }
+  .cy { position: absolute; left: 790px; top: 430px; width: 20px; height: 40px; background-color: #ffd23f; }
+
+  /* 四角标记：应当正好在内容区四角 */
+  .c-tl { position: absolute; left: 0px;     top: 0px;     width: 60px; height: 20px; background-color: #3a7bd5; }
+  .c-tr { position: absolute; left: 1540px;  top: 0px;     width: 60px; height: 20px; background-color: #3a7bd5; }
+  .c-bl { position: absolute; left: 0px;     top: 880px;   width: 60px; height: 20px; background-color: #3a7bd5; }
+  .c-br { position: absolute; left: 1540px;  top: 880px;   width: 60px; height: 20px; background-color: #3a7bd5; }
+
+  /* 文字：报告设计尺寸（框高 38 >= 字号 18 x 1.9 = 34.2 ✓） */
+  .lbl { position: absolute; left: 620px; top: 60px;
+         width: 360px; height: 38px;
+         font-size: 18px; color: #ffffff; background-color: #10141c;
+         text-align: center; }
+</style>
+]]
+
+function M.fit.build()
+  return ([[
+<div class="stage">
+  <div class="edge-t"></div><div class="edge-b"></div>
+  <div class="edge-l"></div><div class="edge-r"></div>
+  <div class="cx"></div><div class="cy"></div>
+  <div class="c-tl"></div><div class="c-tr"></div>
+  <div class="c-bl"></div><div class="c-br"></div>
+  <div class="lbl">DESIGN 1600x900</div>
+</div>
+]] ) .. M.fit.CSS
+end
+
+--[[ ★ before 钩子：读回画布尺寸 + 算适配参数 + 自检反变换 ]]--
+M.fit.before = function(ui)
+  local util = require('webui_util')
+  local fitMod = require('webui_fit')
+
+  log("")
+  log("  ── ① 真实画布尺寸 ──")
+
+  -- 强制刷新，拿到【当前这台设备】的真值
+  local cw, ch = util.canvasSize(true)
+  log(string.format("     game.GetUICanvasSize() -> %.4f x %.4f", cw, ch))
+  log(string.format("     屏幕比例 = %.5f", cw / ch))
+
+  local dw, dh = M.fit.DESIGN[1], M.fit.DESIGN[2]
+  log(string.format("     设计尺寸 = %d x %d（比例 %.5f）", dw, dh, dw / dh))
+
+  if math.abs(cw / ch - dw / dh) < 0.005 then
+    log("     → 与设计比例【一致】：k 应为画布/设计，且无留边")
+  else
+    log("     → 与设计比例【不一致】：必须等比缩放 + 留边（见 §6.4）")
+  end
+
+  log("")
+  log("  ── ② 适配参数（designSize = 1600x900）──")
+  local f = fitMod.compute(dw, dh, cw, ch)
+  log("     " .. fitMod.describe(f))
+  log(string.format("     缩放后内容 = %.1f x %.1f", f.scaledW, f.scaledH))
+  log(string.format("     留边 = 左右 %.1f / 上下 %.1f", f.offsetX, f.offsetY))
+
+  -- 预期：至少有一边贴边（不然就是用错了算法）
+  local touchW = math.abs(f.scaledW - cw) < 1
+  local touchH = math.abs(f.scaledH - ch) < 1
+  log(string.format("     贴边检查：水平 %s / 垂直 %s",
+      touchW and "✓贴边" or "✗未贴边", touchH and "✓贴边" or "✗未贴边"))
+  if not (touchW or touchH) then
+    log("     ⚠️ 两边都没贴边 —— 算法有问题，请检查 webui_fit.compute")
+  end
+
+  log("")
+  log("  ── ③ 光标反变换自检 ──")
+  -- 画布中心反变换后应当 = 设计中心
+  local midX, midY = fitMod.toDesign(f, cw / 2, ch / 2)
+  log(string.format("     画布中心 (%.1f, %.1f) -> 设计 (%.2f, %.2f)",
+      cw / 2, ch / 2, midX, midY))
+  log(string.format("     期望设计中心 (%.1f, %.1f)", dw / 2, dh / 2))
+  if math.abs(midX - dw / 2) < 1 and math.abs(midY - dh / 2) < 1 then
+    log("     ✅ 反变换正确 —— 点击命中不会错位")
+  else
+    log("     ⚠️ 反变换不对！缩放后点击会偏 —— 检查 webui_fit.toDesign")
+  end
+
+  log("")
+  log("  ── ④ 判读方式（截图）──")
+  log("     红条 = 内容区上下边界（2px）")
+  log("     绿条 = 内容区左右边界（2px）")
+  log("     黄十字 = 内容区中心（应落在屏幕正中）")
+  log("     蓝块 = 内容区四角")
+  log("")
+  log("     · 若四角蓝块正好在【屏幕四角】且无留边 -> 16:9，k 已正确铺满")
+  log("     · 若上下有留边但红条贴齐留边内侧 -> 适配正确 ✓")
+  log("     · 若红/绿条【跑到屏幕外】或四周露出游戏画面 -> 适配未生效 ✗")
+  log("     · 若黄十字不在屏幕正中 -> 居中有问题 ✗")
+  log("")
+  log("  ⚠️ 本模块【不传 designSize】（ui 由主流程统一创建）。")
+  log("     要验证适配生效，请在 main.lua 里给 webui.new 传：")
+  log('        designSize = {1600, 900}, fit = "letterbox", fitBg = "#10141c"')
+  log("")
+  log("  ★ 别忘了把结论追加到本文件头部的「历史结论索引」。")
+  log("")
+  log("============================================================")
+end
+
+--=============================================================================
 -- 主流程
 --=============================================================================
 
@@ -1638,7 +1832,7 @@ end
      ⚠️ 已移除：text / mask / glyph / clip / mount
         —— 归档在 docs/探针模块归档.md，需要时按那里重建。
   ]]--
-local MODULES = { key = M.key, perf = M.perf, align = M.align }
+local MODULES = { key = M.key, perf = M.perf, align = M.align, fit = M.fit }
 
 local root, ui, bound, retryCount = nil, nil, false, 0
 

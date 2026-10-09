@@ -28,6 +28,7 @@ local util       = require('webui_util')
 local dom        = require('webui_dom')
 local transition = require('webui_transition')
 local clip       = require('webui_clip')
+local fit        = require('webui_fit')
 
 local R = {}
 
@@ -262,6 +263,23 @@ function R.new(rootControl, opts)
   self.stats     = { created = 0, reused = 0, destroyed = 0, written = 0 }
   self.debug     = opts.debug or false
 
+  --[[ ★★ 多屏幕比例适配（等比缩放 + 留边）
+
+       designSize: 页面写的逻辑分辨率，如 {1600, 900}
+       fit:        "letterbox"（默认）/ "stretch" / "none"
+
+       不传 designSize 就退化成老行为：直接按画布尺寸铺满
+       （16:9 屏幕上结果完全一样，保证向后兼容）。
+  ]]--
+  self.designW, self.designH = nil, nil
+  if type(opts.designSize) == "table" then
+    self.designW = util.toNumber(opts.designSize[1])
+    self.designH = util.toNumber(opts.designSize[2])
+  end
+  self.fitMode = opts.fit or "letterbox"
+  self.fitBg   = opts.fitBg
+  self.fit     = nil
+
   -- 启动时校验 PREFABS
   if not opts.prefabs then
     util.warn("webui 渲染器：未提供 prefabs 模板索引，将无法创建任何控件。" ..
@@ -484,6 +502,137 @@ function Renderer:_show(control)
   pcall(function() control:SetActive(true) end)
 end
 
+--=============================================================================
+-- ★★ 留边底色（letterbox backdrop）
+--
+--   多屏幕比例下，等比缩放会让画布四周空出一圈。
+--   空出来的地方会露出【游戏画面】（实测：草地 / 天空），
+--   看起来像渲染 bug。必须填成页面背景色。
+--
+--   ★★ 用【四条边条】而不是一整块铺满画布
+--
+--      原因：一整块底色会盖住内容。webui 的内容控件都是运行时
+--      按 DOM 顺序挂到 root 下的，库没有可靠的"置底"手段
+--      （引擎没有 sibling index 的直接写法，且真机未验证）。
+--
+--      而留边区域本来就是一个【矩形环】—— 上、下、左、右四条边
+--      正好完整覆盖它，中间镂空，所以【绝无可能遮挡内容】。
+--
+--      16:10 (2560x1600) 上的四条边：
+--        上条 = (0, 0, 2560, 80)
+--        下条 = (0, 1520, 2560, 80)
+--        左条 = (0, 80, 0, 1440)      -- 宽 0，因为左右没留边
+--        右条 = 同左
+--
+--      4:3 (1920x1440) 上：
+--        上条 = (0, 0, 1920, 180)
+--        下条 = (0, 1260, 1920, 180)
+--        左/右 = 宽 0，不创建
+--
+--   ⚠️ 宽或高为 0 的边条直接隐藏，不占控件。
+--=============================================================================
+
+local FIT_EDGES = { "top", "bottom", "left", "right" }
+
+function Renderer:_syncFitBackdrop(cw, ch, f)
+  local wantColor = self.fitBg
+
+  -- 没设颜色 -> 整个禁用
+  if not wantColor then
+    self:_clearFitBackdrop()
+    return
+  end
+
+  -- 算四条边条的矩形（画布坐标）
+  local rects = {}
+  if f then
+    local x0 = f.offsetX
+    local y0 = f.offsetY
+    local x1 = f.offsetX + f.scaledW
+    local y1 = f.offsetY + f.scaledH
+
+    -- 上边
+    if y0 > 0.5 then
+      rects[#rects + 1] = { x = 0, y = 0, w = cw, h = y0 }
+    end
+    -- 下边
+    local bh = ch - y1
+    if bh > 0.5 then
+      rects[#rects + 1] = { x = 0, y = y1, w = cw, h = bh }
+    end
+    -- 左边（只在上下边之间，避免与上下边重叠）
+    if x0 > 0.5 then
+      rects[#rects + 1] = { x = 0, y = y0, w = x0, h = f.scaledH }
+    end
+    -- 右边
+    local bw = cw - x1
+    if bw > 0.5 then
+      rects[#rects + 1] = { x = x1, y = y0, w = bw, h = f.scaledH }
+    end
+  end
+
+  -- 没有留边 -> 全部隐藏（16:9 屏幕上不会多出任何控件）
+  if #rects == 0 then
+    self:_clearFitBackdrop()
+    return
+  end
+
+  if not self._backdrop then self._backdrop = {} end
+
+  local rgba = color.parse(wantColor)
+
+  for i = 1, #rects do
+    local c = self._backdrop[i]
+    if not c then
+      c = instantiate("textbox", self.root)
+      if not c then
+        if not self._warnedBackdrop then
+          self._warnedBackdrop = true
+          util.warn("留边底色创建失败：PREFABS.textbox 未配置，"
+                    .. "四周会露出游戏画面")
+        end
+        return
+      end
+      self._backdrop[i] = c
+      pcall(function() c.name = "webui:fit-edge-" .. FIT_EDGES[i] end)
+      pcall(function() c.text = "" end)
+    end
+
+    local r = rects[i]
+    local dx = (r.x + r.w / 2) - cw / 2
+    local dy = (ch / 2) - (r.y + r.h / 2)      -- Y 翻转
+
+    pcall(function()
+      c.anchorMinX = 0.5; c.anchorMinY = 0.5
+      c.anchorMaxX = 0.5; c.anchorMaxY = 0.5
+      c.pivotX = 0.5;     c.pivotY = 0.5
+      c.sizeDeltaX = r.w
+      c.sizeDeltaY = r.h
+      c.anchoredPositionX = dx
+      c.anchoredPositionY = dy
+      c:SetActive(true)
+    end)
+
+    if rgba then
+      pcall(function() c.bgColor = Color.FromRGBA(rgba.r, rgba.g, rgba.b, 255) end)
+    end
+  end
+
+  -- 多余的边条隐藏
+  for i = #rects + 1, #self._backdrop do
+    local c = self._backdrop[i]
+    if c then pcall(function() c:SetActive(false) end) end
+  end
+end
+
+function Renderer:_clearFitBackdrop()
+  if not self._backdrop then return end
+  for i = 1, #self._backdrop do
+    local c = self._backdrop[i]
+    if c then pcall(function() c:SetActive(false) end) end
+  end
+end
+
 --[[ ★★★ 查询一个控件是否【当前在控件池里】（= 已被还池、可能被别的节点取走）。
 
      ══════════════════════════════════════════════════════════════════════
@@ -636,6 +785,36 @@ local function computeAnchored(childBox, parentBox)
   return ccx - pcx, pcy - ccy
 end
 
+--[[ ★★ 适配变换（多屏幕比例：等比缩放 + 留边）
+
+     背景见 webui_fit.lua。这里只做"把设计坐标变成画布坐标"的换算。
+
+     设计坐标 = 页面 CSS 里写的坐标系（如 1600x900）
+     画布坐标 = 真实画布坐标系（game.GetUICanvasSize()）
+
+     变换：canvas = design * k + offset
+
+     ★ 只作用在【画布的直接子节点】上。
+       因为 k 是全局统一的，子节点在父控件内的相对位置
+       会随着父控件的 localScale 一起缩放，不需要各层重复施加。
+
+     返回缩放后的 box（不改原 box —— 布局结果要留给命中检测用设计坐标）。
+]]--
+local function applyFit(box, fit)
+  if not fit then return box end
+  local k = fit.k or 1
+  local function tx(v) return v * k + fit.offsetX end
+  local function ty(v) return v * k + fit.offsetY end
+  return {
+    x = tx(box.x), y = ty(box.y),
+    w = (box.w or 0) * k, h = (box.h or 0) * k,
+    contentX = tx(box.contentX or box.x),
+    contentY = ty(box.contentY or box.y),
+    contentW = (box.contentW or box.w or 0) * k,
+    contentH = (box.contentH or box.h or 0) * k,
+  }
+end
+
 --=============================================================================
 -- 写入单个节点（带 diff：只写变化的字段）
 --
@@ -644,9 +823,15 @@ end
 --    现在用 last 表记录上一帧的值，只有变化时才写。
 --=============================================================================
 
-local function writeControl(control, node, dx, dy, last, kind)
+local function writeControl(control, node, dx, dy, last, kind, useBox)
   local st = node.style
-  local box = node.box
+  --[[ ★ useBox：适配变换后的 box（画布坐标）。
+
+       多屏幕比例下，根的直接子节点尺寸/位置要按 k 放大，
+       但 node.box 是【设计坐标】的布局结果，不能改
+        （命中检测还要用它）。所以缩放后的 box 单独传进来。
+  ]]--
+  local box = useBox or node.box
   if not control or not st or not box then return 0 end
 
   local w = box.w or 0
@@ -1065,11 +1250,42 @@ function Renderer:update(root, domChanged)
     end
   end
 
-  -- 根控件的 box = 整个画布
+  --[[ ★★ 根控件 = 整个画布 + 适配变换
+
+       有 designSize 时：
+         页面按设计尺寸布局，画布上等比缩放居中，四周留边。
+         根控件本身铺满整个画布（留边底色就由它承载）。
+
+       无 designSize 时：
+         退化成老行为 —— 设计尺寸 = 画布尺寸，k=1，无偏移。
+  ]]--
   local cw, ch = util.canvasSize()
+
+  -- 算适配参数（每帧算一次，很便宜；变了才重写控件字段）
+  local newFit = nil
+  if self.designW and self.designH and self.fitMode ~= "none" then
+    newFit = fit.compute(self.designW, self.designH, cw, ch)
+    if self.fitMode == "stretch" then
+      -- 拉伸模式：宽高各自撑满（★ 像素精灵会变形，一般不要用）
+      newFit = {
+        k = 1, offsetX = 0, offsetY = 0,
+        scaledW = cw, scaledH = ch,
+        designW = self.designW, designH = self.designH,
+        canvasW = cw, canvasH = ch,
+        stretchX = cw / self.designW, stretchY = ch / self.designH,
+      }
+    end
+  end
+  self.fit = newFit
+
+  -- 根控件的 box = 整个画布（它承载留边底色）
   local rootBox = { x = 0, y = 0, w = cw, h = ch }
 
   -- 根控件自身也设为铺满
+  local rootChanged = (self._lastCW ~= cw or self._lastCH ~= ch)
+  if rootChanged then
+    self._lastCW, self._lastCH = cw, ch
+  end
   pcall(function()
     self.root.anchorMinX = 0.5; self.root.anchorMinY = 0.5
     self.root.anchorMaxX = 0.5; self.root.anchorMaxY = 0.5
@@ -1080,13 +1296,24 @@ function Renderer:update(root, domChanged)
     self.root.anchoredPositionY = 0
   end)
 
+  --[[ ★ 留边底色
+
+       letterbox 模式下四周会露边，必须填成页面背景色 ——
+       否则露出的是游戏画面（实测：草地/天空），看起来像渲染 bug。
+
+       ★ 实现见 _syncFitBackdrop：用四条边条覆盖留边区（矩形环），
+         中间镂空，所以绝不会遮挡内容。
+  ]]--
+  self:_syncFitBackdrop(cw, ch, newFit)
+
   local seen = {}
 
   -- 递归同步（显式栈，避免深递归）
+  -- ★ isRootChild 标记：只有画布的直接子节点需要施加适配变换
   local stack = {}
   for i = #root.children, 1, -1 do
     stack[#stack + 1] = { node = root.children[i], parentBox = rootBox,
-                          parentControl = self.root }
+                          parentControl = self.root, isRootChild = true }
   end
 
   while #stack > 0 do
@@ -1171,9 +1398,23 @@ function Renderer:update(root, domChanged)
         end
 
         if entry then
-          local dx, dy = computeAnchored(box, pb)
+          --[[ ★★ 多屏幕比例适配：只在【画布直接子节点】上施加缩放
+
+               根的直接子节点收到的是 applyFit 后的 box（设计坐标 -> 画布坐标）。
+               更深层的节点保持设计坐标不变 —— 因为父控件的尺寸已经放大，
+               子节点在父内的相对位置会自然跟着缩放。
+
+               这样做的关键好处：只在最外层做一次变换，
+               不会因为逐层重复施加而累积误差。
+          ]]--
+          local effBox = box
+          if self.fit and item.isRootChild then
+            effBox = applyFit(box, self.fit)
+          end
+
+          local dx, dy = computeAnchored(effBox, pb)
           local wrote = writeControl(entry.control, node, dx, dy,
-                                     entry.last, entry.kind)
+                                     entry.last, entry.kind, effBox)
           self.stats.written = self.stats.written + (wrote or 0)
 
           --[[ ★ 裁剪（overflow:hidden / border-radius）
@@ -1321,10 +1562,11 @@ function Renderer:update(root, domChanged)
           end
           self.stats.nodes = (self.stats.nodes or 0) + 1
 
-          -- 子节点入栈
+          -- 子节点入栈（★ 非根子节点：不施加适配变换）
           for i = #node.children, 1, -1 do
             stack[#stack + 1] = { node = node.children[i], parentBox = box,
-                                  parentControl = entry.control }
+                                  parentControl = entry.control,
+                                  isRootChild = false }
           end
         end
       end

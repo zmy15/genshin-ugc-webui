@@ -279,7 +279,14 @@ function EngineMock.new(prefabs)
        ★ 真正需要模拟的真机约束是【OnUpdate 不被驱动】：
           见 tests/test_mount.lua 第 7 节，那里刻意一次都不调 update()。
   ]]--
-  local gameTable = {
+  --[[ 画布尺寸：默认 1600x900（真机 2560x1440 屏幕上的实测值）。
+
+     ★ 多屏幕比例适配需要能改这个值来验算（16:10 / 4:3 / 21:9）。
+       用 setCanvas(w, h) 改，GetUICanvasSize 会返回新值。
+]]--
+local canvasW, canvasH = 1600, 900
+
+local gameTable = {
     InstantiateClientUIControl = function(idx, parent)
       for k, v in pairs(prefabs) do
         if v == idx then return makeControl(k, parent) end
@@ -287,7 +294,7 @@ function EngineMock.new(prefabs)
       return nil
     end,
     DestroyClientUIControl = function() end,
-    GetUICanvasSize = function() return 1600, 900 end,
+    GetUICanvasSize = function() return canvasW, canvasH end,
 
     --[[ ★ 真机 API（client_control_api.md 第 209-210 行）
 
@@ -470,6 +477,18 @@ function EngineMock.new(prefabs)
     setRoots = function(list)
       externalRoots = list or {}
     end,
+
+    --[[ ★ 设置画布尺寸（多屏幕比例测试用）
+
+           trueW/trueH 为 nil 时读回当前值。
+           注意：真机返回浮点（1599.9998），这里也能传小数。 ]]--
+    setCanvas = function(w, h)
+      if w then canvasW = w end
+      if h then canvasH = h end
+      return canvasW, canvasH
+    end,
+    getCanvas = function() return canvasW, canvasH end,
+
     createdCount = function() return created end,
     makeControl = makeControl,
     dataOf = function(c) return dataMap[c] end,
