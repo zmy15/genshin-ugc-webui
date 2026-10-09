@@ -96,6 +96,18 @@ local DEFAULTS = {
   gap               = "0",
   ["z-index"]       = "auto",
 
+  -- ---- Grid（见 webui_grid.lua）----
+  ["grid-template-columns"] = "none",
+  ["grid-template-rows"]    = "none",
+  ["grid-auto-flow"]        = "row",
+  ["grid-auto-rows"]        = "auto",
+  ["grid-auto-columns"]     = "auto",
+  ["row-gap"]               = "0",
+  ["column-gap"]            = "0",
+  ["justify-items"]         = "stretch",
+  ["justify-self"]          = "auto",
+  ["align-self"]            = "auto",
+
   -- 变换（映射到引擎的 anchoredPosition / localScale / localRotation）
   transform         = "none",
   ["transform-origin"] = "50% 50%",

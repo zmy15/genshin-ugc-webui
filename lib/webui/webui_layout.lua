@@ -876,8 +876,17 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
           -- 因为我们传的是"内容顶端上一格"，这里统一按下面公式给基准
           local cy
 
-          -- 是否要拉伸：align-items 默认就是 stretch；子项可用 align-self 覆盖
-          local childAlign = (it.c.style and it.c.style["align-self"]) or alignItems
+          --[[ 是否要拉伸：align-items 默认就是 stretch；子项可用 align-self 覆盖
+
+               ⚠️ align-self 的默认值是 "auto"（原生语义 = 跟随父的 align-items）。
+                  所以【不能】用 `(cst["align-self"]) or alignItems` ——
+                  那样拿到的是字符串 "auto"，既不等于 "stretch" 也不等于
+                  "center"，于是掉到 flex-start 分支，拉伸**静默失效**。
+                  实测：200px 容器里子项只有 16.8px。
+                  （这是引入 align-self 默认值时踩的坑，回归被 test_wrap 抓到） ]]--
+          local asRaw = it.c.style and it.c.style["align-self"]
+          if asRaw == nil or asRaw == "auto" then asRaw = alignItems end
+          local childAlign = asRaw
           local cst = it.c.style or {}
           local hasExplicitH = not (cst.height == nil or cst.height == "auto")
 
@@ -918,6 +927,162 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
 
       usedH = totalH
     end
+
+  elseif st.display == "grid" or st.display == "inline-grid" then
+    --[[ ---- CSS Grid 布局 ----
+
+         轨道解析 / 放置算法在 webui_grid.lua 里（纯计算，可单独验算）。
+         这里负责：测量固有尺寸 -> 解析轨道 -> 逐项定位。
+
+         ⚠️ 与 flex 的关键差异：
+            grid 的"项"直接放在容器内容区里（不是嵌套在行盒里），
+            所以 layoutNode 的 parentContentW 要传【轨道尺寸】而不是 cw。
+     ]]--
+    local g = require('webui_grid')
+    local gs = g.parseStyle(st, cw)
+
+    if not gs or not gs.cols then
+      -- 没有 grid-template-columns：退化成单列（原生也会自动生成隐式列）
+      gs = gs or {}
+      gs.cols = { { kind = "auto" } }
+      gs.rows = gs.rows or {}
+      gs.colGap = gs.colGap or 0
+      gs.rowGap = gs.rowGap or 0
+      gs.flow = gs.flow or "row"
+      gs.justifyItems = gs.justifyItems or "stretch"
+      gs.alignItems = gs.alignItems or "stretch"
+    end
+
+    -- ① 放置
+    local cols = #gs.cols
+    local placed = g.place(flowChildren, cols, gs.flow == "column" and "column" or "row")
+
+    -- ② 列尺寸
+    local colSizes = g.resolveTracks(gs.cols or {}, cw, gs.colGap, placed, "col",
+      function(item, _)
+        local cst = item.style or {}
+        local cmar = boxEdges(cst, cw, "margin")
+        local w = intrinsicWidth(item, cw, childBaseH)
+        return w + cmar.left + cmar.right
+      end)
+
+    -- ③ 行尺寸（用已定的列宽测量高度）
+    local rowSizes = g.resolveTracks(gs.rows or {}, box.h - pad.top - pad.bottom,
+      gs.rowGap, placed, "row",
+      function(item, _)
+        local cst = item.style or {}
+        local cmar = boxEdges(cst, cw, "margin")
+        local h = intrinsicHeight(item, cw, childBaseH)
+        return h + cmar.top + cmar.bottom
+      end)
+
+    -- 把行尺寸补齐到放置结果所需
+    local maxRow = 0
+    for _, p in ipairs(placed) do
+      local e = p.row + p.rowSpan - 1
+      if e > maxRow then maxRow = e end
+    end
+    for i = #rowSizes + 1, maxRow do rowSizes[i] = 0 end
+
+    -- ④ 轨道起始坐标（累加 gap）
+    local colX = {}
+    local x = contentX
+    for i = 1, #colSizes do
+      colX[i] = x
+      x = x + (colSizes[i] or 0) + gs.colGap
+    end
+
+    local rowY = {}
+    local y = contentY
+    for i = 1, #rowSizes do
+      rowY[i] = y
+      y = y + (rowSizes[i] or 0) + gs.rowGap
+    end
+
+    -- ⑤ 逐项布局
+    local maxBottom = contentY
+    for _, p in ipairs(placed) do
+      local c = p.item
+      local cst = c.style or {}
+      local cmar = boxEdges(cst, cw, "margin")
+
+      -- 跨轨道时的尺寸 = 各轨道 + 中间的 gap
+      local spanW = 0
+      for k = p.col, p.col + p.colSpan - 1 do
+        spanW = spanW + (colSizes[k] or 0)
+      end
+      if p.colSpan > 1 then spanW = spanW + gs.colGap * (p.colSpan - 1) end
+
+      local spanH = 0
+      for k = p.row, p.row + p.rowSpan - 1 do
+        spanH = spanH + (rowSizes[k] or 0)
+      end
+      if p.rowSpan > 1 then spanH = spanH + gs.rowGap * (p.rowSpan - 1) end
+
+      local px = colX[p.col] or contentX
+      local py = rowY[p.row] or contentY
+
+      --[[ 轨道内对齐
+
+           stretch（默认）：撑满轨道（扣掉自身 margin）
+           start/center/end：按内容尺寸，在轨道内对齐
+
+           ⚠️ justify-self / align-self 的默认值是 "auto"
+              （原生语义 = 跟随容器的 justify-items / align-items），
+              不能直接 `or` —— 见 flex 分支里那条同样的坑。 ]]--
+      local jsRaw = cst["justify-self"]
+      if jsRaw == nil or jsRaw == "auto" then jsRaw = gs.justifyItems end
+      local asRaw2 = cst["align-self"]
+      if asRaw2 == nil or asRaw2 == "auto" then asRaw2 = gs.alignItems end
+      local ji = jsRaw
+      local ai = asRaw2
+
+      local availW = spanW - cmar.left - cmar.right
+      if availW < 0 then availW = 0 end
+
+      local cw2 = availW
+      if ji == "center" or ji == "end" or ji == "flex-end" then
+        local iw = intrinsicWidth(c, availW, childBaseH)
+        cw2 = math.min(iw, availW)
+      end
+
+      local cellX = px + cmar.left
+      if ji == "center" then
+        cellX = px + cmar.left + (availW - cw2) / 2
+      elseif ji == "end" or ji == "flex-end" then
+        cellX = px + cmar.left + (availW - cw2)
+      end
+
+      -- 高度：stretch 时撑满轨道
+      local hOverride = nil
+      local explicitH = cst.height and cst.height ~= "auto"
+      if not explicitH and (ai == "stretch" or ai == nil) then
+        hOverride = spanH - cmar.top - cmar.bottom
+        if hOverride < 0 then hOverride = 0 end
+      end
+
+      local cb = layoutNode(c, 0, 0, availW, spanH, canvasW, canvasH, cw2, hOverride)
+
+      -- 覆盖位置（layoutNode 按父内容区算的，这里改成轨道坐标）
+      cb.x = cellX
+      cb.contentX = cellX + (cb.padding and cb.padding.left or 0)
+
+      local cy2 = py + cmar.top
+      if not hOverride then
+        if ai == "center" then
+          cy2 = py + cmar.top + (spanH - cmar.top - cmar.bottom - cb.h) / 2
+        elseif ai == "end" or ai == "flex-end" then
+          cy2 = py + cmar.top + (spanH - cmar.top - cmar.bottom - cb.h)
+        end
+      end
+      cb.y = cy2
+      cb.contentY = cy2 + (cb.padding and cb.padding.top or 0)
+
+      local bottom = cb.y + cb.h + cmar.bottom
+      if bottom > maxBottom then maxBottom = bottom end
+    end
+
+    usedH = maxBottom - contentY
 
   else
     --[[ 普通 block 流
