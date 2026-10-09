@@ -6,12 +6,12 @@
 ## 目录
 
 ```
-lib/webui/   库本体（14 模块）—— 交付物，改动要谨慎。
+lib/webui/   库本体（16 模块）—— 交付物，改动要谨慎。
              ★ 文件名即真机部署名（webui_util.lua / webui_render.lua …），
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       46 个测试套件
+tests/       47 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -77,7 +77,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-46 个套件，路径自包含（任何目录可跑）。关键回归：
+47 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -97,6 +97,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_fit` — ★★ **多屏幕比例适配算法**（16:9 / 16:10 / 4:3 / 21:9 的 k 与留边数值验算 + 等比性 + 光标反变换 + `canvasSize` 缓存可刷新）
 - `test_fit_render` — ★★ **适配的渲染集成**（缩放真的写进控件字段、留边边条位置、16:9 向后兼容、换分辨率重算）
 - `test_css_native` — ★★ **对齐原生 CSS 的语义**（vw/vh/vmin/vmax、calc() 含混合单位、margin:auto 居中、外边距折叠取较大者、box-sizing 两模式、flex align-items/stretch/align-self、无效值必须告警）
+- `test_grid` — ★★ **CSS Grid 布局**（轨道解析含 repeat()/fr/%，自动排列与换行，span 跨轨道，显式 `2 / 4` 定位，gap 简写两值，轨道内对齐，以及"grid 不能破坏 flex/block"的回归）
 
 ## 真机探针
 

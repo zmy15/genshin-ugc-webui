@@ -155,6 +155,7 @@ webui_render.lua
 webui_clip.lua
 webui_sprite.lua
 webui_fit.lua
+webui_grid.lua
 webui_event.lua
 webui_signal.lua
 ```
@@ -194,7 +195,8 @@ lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 | **`margin: 0 auto` 水平居中** | ✅ |
 | `min-width` / `max-width` / `min-height` / `max-height` | ✅ |
 | **外边距折叠**（相邻兄弟取较大者） | ✅ |
-| **`display: grid`** | ❌ 按 `block` 处理（见「库没实现」） |
+| **`display: grid`**（见下方「Grid 布局」） | ✅ |
+| **`gap` / `row-gap` / `column-gap`** | ✅ |
 
 ### 样式
 
@@ -258,6 +260,41 @@ lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 > 实际行为是 `border-box`（`width` 含 `padding`）。
 > 现已**严格对齐原生** —— 如果你有旧页面依赖旧行为，
 > 请显式加 `box-sizing: border-box`。
+
+### Grid 布局
+
+```css
+/* 三列等宽 */
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+/* 固定 + 弹性混合 */
+.side  { display: grid; grid-template-columns: 200px 1fr; gap: 12px; }
+
+/* repeat() */
+.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
+/* 跨列 / 跨行 */
+.banner { grid-column: span 2; }
+.footer { grid-column: 1 / 3; grid-row: 2; }
+
+/* 行高显式指定 */
+.layout { display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: 60px 40px; }
+```
+
+**支持**：`fr` / `px` / `%` / `auto` 轨道、`repeat()`（含 `auto-fill`）、
+`gap` / `row-gap` / `column-gap`、`grid-column` / `grid-row`
+（`2` / `2 / 4` / `span 2` / `1 / span 2`）、自动排列、
+`justify-items` / `align-items` / `justify-self` / `align-self`。
+
+**不支持**：`grid-template-areas` / `grid-area`（命名区域）、
+`minmax()` / `fit-content()`、负数列号、隐式轨道的显式尺寸
+（`grid-auto-rows` 的具体值）。这些会退化成合理默认（`auto` 轨道），
+**不会崩**，但版式可能与你预期不同。
+
+> ⚠️ `auto` 轨道的尺寸按内容测出（文本宽度是估算的，见「库没实现」），
+> 需要精确控制时请用 `fr` 或固定值。
 
 **无效值不再静默失效**：无法解析的长度（如 `10ch`）会打印告警并当 0 处理，
 而不是悄悄算错。看日志即可发现。
@@ -682,7 +719,8 @@ DOM: 134 元素 / 76 文本 / 深度 7
 
 | 功能 | 说明 | 写错会怎样 |
 |---|---|---|
-| **`display: grid`** | 现按 `block` 处理（子项竖直堆叠） | 静默错版，**不报错** |
+| `grid-template-areas` / `grid-area` | 命名区域未实现（用 `grid-column`/`grid-row` 代替） | 退化成 `auto` 轨道 |
+| `minmax()` / `fit-content()` | 轨道函数未实现 | 退化成 `auto` 轨道 |
 | `transform` 的 `rotateX/Y`、`skew`、`matrix` | 引擎二维仿真不支持 | 忽略该分量 |
 | `text-overflow: ellipsis` | 长文本省略号 | 无省略号 |
 | `white-space: nowrap` | 禁止换行 | 仍会换行 |
@@ -691,8 +729,8 @@ DOM: 134 元素 / 76 文本 / 深度 7
 | 文本精确换行 | 现按字符宽度估算，英文单词可能被截断 | 换行位置不精确 |
 | 圆角图片方案封装 | 需手动配图片模板 | — |
 
-> **关于 `grid`**：仍是**静默**的（不报错但按 `block` 排版），改版式时请留意。
-> 长度单位（`ch`/`ex`/`pt` 等）会**告警 + 当 0**，看日志即可发现。
+> **已无静默错版项**：此前 `display: grid` 会被静默当成 `block`，
+> 现已实现；长度单位问题会**告警**。剩下的是"忽略"而非"算错"。
 
 ---
 
