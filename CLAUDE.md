@@ -6,12 +6,12 @@
 ## 目录
 
 ```
-lib/webui/   库本体（13 模块）—— 交付物，改动要谨慎。
+lib/webui/   库本体（14 模块）—— 交付物，改动要谨慎。
              ★ 文件名即真机部署名（webui_util.lua / webui_render.lua …），
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       44 个测试套件
+tests/       46 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -60,6 +60,8 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **根控件缩放必须 `1.01`** | 编辑器里手工设。`1.00` 时界面**四周留一圈缝**；库改不了 `localScale` |
 | **必须有名为 `Root` 的容器节点 + 脚本挂在其下** | 库靠 `FindClientUIRoot("Root")` 找挂载点；缺了/名字不对 → **界面空白且无日志** |
 | **★★ 隐藏但以后要点击的界面，不能用 `display:none`** | 子树被跳过 → 控件不建 → **事件根本不绑定**。"显示出来"后按钮点了毫无反应且无日志。要用 class 移出画布隐藏（`node:hide()` 同样是 `display:none`，且 `show()` 救不回来）。见 `docs/引擎能力与限制.md` §9.1 |
+| **`box-sizing` 是原生语义** | 默认 `content-box`：`width:200px; padding:20px` → **外框 240**。要旧的"宽度含 padding"语义必须显式写 `box-sizing: border-box`。曾经声明与行为相反（布局器根本没读这个属性） |
+| **`vw`/`vh` 的视口 = 逻辑设计尺寸** | 不是真实画布。因为布局全程在设计坐标系算，适配缩放由渲染层统一施加（见 `webui_fit.lua`）。用真实画布会被缩放两次 |
 
 完整清单与证据：`docs/引擎能力与限制.md`
 
@@ -75,7 +77,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-44 个套件，路径自包含（任何目录可跑）。关键回归：
+46 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -92,17 +94,22 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_demo_dino_style` — ★ 文字视觉回归（含弹窗文字必须被采样到，防 `display:none` 回归）
 - `test_probe_align` — ★ align 探针自检（确认真机能拿到正确的读回表）
 - `test_align_enum` — ★★ **水平对齐枚举真名**（用 `tests/enum_kit.lua` 按真机形态造 Enum，扁平名为 nil）
+- `test_fit` — ★★ **多屏幕比例适配算法**（16:9 / 16:10 / 4:3 / 21:9 的 k 与留边数值验算 + 等比性 + 光标反变换 + `canvasSize` 缓存可刷新）
+- `test_fit_render` — ★★ **适配的渲染集成**（缩放真的写进控件字段、留边边条位置、16:9 向后兼容、换分辨率重算）
+- `test_css_native` — ★★ **对齐原生 CSS 的语义**（vw/vh/vmin/vmax、calc() 含混合单位、margin:auto 居中、外边距折叠取较大者、box-sizing 两模式、flex align-items/stretch/align-self、无效值必须告警）
 
 ## 真机探针
 
 ```bash
 # 改 deploy/probe.lua 顶部一行：
-local ACTIVE = "perf"   -- key / perf / align
+local ACTIVE = "perf"   -- key / perf / align / fit
 ```
 
 - `key` = 键盘事件验证（`AddKeyEventListener` 能否用）
 - `perf` = 逐帧写入上限压测（4 档：10/40/80/160 控件）
 - `align` = 文字居中 / 坐标系（**水平 A~E + 垂直 F 组**对照，用于定位"文字不居中"）
+- `fit` = **多屏幕比例适配**（读回真实画布尺寸 + 算 k/留边 + 光标反变换自检；
+  16:10 / 4:3 / 21:9 上判读内容区四边是否贴齐）
 
 历史上还有 `text` / `mask` / `glyph` / `clip` / `mount` 五个模块，
 2026-10-07 精简时移除 —— 它们的**结论、设计意图与重建要点**归档在

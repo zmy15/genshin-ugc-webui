@@ -60,6 +60,77 @@ end
 
 ---
 
+## 多屏幕比例适配（16:10 / 4:3 / 21:9）
+
+页面按**固定逻辑分辨率**写（比如 `1600×900`），库在渲染时**等比缩放 + 居中留边**，
+自动适配任意比例的屏幕。
+
+```lua
+local ui = webui.new({
+  root       = root,
+  prefabs    = PREFABS,
+  designSize = { 1600, 900 },   -- ★ 页面 CSS 里用的逻辑分辨率
+  fit        = "letterbox",     -- 等比缩放居中（默认）
+  fitBg      = "#f7f7f7",       -- ★ 留边填充色（建议与页面背景一致）
+})
+```
+
+**CSS 一行都不用改**，继续按 `1600×900` 写：
+
+```css
+.stage { width: 1600px; height: 900px; overflow: hidden; }
+.scene { width: 1600px; height: 900px; background-color: #f7f7f7; }
+```
+
+### 各屏幕比例的实际效果
+
+| 屏幕 | 比例 | 缩放 k | 缩放后内容 | 留边 |
+|---|---|---|---|---|
+| 2560×1440 | 16:9 | 1.60 | 2560×1440 | 无 |
+| 2560×1600 | 16:10 | 1.60 | 2560×1440 | 上下各 80 |
+| 1920×1200 | 16:10 | 1.20 | 1920×1080 | 上下各 60 |
+| 1920×1440 | 4:3 | 1.20 | 1920×1080 | 上下各 180 |
+| 3440×1440 | 21:9 | 1.60 | 2560×1440 | 左右各 440 |
+
+算法：`k = min(画布宽/设计宽, 画布高/设计高)`，取小者保证内容完整装得下。
+
+### ★★ 绝对不要用"拉伸铺满"
+
+`fit = "stretch"` 虽然存在，但**像素精灵会被非等比压扁**：
+8px 的格子变成 7.3px，接缝和内缩立刻回来（见 `引擎能力与限制.md`）。
+**像素游戏必须用 `letterbox`。**
+
+### 留边为什么必须填色
+
+不填的话，留边区露出的是**游戏画面**（草地 / 天空），看起来像渲染 bug。
+库用"四条边条"覆盖留边区（矩形环，中间镂空），所以**绝不会遮挡内容**。
+
+### 换分辨率 / 窗口化
+
+`util.canvasSize()` 现在可刷新。画布尺寸变化后调用：
+
+```lua
+webui.util.resetCanvasCache()   -- 或 webui.util.refreshCanvasIfChanged()
+ui:flush()
+```
+
+### 光标命中要用设计坐标
+
+缩放后引擎给的光标坐标是**画布坐标**，布局盒子是**设计坐标**。
+事件回调里请用 `info.lx` / `info.ly`（已反变换），不要直接用 `info.x` / `info.y`：
+
+```lua
+onClick = function(info)
+  -- ✅ info.lx, info.ly 与 node.box 同一坐标系
+  -- ❌ info.x, info.y 是画布坐标，缩放下会错位
+end
+```
+
+> **不传 `designSize` 时行为与旧版完全一致**（16:9 屏幕上无任何差别，
+> 也不会多建任何控件）。老页面可以不改。
+
+---
+
 ## 部署
 
 千星的多文件 `require` 规则：
@@ -83,6 +154,7 @@ webui_layout.lua
 webui_render.lua
 webui_clip.lua
 webui_sprite.lua
+webui_fit.lua
 webui_event.lua
 webui_signal.lua
 ```
@@ -109,14 +181,20 @@ lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 | 特性 | 状态 |
 |---|---|
 | 盒模型（margin / padding / border-box） | ✅ |
+| **`box-sizing: content-box / border-box`** | ✅ **严格对齐原生**（见下方说明） |
 | `display: block / inline / inline-block / flex / none` | ✅ |
-| **flex 单行**（`justify-content` / `align-items` / `gap`） | ✅ |
+| **flex 单行**（`justify-content` / `align-items` / `align-self` / `gap`） | ✅ |
+| **`align-items: stretch`**（默认值，拉伸到容器高） | ✅ |
 | **`flex-wrap` 多行** | ✅ |
 | **`flex-grow` / `flex-shrink` / `flex-basis`** | ✅ |
 | `position: absolute / relative / fixed` | ✅ |
-| 百分比 / `px` / `em` / `rem` 单位 | ✅ |
+| **`px` / `%` / `em` / `rem`** | ✅ |
+| **`vw` / `vh` / `vmin` / `vmax`** | ✅ **视口 = 逻辑设计尺寸**（见下） |
+| **`calc()`**（`+ - * /`、括号嵌套、混合单位） | ✅ |
+| **`margin: 0 auto` 水平居中** | ✅ |
 | `min-width` / `max-width` / `min-height` / `max-height` | ✅ |
-| 外边距折叠（简化：相邻取较大者） | ✅ |
+| **外边距折叠**（相邻兄弟取较大者） | ✅ |
+| **`display: grid`** | ❌ 按 `block` 处理（见「库没实现」） |
 
 ### 样式
 
@@ -129,6 +207,7 @@ lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 | `text-align` | ✅ |
 | `vertical-align`（`top` / `middle` / `bottom`） | ✅ |
 | **`transform: translate / scale / rotate`** | ✅ |
+| **`transform` 里的百分比**（按元素自身尺寸） | ✅ |
 | **`transition`**（映射到 `game.Tween`） | ✅ |
 | **`z-index`**（映射到 `SetSiblingIndex`） | ✅ |
 | **`overflow: hidden`**（矩形裁剪，图片控件遮罩） | ✅ |
@@ -136,6 +215,54 @@ lua tools/build_external.lua "<external_lua_file 路径>"  # 只装库
 | 内联 `style="..."` | ✅ |
 
 不支持的选择器（`[attr]` / `:first-child` / `+` / `~` / `@media`）会让**整条规则作废**（避免误匹配）。
+
+### 对齐原生 CSS 的关键语义
+
+以下几项的行为**与浏览器一致**，可以按习惯直接写：
+
+```css
+/* 视口单位：视口 = 逻辑设计尺寸（默认 1600x900） */
+.hero  { width: 100vw; height: 100vh; }        /* 1600 x 900 */
+.panel { width: 50vw; }                        /* 800 */
+
+/* calc()：支持 + - * / 与括号嵌套，可混合单位 */
+.side  { width: calc(100vw - 240px); }         /* 1360 */
+.card  { width: calc(50% - 20px); }            /* 父宽的 50% 再减 20 */
+.half  { width: calc((100vw - 200px) / 2); }   /* 700 */
+
+/* margin: auto 水平居中（最常用写法） */
+.box   { width: 200px; margin: 0 auto; }       /* 居中 */
+.right { margin-left: auto; }                  /* 靠右 */
+.card  { max-width: 300px; width: 100%; margin: 0 auto; }   /* 响应式卡片 */
+
+/* 外边距折叠：相邻兄弟取【较大者】，不是相加 */
+.a { margin-bottom: 30px; }
+.b { margin-top: 10px; }                       /* 间距 = 30，不是 40 */
+
+/* flex 默认 align-items: stretch */
+.row   { display: flex; height: 200px; }
+.item  { width: 100px; }                       /* 高度被拉伸到 200 */
+```
+
+**⚠️ `box-sizing` 是原生语义（一次行为变更）**
+
+```css
+/* content-box（默认）：width 只算内容区，外框 = width + padding */
+.a { width: 200px; padding: 20px; }                    /* 外框 240x100 */
+
+/* border-box：width 含 padding */
+.b { width: 200px; padding: 20px; box-sizing: border-box; }  /* 外框 200x60 */
+```
+
+> **历史注意**：早期版本声明默认是 `content-box`，但布局器从未读取该属性，
+> 实际行为是 `border-box`（`width` 含 `padding`）。
+> 现已**严格对齐原生** —— 如果你有旧页面依赖旧行为，
+> 请显式加 `box-sizing: border-box`。
+
+**无效值不再静默失效**：无法解析的长度（如 `10ch`）会打印告警并当 0 处理，
+而不是悄悄算错。看日志即可发现。
+
+---
 
 ### 裁剪（R17 新增）
 
@@ -553,15 +680,19 @@ DOM: 134 元素 / 76 文本 / 深度 7
 
 ### 库没实现（可补）
 
-| 功能 | 说明 |
-|---|---|
-| `transform` 的 `rotateX/Y`、`skew`、`matrix` | 引擎二维仿真不支持 |
-| `text-overflow: ellipsis` | 长文本省略号 |
-| `white-space: nowrap` | 禁止换行 |
-| `letter-spacing` | 字间距 |
-| 文本精确换行 | 现按字符宽度估算，英文单词可能被截断 |
-| `grid` 布局 | 现按 `block` 处理 |
-| 圆角图片方案封装 | 需手动配图片模板 |
+| 功能 | 说明 | 写错会怎样 |
+|---|---|---|
+| **`display: grid`** | 现按 `block` 处理（子项竖直堆叠） | 静默错版，**不报错** |
+| `transform` 的 `rotateX/Y`、`skew`、`matrix` | 引擎二维仿真不支持 | 忽略该分量 |
+| `text-overflow: ellipsis` | 长文本省略号 | 无省略号 |
+| `white-space: nowrap` | 禁止换行 | 仍会换行 |
+| `letter-spacing` | 字间距 | 无间距 |
+| `ch` / `ex` / `pt` / `in` 等长度单位 | 引擎无字体度量 API，无法可靠换算 | ⚠️ **告警 + 当 0** |
+| 文本精确换行 | 现按字符宽度估算，英文单词可能被截断 | 换行位置不精确 |
+| 圆角图片方案封装 | 需手动配图片模板 | — |
+
+> **关于 `grid`**：仍是**静默**的（不报错但按 `block` 排版），改版式时请留意。
+> 长度单位（`ch`/`ex`/`pt` 等）会**告警 + 当 0**，看日志即可发现。
 
 ---
 
