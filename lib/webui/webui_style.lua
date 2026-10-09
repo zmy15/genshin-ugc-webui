@@ -112,14 +112,38 @@ local DEFAULTS = {
 -- 值归一化
 --=============================================================================
 
---[[ 长度：返回 { n=数值, unit="px"|"%"|"em", auto=bool } ]]--
+--[[ 长度：返回 { n=数值, unit="px"|"%"|"em"|"vw"|"vh"|"vmin"|"vmax", auto=bool } 
+
+     ★ 支持的单位（对齐原生 CSS）：
+         px / % / em / rem / vw / vh / vmin / vmax / 无单位
+
+     ⚠️ vw/vh 等的基准是【逻辑设计尺寸】而不是真实画布 ——
+        因为布局是在设计坐标系里算的（见 webui_fit.lua）。
+        解析时先原样带出单位，由 layout 用 _vwBase 换算。
+
+     ⚠️ 不认识的单位会返回 invalid=true（调用方应 warn），
+        不再静默当成 0 —— "静默失效"是最难查的一类 bug。
+]]--
 function S.parseLength(v)
   if type(v) == "number" then return { n = v, unit = "px" } end
   if type(v) ~= "string" then return { n = 0, unit = "px" } end
   local s = util.trim(v):lower()
+  if s == "" then return { n = 0, unit = "px" } end
 
   if s == "auto" then return { n = 0, unit = "px", auto = true } end
   if s == "none" then return { n = 0, unit = "px", none = true } end
+
+  --[[ calc() 表达式：递归求值
+
+       ⚠️ 结果可能是"含百分比"的（如 calc(50% - 100px)），
+          这时单位返回 "%"，含义是"已经折算过的比例值"，
+          需要调用方用真实基准二次换算 —— 见 S.parseLengthBase。 ]]--
+  if s:sub(1, 5) == "calc(" and s:sub(-1) == ")" then
+    local inner = s:sub(6, -2)
+    local val, unit, ok = S.evalCalc(inner)
+    if ok then return { n = val, unit = unit } end
+    return { n = 0, unit = "px", invalid = true, src = v }
+  end
 
   -- ⚠️ Lua 的 pattern 不支持 "|" 交替，必须分开写
   local n, unit
@@ -136,22 +160,254 @@ function S.parseLength(v)
     return { n = util.toNumber(n) or 0, unit = "px" }
   end
 
-  -- em / rem
+  -- em / rem（rem 的基准另算，这里先标出来）
   n = s:match("^([%-%d%.]+)rem$")
   if n then
-    return { n = util.toNumber(n) or 0, unit = "em" }
+    return { n = util.toNumber(n) or 0, unit = "rem" }
   end
   n = s:match("^([%-%d%.]+)em$")
   if n then
     return { n = util.toNumber(n) or 0, unit = "em" }
   end
 
+  -- ★ 视口单位（原生 CSS 常用；库按逻辑设计尺寸换算）
+  n = s:match("^([%-%d%.]+)vw$")
+  if n then return { n = util.toNumber(n) or 0, unit = "vw" } end
+  n = s:match("^([%-%d%.]+)vh$")
+  if n then return { n = util.toNumber(n) or 0, unit = "vh" } end
+  n = s:match("^([%-%d%.]+)vmin$")
+  if n then return { n = util.toNumber(n) or 0, unit = "vmin" } end
+  n = s:match("^([%-%d%.]+)vmax$")
+  if n then return { n = util.toNumber(n) or 0, unit = "vmax" } end
+
   -- 无单位数值
   n = util.toNumber(s)
   if n then return { n = n, unit = "px" } end
 
-  -- 无法解析，当作 0
-  return { n = 0, unit = "px" }
+  --[[ 认识一下常见但未实现的单位，给出精确告警而不是静默当 0。
+
+       ch / ex / pt / pc / in / cm / mm / q —— 这些在原生 CSS 里合法，
+       本库不换算（引擎没有字体度量 API，ch/ex 无法可靠求值）。 ]]--
+  local unknownUnit = s:match("^[%-%d%.]+(%a+)$")
+  return { n = 0, unit = "px", invalid = true, src = v,
+           unknownUnit = unknownUnit }
+end
+
+--=============================================================================
+-- calc() 求值
+--
+--   支持：+ - * / 与括号嵌套，操作数可以是 px / % / em / rem / vw / vh。
+--
+--   ⚠️ 单位规则（同原生 CSS）：
+--        · 加减要求同单位（px+% 在原生里合法，但结果混合单位，
+--          本库简化为：以【左侧操作数的单位】为准，右侧换算成同单位）
+--        · 乘除的右操作数必须是无单位数
+--
+--   实现：把表达式转成 token 流，用递归下降解析。
+-- ==============================================================================
+
+--[[ 取某个单位在当前上下文下的换算基准。
+
+     返回 base（每 1 单位对应多少 px），或 nil 表示纯比例单位（%）。 ]]--
+local function unitBase(unit, ctx)
+  ctx = ctx or {}
+  if unit == "px" then return 1 end
+  if unit == "em" then return ctx.fontSize or 14 end
+  if unit == "rem" then return ctx.rootFontSize or (ctx.fontSize or 14) end
+  if unit == "vw" then return (ctx.vw or 1600) / 100 end
+  if unit == "vh" then return (ctx.vh or 900) / 100 end
+  if unit == "vmin" then
+    local a, b = ctx.vw or 1600, ctx.vh or 900
+    return (a < b and a or b) / 100
+  end
+  if unit == "vmax" then
+    local a, b = ctx.vw or 1600, ctx.vh or 900
+    return (a > b and a or b) / 100
+  end
+  return nil      -- % 或未知
+end
+
+--[[ tokenize：把 "50% - 10px" 拆成 { {n=50,u="%"}, op="-" , {n=10,u="px"} } ]]--
+local function calcTokens(s)
+  local toks = {}
+  local i, n = 1, #s
+  while i <= n do
+    local c = s:sub(i, i)
+    if c:match("%s") then
+      i = i + 1
+    elseif c == "(" then
+      -- 找匹配的右括号
+      local depth, k = 1, i + 1
+      while k <= n and depth > 0 do
+        local ch = s:sub(k, k)
+        if ch == "(" then depth = depth + 1
+        elseif ch == ")" then depth = depth - 1 end
+        k = k + 1
+      end
+      if depth ~= 0 then return nil end
+      toks[#toks + 1] = { group = s:sub(i + 1, k - 2) }
+      i = k
+    elseif c == "+" or c == "-" or c == "*" or c == "/" then
+      toks[#toks + 1] = { op = c }
+      i = i + 1
+    else
+      --[[ 数值 + 可选单位
+
+           ⚠️ 单位里必须包含 '%' —— 只写 %a* 会让 "50%" 匹配不到单位，
+              于是 50% 被当成无单位的 50，calc(50% - 100px) 直接算错。
+              实测踩过：整个 calc 表达式求值失败、静默变 0。 ]]--
+      local num, unit = s:match("^([%-%d%.]+)%s*(%%?%a*)", i)
+      if not num then return nil end
+      toks[#toks + 1] = { n = util.toNumber(num), u = (unit ~= "" and unit) or nil }
+      i = i + #num + #(unit or "")
+    end
+  end
+  return toks
+end
+
+--[[ 表达式求值（递归下降）。
+
+     ⚠️ evalExpr 与 evalTerm 互相递归，必须【先声明后赋值】：
+        Lua 里 `local function f() ... end` 不会前向声明，
+        `local f; f = function() ... end` 才是正确写法。 ]]--
+local evalExpr
+
+--[[ 把 token 的值统一成 { pct, px } 形式。
+
+     ⚠️ 这是整套 calc 求值的基础表示：
+         calc(50% - 100px) -> { pct=50, px=-100 }
+        em/rem/vw/vh 等有确定基准的单位，在这里就直接换算进 px。 ]]--
+local function toTerm(t, ctx)
+  if not t then return nil end
+  -- 已经是 {pct,px} 形式（表达式中间结果）
+  if t.pct ~= nil and t.px ~= nil then return t end
+
+  local u = t.u
+  if u == nil or u == "px" then
+    return { pct = 0, px = t.n }
+  end
+  if u == "%" then
+    return { pct = t.n, px = 0 }
+  end
+  -- em / rem / vw / vh / vmin / vmax：基准已知，直接换算成 px
+  local b = unitBase(u, ctx)
+  if b then return { pct = 0, px = t.n * b } end
+  return nil
+end
+
+local function evalPrimary(toks, pos, ctx)
+  local t = toks[pos]
+  if not t then return nil, pos, false end
+
+  -- 括号：递归求值，结果已经是 {pct,px}
+  if t.group then
+    local v, p2, ok = S.evalCalcExpr(t.group, ctx)
+    if not ok then return nil, pos, false end
+    return v, pos + 1, true
+  end
+
+  -- 字面量
+  if t.n then
+    local term = toTerm({ n = t.n, u = t.u }, ctx)
+    if not term then return nil, pos, false end
+    return term, pos + 1, true
+  end
+  return nil, pos, false
+end
+
+--[[ 乘除：右操作数必须无单位；左操作数的两个分量同时缩放 ]]--
+local function evalTerm(toks, pos, ctx)
+  local left, p, ok = evalPrimary(toks, pos, ctx)
+  if not ok then return nil, pos, false end
+
+  while toks[p] and toks[p].op and (toks[p].op == "*" or toks[p].op == "/") do
+    local op = toks[p].op
+    local right, p2, ok2 = evalPrimary(toks, p + 1, ctx)
+    if not ok2 then return nil, pos, false end
+
+    -- 右操作数必须是无单位的纯数
+    if right.pct ~= 0 then return nil, pos, false end
+    local k = right.px
+    if op == "/" then
+      if k == 0 then return nil, pos, false end
+      k = 1 / k
+    end
+    left = { pct = left.pct * k, px = left.px * k }
+    p = p2
+  end
+  return left, p, true
+end
+
+--[[ 混合单位的表示
+
+     calc(50% - 100px) 这类表达式在原生 CSS 里是合法的：
+     它同时含一个"比例项"和一个"绝对项"，必须等到知道基准才能求值。
+
+     所以内部统一表示成 { pct = 比例, px = 绝对像素 }：
+         calc(50% - 100px)   ->  { pct = 50,  px = -100 }
+         calc(100vw - 200px) ->  { pct = 0,   px = 1400 }   （vw 已知，直接并入 px）
+
+     最终求值见 S.resolveCalc（需要调用方给百分比基准）。
+]]--
+
+evalExpr = function(toks, pos, ctx)
+  local left, p, ok = evalTerm(toks, pos, ctx)
+  if not ok then return nil, pos, false end
+
+  while toks[p] and toks[p].op and (toks[p].op == "+" or toks[p].op == "-") do
+    local op = toks[p].op
+    local right, p2, ok2 = evalTerm(toks, p + 1, ctx)
+    if not ok2 then return nil, pos, false end
+
+    --[[ 加减：把两边都化成 { pct, px } 后逐项相加
+
+          ⚠️ 这里踩过一个坑：原来把混合单位当成"右侧跟随左侧"，
+             导致 calc(50% - 100px) 算成 50-100 = -50%（完全错）。
+             现在两个分量分别保留，等调用方给基准再合并。 ]]--
+    local lt = toTerm(left, ctx)
+    local rt = toTerm(right, ctx)
+    if not lt or not rt then return nil, pos, false end
+
+    local sign = (op == "+") and 1 or -1
+    left = {
+      pct = lt.pct + sign * rt.pct,
+      px  = lt.px  + sign * rt.px,
+    }
+    p = p2
+  end
+  return left, p, true
+end
+
+--[[ 内部：求值成 { pct, px } 表达式（供括号递归用） ]]--
+function S.evalCalcExpr(expr, ctx)
+  if type(expr) ~= "string" then return nil, 0, false end
+  local toks = calcTokens(expr)
+  if not toks or #toks == 0 then return nil, 0, false end
+
+  local v, p, ok = evalExpr(toks, 1, ctx)
+  if not ok or not v then return nil, 0, false end
+  if p <= #toks then return nil, 0, false end   -- 有剩余 token = 表达式非法
+  return v, p, true
+end
+
+--[[ 求值 calc 表达式。
+
+     返回 数值, 单位, 是否成功。
+     ⚠️ 若表达式含百分比、且未提供 base，则返回 unit="%"（调用方用基准换算）。
+        提供了 base 就一次性算出 px。 ]]--
+function S.evalCalc(expr, ctx, base)
+  local v, _, ok = S.evalCalcExpr(expr, ctx)
+  if not ok or not v then return nil, nil, false end
+
+  if v.pct ~= 0 then
+    if base then
+      -- 基准已知：直接算出 px
+      return v.px + base * v.pct / 100, "px", true
+    end
+    -- 基准未知：把绝对项折算进"比例"没意义，返回表达式形态
+    return v.px + v.pct, "%", true
+  end
+  return v.px, "px", true
 end
 
 --[[ 数值（无单位，如 opacity / line-height / z-index）]]--

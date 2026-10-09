@@ -188,7 +188,7 @@ local ui = webui.new({
 
 ui:render([[
 <style>
-  .card  { width: 300px; padding: 16px; background-color: #1e1e1e; }
+  .card  { width: 300px; padding: 16px; box-sizing: border-box; background-color: #1e1e1e; }
   .head  { height: 24px; font-size: 18px; color: #ffffff; }
   .bar   { display: flex; gap: 8px; }
   .item  { width: 80px; height: 32px; background-color: #4a90d9; }

@@ -56,7 +56,7 @@ check("第 2 个块紧接其下", math.abs(by(nth(d1,2)) - 50) < 1,
 -- 2. 固定尺寸 + 内边距
 --   语义：width/height 是内容盒尺寸，padding 不撑大它，只压缩内容区
 local d2 = run("2. 固定尺寸 + padding", [[
-  <div style="width:200px; height:100px; padding:10px"></div>
+  <div style="width:200px; height:100px; padding:10px; box-sizing:border-box"></div>
 ]], nil)
 check("宽高不被 padding 撑大", math.abs(bw(nth(d2,1)) - 200) < 1 and math.abs(bh(nth(d2,1)) - 100) < 1,
     string.format("%.0fx%.0f (期望200x100)", bw(nth(d2,1)) or -1, bh(nth(d2,1)) or -1))
@@ -210,7 +210,7 @@ local d11 = run("11. 综合（面板+按钮）", [[
     </div>
   </div>
 ]], [[
-  .panel { width: 400px; padding: 20px; background-color:#222; }
+  .panel { width: 400px; padding: 20px; box-sizing: border-box; background-color:#222; }
   .title { height: 30px; font-size: 18px; color: #fff; }
   .row { display:flex; gap:10px; }
   .btn { width: 100px; height: 36px; background-color:#444; }

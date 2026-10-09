@@ -100,7 +100,7 @@ local ui = webui.new({
 
 ui:render([[
 <style>
-  .panel { width: 320px; padding: 16px; background-color: #1e1e28; }
+  .panel { width: 320px; padding: 16px; box-sizing: border-box; background-color: #1e1e28; }
   .title { height: 35px; font-size: 18px; color: #ffffff; }
   .row   { display: flex; gap: 10px; margin-top: 12px; }
   .btn   { width: 110px; height: 36px; background-color: #3a7bd5; }

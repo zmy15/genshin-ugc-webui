@@ -158,7 +158,7 @@ local ui = webui.new({
 
 local htmlSrc = [[
 <style>
-  .panel { width: 400px; padding: 20px; background-color: #222222; }
+  .panel { width: 400px; padding: 20px; box-sizing: border-box; background-color: #222222; }
   .title { height: 38px; font-size: 20px; color: #ffffff; }
   .row   { display: flex; gap: 12px; }
   .btn   { width: 120px; height: 40px; background-color: #3a7bd5; }
@@ -437,7 +437,7 @@ print()
 print("========== 修改内容后重渲染 ==========")
 ui:render([[
 <style>
-  .panel { width: 400px; padding: 20px; background-color: #222222; }
+  .panel { width: 400px; padding: 20px; box-sizing: border-box; background-color: #222222; }
   .title { height: 38px; font-size: 20px; color: #ffffff; }
 </style>
 <div class="panel">

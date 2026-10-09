@@ -34,24 +34,165 @@ local L = {}
 -- 辅助
 --=============================================================================
 
+--[[ 长度求值上下文：vw/vh 的换算是按【逻辑设计尺寸】而不是真实画布。
+
+     ★ 因为布局全程在设计坐标系里算，适配缩放由渲染层统一施加
+       （见 webui_fit.lua）。若这里用真实画布，后面会被再缩放一次。 ]]--
+local CTX = { vw = nil, vh = nil, rootFontSize = nil }
+
+--[[ 设置视口单位基准（由 layout.compute 每帧调用） ]]--
+function L.setViewportBase(w, h, rootFs)
+  CTX.vw = w
+  CTX.vh = h
+  if rootFs then CTX.rootFontSize = rootFs end
+end
+
+--[[ 解析长度。
+
+     返回 value, mode，mode ∈ {"px","%","auto","none"}。
+     ★ 视口单位 / em / rem 在这里就换算成 px（它们不依赖父盒）。
+     ★ % 保持原样返回，由调用方用正确的基准换算。 ]]--
 local function len(str, base, fontSize)
+  --[[ calc() 单独处理：它可能要基准才能算完。
+
+       ⚠️ calc(50% - 100px) 这种混合表达式，
+          必须把 base（父内容区宽/高）喂进去才算得对。
+          普通 parseLength 走不到这里 —— 它不知道基准。 ]]--
+  if type(str) == "string" then
+    local s = util.trim(str):lower()
+    if s:sub(1, 5) == "calc(" and s:sub(-1) == ")" then
+      local ctx = { fontSize = fontSize or 14,
+                    rootFontSize = CTX.rootFontSize or 14,
+                    vw = CTX.vw, vh = CTX.vh }
+      local v, unit, ok = style.evalCalc(s:sub(6, -2), ctx, base)
+      if ok then
+        if unit == "%" then
+          -- 没给基准：无法定值
+          return nil, "%"
+        end
+        return v, "px"
+      end
+      if not L._warnedCalc then L._warnedCalc = {} end
+      if not L._warnedCalc[str] then
+        L._warnedCalc[str] = true
+        util.warn("无法求值的 calc() 表达式 '" .. tostring(str) .. "' —— 已当作 0 处理")
+      end
+      return 0, "px"
+    end
+  end
+
   local l = style.parseLength(str)
+
+  -- ★ 无法解析的值：告警而不是静默当 0（静默失效最难查）
+  if l.invalid then
+    if not L._warnedBadLen then L._warnedBadLen = {} end
+    local key = tostring(l.src)
+    if not L._warnedBadLen[key] then
+      L._warnedBadLen[key] = true
+      util.warn(string.format(
+        "无法解析的长度值 '%s'%s —— 已当作 0 处理。"
+        .. "支持的单位：px / %% / em / rem / vw / vh / vmin / vmax / calc()",
+        tostring(l.src),
+        l.unknownUnit and ("（单位 '" .. l.unknownUnit .. "' 未实现）") or ""))
+    end
+    return 0, "px"
+  end
+
   if l.auto then return nil, "auto" end
   if l.none then return nil, "none" end
   if l.unit == "%" then return base and (base * l.n / 100) or nil, "%" end
+  if l.unit == "px" then return l.n, "px" end
+
+  -- em / rem
   if l.unit == "em" then return l.n * (fontSize or 14), "em" end
+  if l.unit == "rem" then
+    return l.n * (CTX.rootFontSize or 14), "rem"
+  end
+
+  -- ★ 视口单位（按逻辑设计尺寸换算）
+  if l.unit == "vw" then return l.n * (CTX.vw or 1600) / 100, "vw" end
+  if l.unit == "vh" then return l.n * (CTX.vh or 900) / 100, "vh" end
+  if l.unit == "vmin" then
+    local a, b = CTX.vw or 1600, CTX.vh or 900
+    return l.n * (a < b and a or b) / 100, "vmin"
+  end
+  if l.unit == "vmax" then
+    local a, b = CTX.vw or 1600, CTX.vh or 900
+    return l.n * (a > b and a or b) / 100, "vmax"
+  end
+
   return l.n, "px"
 end
 
---[[ 取四个方向的边距 ]]--
+--[[ 取四个方向的边距（数值形式，auto 当 0）。
+
+     ⚠️ 绝大多数调用点要的是数值（间距累加、宽度扣减等），
+        所以默认返回数值。需要区分 auto 的地方（水平居中）
+        请用 boxEdgesRaw。 ]]--
 local function boxEdges(st, base, attr)
   local out = {}
   for _, side in ipairs{"top", "right", "bottom", "left"} do
     local k = attr .. "-" .. side
-    local v = len(st[k], base, st._fontSize)
-    out[side] = v or 0
+    local v, mode = len(st[k], base, st._fontSize)
+    if mode == "auto" then
+      out[side] = 0
+    else
+      out[side] = v or 0
+    end
   end
   return out
+end
+
+--[[ 取四个方向的边距，【保留 auto 语义】。
+
+     ★★ 原生 CSS 里 `margin: 0 auto` 是水平居中的标准写法，
+        必须能区分 "0" 和 "auto"，否则居中永远失效。
+        返回：每个方向是 数值 或 字符串 "auto"。 ]]--
+local function boxEdgesRaw(st, base, attr)
+  local out = {}
+  for _, side in ipairs{"top", "right", "bottom", "left"} do
+    local k = attr .. "-" .. side
+    local v, mode = len(st[k], base, st._fontSize)
+    if mode == "auto" then
+      out[side] = "auto"
+    else
+      out[side] = v or 0
+    end
+  end
+  return out
+end
+
+--[[ ★★ 按 auto margin 调整水平位置（原生 CSS 的 auto margin 语义）
+
+     margin-left/right 为 auto 时，剩余空间按规则分配：
+       两边都 auto   -> 平分（水平居中）
+       只有左边 auto -> 全部给左边（右对齐）
+       只有右边 auto -> 全部给右边（左对齐）
+
+     返回值语义（务必看清，这里踩过重复计算的坑）：
+       offset      相对"父内容区左边 + 非 auto 的左边距"的额外偏移
+       marL/marR   归一化后的实际左右边距（auto 已变成具体值）
+       都不是 auto 时 offset 返回 nil，调用方按原 margleft 定位
+]]--
+local function resolveAutoMarginH(marL, marR, availW, usedW)
+  local lAuto = (marL == "auto")
+  local rAuto = (marR == "auto")
+  if not lAuto and not rAuto then
+    return nil, (marL or 0), (marR or 0)
+  end
+
+  local baseL = lAuto and 0 or (marL or 0)
+  local baseR = rAuto and 0 or (marR or 0)
+  local free = availW - baseL - baseR - usedW
+  if free < 0 then free = 0 end
+
+  if lAuto and rAuto then
+    return free / 2, free / 2, free / 2
+  elseif lAuto then
+    return free, free, baseR          -- 左边吃全部剩余 -> 靠右
+  else
+    return 0, baseL, free             -- 右边吃全部剩余 -> 靠左
+  end
 end
 
 --=============================================================================
@@ -185,8 +326,12 @@ end
 
      widthOverride: 由 flex 布局算出的宽度。传入时忽略 st.width，
                     否则 flex-grow / flex-shrink 的结果会被丢弃。
+
+     heightOverride: 由 flex 的 align-items:stretch 算出的高度。
+                     传入时忽略 st.height（且当 autoH 处理），
+                     用于把子项拉伸到本行高度。
 ]]--
-local function layoutNode(node, parentContentX, parentContentY, parentContentW, parentContentH, canvasW, canvasH, widthOverride)
+local function layoutNode(node, parentContentX, parentContentY, parentContentW, parentContentH, canvasW, canvasH, widthOverride, heightOverride)
   if node:isText() then
     -- 文本节点：占据父给的位置，高度按自身算
     local st = node.style or {}
@@ -239,8 +384,60 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
     baseH = parentContentH
   end
 
-  -- 宽度
-  -- 宽度（flex 传入的 widthOverride 优先）
+  -- ---- 边距 / 内边距 ----
+  --   ⚠️ 必须在算宽高【之前】就拿到 padding ——
+  --      box-sizing: border-box 要用它把声明值换算成内容区尺寸。
+  local mar = boxEdges(st, baseW, "margin")
+  local pad = boxEdges(st, baseW, "padding")
+
+  --[[ ★★ box-sizing（严格对齐原生 CSS）
+
+     ⚠️ 历史：这个属性原来写在 DEFAULTS 里但布局器【从未读过】，
+        而实际行为是 border-box（width 含 padding）——
+        与它声明的默认值 content-box 相反。
+        现按【原生语义】修正：
+
+       content-box（默认）：width/height 只算内容区，
+                            实际占位 = width + padding + border
+       border-box        ：width/height 含 padding，
+                            内容区 = width - padding
+
+     ⚠️ 这是一次【行为变更】：以前写 width:400px; padding:20px
+        得到 400 宽，现在得到 440（原生行为）。
+        需要旧的"宽度含 padding"语义时，显式写 box-sizing: border-box。
+  ]]--
+  local borderBox = (st["box-sizing"] == "border-box")
+
+  --[[ 把"声明的宽度/高度"换算成【内容区】尺寸。
+
+       content-box：声明值就是内容区 → 原样返回
+       border-box ：声明值含 padding  → 减去 padding ]]--
+  local function toContentW(declared)
+    if declared == nil then return nil end
+    if borderBox then
+      return declared - pad.left - pad.right
+    end
+    return declared
+  end
+  local function toContentH(declared)
+    if declared == nil then return nil end
+    if borderBox then
+      return declared - pad.top - pad.bottom
+    end
+    return declared
+  end
+
+  -- 内部统一用【内容区宽度】运算（cw），最后再转回外框
+  local function toBorderW(contentW)
+    if borderBox then return contentW end
+    return contentW + pad.left + pad.right
+  end
+
+  --[[ 宽度
+
+       ⚠️ 这里 w 全程表示【内容区宽度】（与原生 CSS 的 width 属性一致），
+          最后创建 box 时才转成外框宽度（见下方 borderW）。
+          这样 padding 才不会重复计入。 ]]--
   local w, wmode = len(st.width, baseW, fs)
   if widthOverride then
     w = widthOverride
@@ -253,22 +450,70 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
       w = intrinsicWidth(node, baseW, baseH)
       if baseW and w > baseW then w = baseW end
     else
-      w = baseW or 0          -- block：填满
+      --[[ block：填满父内容区
+
+           ★ 原生语义：auto 宽度下，元素外框 = 父内容区宽 - 左右 margin，
+             而内容区 = 外框 - padding（padding 从里面扣）。
+             所以这里要先把 padding 从可用宽度里减掉。 ]]--
+      w = (baseW or 0) - pad.left - pad.right
+      if w < 0 then w = 0 end
     end
+  else
+    -- ★ 显式 width：统一换算成内容区宽度
+    w = toContentW(w)
   end
-  -- min/max
+  -- min/max（原生：作用于内容区，这里已在内容区口径下比较）
   local minW = len(st["min-width"], baseW, fs)
   local maxW = len(st["max-width"], baseW, fs)
+  minW = toContentW(minW)
+  maxW = toContentW(maxW)
   if minW and w < minW then w = minW end
   if maxW and w > maxW then w = maxW end
 
-  -- 高度
+  -- 高度（同样是内容区口径；auto 时后面按内容撑开）
   local h, hmode = len(st.height, baseH, fs)
   local autoH = (hmode == "auto" or h == nil)
+  if h ~= nil then h = toContentH(h) end
 
-  -- ---- 边距 / 内边距 ----
-  local mar = boxEdges(st, baseW, "margin")
-  local pad = boxEdges(st, baseW, "padding")
+  --[[ ★ flex stretch：由父指定高度（覆盖 st.height）
+
+       语义：拉伸到本行高度，所以高度是【外框高度】，
+             内容区 = 外框 - 上下 padding。
+             ⚠️ 仍当 autoH 处理 —— 这样父的自动高度逻辑与不拉伸时一致，
+                不会因为拉伸值反向影响父的行高计算。 ]]--
+  if heightOverride then
+    h = heightOverride - pad.top - pad.bottom
+    if h < 0 then h = 0 end
+    autoH = false
+  end
+
+  -- 外框宽度（渲染与定位都用它）
+  local borderW = w + pad.left + pad.right
+
+  --[[ ★★ auto margin 水平居中（原生 CSS `margin: 0 auto`）
+
+       ⚠️ 这是原生 CSS 最常用的居中写法，之前静默失效（auto 变 0，
+          元素贴在左边）。
+
+       只在【正常流 + 非 absolute】时生效：
+       绝对定位元素没有"剩余空间"概念（它的宽度由 left/right 决定）。
+
+       ★ 语义：_autoMarginX 是【相对父内容区左边】的完整水平位置，
+         调用方用它【取代】mar.left，不要再叠加（踩过重复计算的坑）。
+  ]]--
+  if not isAbs then
+    local rawMar = boxEdgesRaw(st, baseW, "margin")
+    local offL, ml, mr = resolveAutoMarginH(rawMar.left, rawMar.right,
+                                            baseW or 0, w)
+    if offL then
+      mar.left, mar.right = ml, mr
+      node._autoMarginX = offL      -- 完整水平位置（取代 mar.left）
+    else
+      node._autoMarginX = nil
+    end
+  else
+    node._autoMarginX = nil
+  end
 
   -- ---- 定位原点 ----
   local x, y
@@ -292,8 +537,22 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
       y = parentContentY
     end
   else
-    -- 正常流：由父的排布决定，这里先给占位，父会覆盖
-    x = parentContentX + mar.left
+    --[[ 正常流：父排布决定实际位置。
+
+         ⚠️ 这里保留 mar.top 的叠加 —— 这是本函数与调用方的约定：
+            调用方传进来的 parentContentY 是"上一个元素的底边
+            （或父内容区顶端，用于第一个元素）"，
+            本函数负责加上自己的 margin-top。
+
+         所以调用方【不要】预先加 margin-top，否则会重复计算
+         （实测踩过：间距变成两倍）。 ]]--
+    --[[ ★ auto margin 时 _autoMarginX 是【完整水平位置】，
+         直接用它取代 mar.left（不要再叠加）。 ]]--
+    if node._autoMarginX then
+      x = parentContentX + node._autoMarginX
+    else
+      x = parentContentX + mar.left
+    end
     y = parentContentY + mar.top
   end
 
@@ -305,9 +564,15 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
     if t then y = y + t end
   end
 
-  -- 先创建 box（高度可能待定）
+  --[[ 先创建 box（高度可能待定）
+
+       ★ box.w / box.h 是【外框尺寸】（内容 + padding），
+         因为渲染层把它们直接写进 sizeDelta。
+         box.contentW / contentH 才是内容区。 ]]--
   local box = {
-    x = x, y = y, w = w, h = h or 0,
+    x = x, y = y,
+    w = borderW,
+    h = (h ~= nil) and (h + pad.top + pad.bottom) or 0,
     margin = mar, padding = pad,
     isAbs = isAbs,
     autoH = autoH,
@@ -315,7 +580,7 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
   node.box = box
 
   -- ---- 内容区 ----
-  local cw = w - pad.left - pad.right
+  local cw = w                       -- w 已是内容区宽度
   if cw < 0 then cw = 0 end
   local contentX = x + pad.left
   local contentY = y + pad.top
@@ -571,55 +836,139 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
           cx = cx + info.w + useGap
         end
 
-        -- 真实布局（等本行 maxH 算完后才能做 align-items）
-        for _, it in ipairs(lineItems) do
-          local cy = lineY + it.info.mar.top
-          if alignItems == "center" then
-            cy = lineY + (maxH - it.ch) / 2
-          elseif alignItems == "flex-end" then
-            cy = lineY + maxH - it.ch - it.info.mar.bottom
+        --[[ 真实布局（等本行 maxH 算完后才能做 align-items）
+
+             ⚠️ 原来这里有两个 bug：
+               ① center / flex-end 算出的 cy 之后，
+                  layoutNode 内部又加了一次 mar.top —— 垂直居中不准
+               ② stretch（默认值！）完全没实现 ——
+                  子项不写 height 时高度塌成内容高，
+                  而原生应为"拉伸到本行高度"
+
+             ★ align-items 的基准高度（原生语义）：
+
+                 · 容器有【确定高度】(height 非 auto) 且只有一行
+                     -> 拉伸/居中都以【容器内容区高度】为准
+                        （不是最高的子项！否则 stretch 永远不会生效）
+                 · 否则 -> 以本行最高的子项为准
+
+               ⚠️ 这里踩过：一开始用 maxH（最高子项）当基准，
+                  结果 200px 高的容器里，子项只能拉伸到 16.8px。
+            ]]--
+        local alignBaseH = maxH
+        if (not autoH) and #lines == 1 and cw >= 0 then
+          -- 容器高度确定 + 单行：用容器内容区高度
+          local containerContentH = box.h - pad.top - pad.bottom
+          if containerContentH > alignBaseH then
+            alignBaseH = containerContentH
           end
-          layoutNode(it.c, it.x + it.info.mar.left, cy, it.cwid,
-                     childBaseH, canvasW, canvasH, it.cwid)
         end
 
-        lineY = lineY + maxH
-        totalH = totalH + maxH
+        for _, it in ipairs(lineItems) do
+          local mt = it.info.mar.top
+          local mb = it.info.mar.bottom
+
+          -- 可用于放置的净高度（扣掉子项自己的上下 margin）
+          local slotH = alignBaseH - mt - mb
+          if slotH < 0 then slotH = 0 end
+
+          -- 基准位置（含 margin-top），layoutNode 会再加一次 mt？—— 不会，
+          -- 因为我们传的是"内容顶端上一格"，这里统一按下面公式给基准
+          local cy
+
+          -- 是否要拉伸：align-items 默认就是 stretch；子项可用 align-self 覆盖
+          local childAlign = (it.c.style and it.c.style["align-self"]) or alignItems
+          local cst = it.c.style or {}
+          local hasExplicitH = not (cst.height == nil or cst.height == "auto")
+
+          if childAlign == "center" then
+            cy = lineY + mt + (slotH - it.ch) / 2
+          elseif childAlign == "flex-end" then
+            cy = lineY + mt + (slotH - it.ch)
+          elseif childAlign == "stretch" and not hasExplicitH then
+            cy = lineY + mt
+          else
+            cy = lineY + mt          -- flex-start（默认）
+          end
+
+          --[[ ★ stretch：把子项高度撑到本行高度
+
+               做法：给它一个"高度覆盖"，让 layoutNode 按这个高度算。
+               仅在没有显式 height 时生效（见上面的 hasExplicitH）。
+
+               ⚠️ 不能直接改 node.box.h —— 那会被 layoutNode 覆盖。
+                  这里通过传一个 stretchH 参数实现（见 layoutNode 签名）。 ]]--
+          local stretchH = nil
+          if childAlign == "stretch" and not hasExplicitH and slotH > 0 then
+            stretchH = slotH
+          end
+
+          -- ⚠️ layoutNode 会自己加 mar.top，所以这里传的是"基准 - mt"
+          layoutNode(it.c, it.x + it.info.mar.left, cy - mt, it.cwid,
+                     childBaseH, canvasW, canvasH, it.cwid, stretchH)
+        end
+
+        --[[ ★ 行高以 alignBaseH 为准推进
+
+             因为 stretch 会把子项撑到 alignBaseH，
+             若还用 maxH 推进，父的 auto 高度会算小（子项溢出）。 ]]--
+        lineY = lineY + alignBaseH
+        totalH = totalH + alignBaseH
       end
 
       usedH = totalH
     end
 
   else
-    -- ---- 普通 block 流 ----
+    --[[ 普通 block 流
+
+         ★ 同时修掉两个原生语义问题：
+           ① auto margin 居中（之前 auto 当 0，元素贴左边）
+           ② 外边距折叠：相邻兄弟取【较大者】，不是相加
+
+         ⚠️ 与 layoutNode 的约定（这里踩过一次，务必看清）：
+              layoutNode 内部会自己加 mar.top。
+              所以这里传的是【基准位置】，不是最终位置：
+                · 第一个元素      -> 父内容区顶端
+                · 后续元素        -> 上一个元素的底边
+                                   + max(prevMB, curMT) - curMT
+              最后一个减去的 curMT 是因为 layoutNode 会再加回来，
+              这样净效果正好是 max(prevMB, curMT)。
+      ]]--
     local cy = contentY
-    local prevMarginBottom = 0
+    local prevMarginBottom = 0      -- 上一个元素的下外边距
+    local prevBottom = contentY     -- 上一个元素的底边（不含下外边距）
 
     for i = 1, #flowChildren do
       local c = flowChildren[i]
       local cst = c.style or {}
       local cmar = boxEdges(cst, cw, "margin")
 
-      -- 外边距折叠（简化：相邻取较大者）
-      local collapse = 0
+      -- 算出"基准位置"（layoutNode 会在此基础上加自己的 margin-top）
+      local baseY
       if i > 1 then
-        collapse = math.max(prevMarginBottom, cmar.top) - cmar.top
-        cy = cy + collapse
+        -- 折叠：相邻取较大者
+        local gap = math.max(prevMarginBottom, cmar.top)
+        baseY = prevBottom + gap - cmar.top
+      else
+        baseY = contentY
       end
 
       local childBaseW = cw - cmar.left - cmar.right
       if childBaseW < 0 then childBaseW = 0 end
 
-      local cb = layoutNode(c, contentX + cmar.left, cy + cmar.top,
+      -- ★ auto margin 的水平位置已在 layoutNode 内处理，这里不再叠加
+      local cb = layoutNode(c, contentX + cmar.left, baseY,
                             childBaseW, childBaseH, canvasW, canvasH)
 
-      local ch = cb.h + cmar.top + cmar.bottom
-      cy = cy + ch
+      -- 记下这个元素的底边（不含下外边距）供下一个元素折叠用
+      prevBottom = cb.y + cb.h
       prevMarginBottom = cmar.bottom
+      cy = prevBottom
     end
 
-    usedH = cy - contentY
-    if #flowChildren == 0 then usedH = 0 end
+    -- 总高度 = 最后一个元素底边 + 它的下外边距
+    usedH = (prevBottom - contentY) + prevMarginBottom
   end
 
   -- 绝对定位子节点
@@ -631,11 +980,20 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
 
   -- ---- 高度定案 ----
   if autoH then
+    -- usedH 是内容区高度；外框要加上下 padding
     box.h = usedH + pad.top + pad.bottom
-    local minH = len(st["min-height"], baseH, fs)
-    local maxH2 = len(st["max-height"], baseH, fs)
-    if minH and box.h < minH then box.h = minH end
-    if maxH2 and box.h > maxH2 then box.h = maxH2 end
+
+    -- min/max-height 作用于【内容区】（原生语义）
+    local minH = toContentH(len(st["min-height"], baseH, fs))
+    local maxH2 = toContentH(len(st["max-height"], baseH, fs))
+    if minH then
+      local outer = minH + pad.top + pad.bottom
+      if box.h < outer then box.h = outer end
+    end
+    if maxH2 then
+      local outer = maxH2 + pad.top + pad.bottom
+      if box.h > outer then box.h = outer end
+    end
   end
 
   box.contentX = contentX
@@ -644,25 +1002,70 @@ local function layoutNode(node, parentContentX, parentContentY, parentContentW, 
   box.contentH = box.h - pad.top - pad.bottom
   if box.contentH < 0 then box.contentH = 0 end
 
+  --[[ ★★ transform 里的百分比要按【元素自身盒尺寸】重算
+
+       ⚠️ 原生语义：translateX(50%) = 自身宽度的 50%。
+          而样式计算阶段还不知道盒子尺寸，原来只能按 0 处理 ——
+          于是 translateX(50%) 得到 50px（把 50% 当成了 50）。
+          这里在布局完成后重算一次，基准就是刚算出的外框尺寸。
+
+       ★ 只含百分比时才重算（否则每帧多一次解析，纯属浪费）。
+  ]]--
+  if st.transform and st.transform ~= "none"
+     and type(st.transform) == "string"
+     and st.transform:find("%%") then
+    st._transform = style.parseTransform(st.transform, box.w, box.h, fs)
+  end
+
   return box
 end
 
---[[ 计算整棵树的布局 ]]--
+--[[ 计算整棵树的布局。
+
+     ⚠️ canvasW/H 这里是【逻辑设计尺寸】（如 1600x900），
+        不是真实画布。多屏幕比例的适配缩放由渲染层施加，
+        布局全程在设计坐标系里算 —— 否则会被缩放两次。 ]]--
 function L.compute(root, canvasW, canvasH)
   canvasW = canvasW or 1600
   canvasH = canvasH or 900
 
-  -- 从 root 的每个子节点开始（root 自身当作画布）
+  -- ★ 视口单位（vw/vh/vmin/vmax）按设计尺寸换算
+  L.setViewportBase(canvasW, canvasH)
+
+  --[[ 从 root 的每个子节点开始（root 自身当作画布）
+
+       ★ 根级子节点也要走【上一元素底边 + 折叠后的间距】这套规则，
+         否则直接挂在画布下的元素会丢掉外边距（与嵌套时行为不一致，
+         实测：margin-bottom:30px / margin-top:10px 的两个根级元素
+         间距变成 30 而不是 50）。 ]]--
   local cy = 0
+  local prevMarginBottom = 0
+  local prevBottom = 0
+
   for i = 1, #root.children do
     local c = root.children[i]
     if c:isElement() and c.style and c.style.display == "none" then
       c.box = { x = 0, y = 0, w = 0, h = 0, hidden = true,
                 contentX = 0, contentY = 0, contentW = 0, contentH = 0 }
     else
-      layoutNode(c, 0, cy, canvasW, canvasH, canvasW, canvasH)
+      local cst = c.style or {}
+      local cmar = boxEdges(cst, canvasW, "margin")
+
+      local baseY
+      if i > 1 then
+        local gap = math.max(prevMarginBottom, cmar.top)
+        baseY = prevBottom + gap - cmar.top
+      else
+        baseY = 0
+      end
+
+      layoutNode(c, 0, baseY, canvasW, canvasH, canvasW, canvasH)
+
+      -- ★ auto margin 的水平位置已在 layoutNode 内处理，这里不再叠加
       if c.box and not c.box.isAbs then
-        cy = cy + c.box.h
+        prevBottom = c.box.y + c.box.h
+        prevMarginBottom = cmar.bottom
+        cy = prevBottom
       end
     end
   end
