@@ -196,6 +196,11 @@
 -- ★★ 选择要跑的模块（改这里）
 --=============================================================================
 
+--[[ ★★ 选择要跑的模块（改这里）
+
+     ⚠️ 跑完记得改回来 —— `tests/test_probe_align.lua` 依赖
+        这里的默认值是 "align"（它自己不改 ACTIVE）。
+        忘了改回会让那个套件整片变红。 ]]--
 local ACTIVE = "align"
 
 --=============================================================================
@@ -1824,6 +1829,509 @@ M.fit.before = function(ui)
 end
 
 --=============================================================================
+-- 模块 fitroot ——  ★★★ 根控件 / 留边条 取证（R33 未解问题的专用探针）
+--=============================================================================
+--[[ 目的：回答一个【本机仿真复现不出】的问题。
+
+      ══════════════════════════════════════════════════════════════════
+      要查的现象（手机 2532x1170 真机截图，逐像素量得）
+      ══════════════════════════════════════════════════════════════════
+
+        · 内容区实际跨度 x 217..2314（应 226..2306）
+        · 留边条只覆盖 87..214 / 2318..2445（应 0..226 / 2306..2532）
+          -> 两侧各露出 87px 游戏画面
+        · 内容底边落在 y≈1326，而屏幕只有 1170
+          -> 底部约 155px 被裁掉
+        · 退出按钮(设计 y20..74) / 分数(60..98) / 跳跃按钮(740..860)
+          三者都跑到屏幕外 -> 完全不可见
+
+      ══════════════════════════════════════════════════════════════════
+      ★★★ 本案已破（R34）—— 下面是最终结论
+      ══════════════════════════════════════════════════════════════════
+
+        真机（2560x1000 屏）实测：
+          屏幕   2560 x 1000   比例 2.5600
+          画布   2184 x  900   比例 2.4267      <- 两者比例【不同】
+          根控件 localScale = 1.0100（正确，§6.3 要求的值）
+          实测 kx = 1.1225   ky = 1.1186        <- kx ≈ ky，【没有】拉伸
+
+        ★ 早期曾据一张手机截图推出"kx≈1.311 vs ky≈1.654（非等比）"，
+          那是【误判】—— 把会动的云/恐龙当成了静态量尺。
+          ★★ 教训：量尺必须用【静态】元素。
+
+        真正的因果链：
+          引擎按【高度】把画布铺满屏幕：1000/900 = 1.11111
+            -> 画布宽只有 2184 x 1.11111 = 2427，比屏幕 2560 窄
+            -> 引擎自己左右各留 67px（在【画布之外】，库画不到）
+          库这边 offsetX=292 是【正确】的（画布比设计尺寸宽）
+          最后 rootScale 1.01 把 900 高的内容放大到 1010 -> 上下各丢 5px
+
+      ══════════════════════════════════════════════════════════════════
+      本模块怎么查
+      ══════════════════════════════════════════════════════════════════
+
+        ① 读回【根控件自己】的 sizeDelta / anchoredPosition / anchor / pivot
+           —— 库只写 sizeDelta，读写 localScale 是**编辑器手工设的**
+              （§6.3 要求 1.01）。若那里不是 1.0/1.01，整体缩放就变了。
+
+        ② 打印库算出的适配参数 + 留边条实际字段，
+           再和截图里量到的像素对齐 —— 判断是谁多缩了一次。
+
+        ③ 页面里画【两条已知长度的尺子】：
+             · 一条纯水平（1600px 宽）
+             · 一条纯垂直（900px 高）
+           截图量这两条的实际像素长度，直接算出 kx 与 ky。
+           ★ kx != ky 就是"被拉伸了"的铁证。
+
+      ⚠️ 本模块必须【自己建 ui】（带 designSize + fit），
+         不能复用主流程那个 —— 主流程没传 designSize，
+         留边路径根本不会被走到。
+    ]]--
+
+M.fitroot = {}
+
+M.fitroot.DESIGN = { 1600, 900 }
+
+--[[ ★★ 本模块必须自己带上适配参数 —— 否则留边路径不会被走到。
+
+     ⚠️ fitBg 取页面底色：留边不填色会露出游戏画面（草地/天空），
+        看起来像渲染 bug，也就没法判断"留边条到底建没建"。 ]]--
+M.fitroot.uiOpts = {
+  designSize = { 1600, 900 },
+  fit        = "letterbox",
+  fitBg      = "#10141c",
+}
+
+--[[ 页面：两条尺子 + 四角标记。
+
+     判读（截图量像素）：
+       · 水平尺（红，1600px 设计宽）：量它左右端点的屏幕 x 差 -> kx
+       · 垂直尺（绿， 900px 设计高）：量它上下端点的屏幕 y 差 -> ky
+       · kx 与 ky 【应当相等】。不等 = 被非等比拉伸（库明令禁止）
+       · 黄块在 (0,0) 与 (1600,900)：应正好在内容区左上 / 右下角
+         -> 若跑到屏幕外，说明内容比屏幕大（= 被裁掉的原因） ]]--
+M.fitroot.CSS = [[
+<style>
+  .stage { width: 1600px; height: 900px; background-color: #10141c; }
+
+  /* 水平尺：设计宽 1600，高 8 —— 量 kx */
+  .ruler-h { position: absolute; left: 1px; top: 1px;
+             width: 1598px; height: 8px; background-color: #ff4444; }
+
+  /* 垂直尺：设计高 898，宽 8 —— 量 ky */
+  .ruler-v { position: absolute; left: 1px; top: 1px;
+             width: 8px; height: 898px; background-color: #44ff44; }
+
+  /* 角块：内容区左上 / 右下 */
+  .corner-tl { position: absolute; left: 1px;    top: 1px;
+               width: 80px; height: 80px; background-color: #ffd23f; }
+  .corner-br { position: absolute; left: 1519px; top: 819px;
+               width: 80px; height: 80px; background-color: #ffd23f; }
+
+  /* 中央参考块（设计 800,450 中心），看它落在屏幕哪里 */
+  .mid { position: absolute; left: 780px; top: 430px;
+         width: 40px; height: 40px; background-color: #3a7bd5; }
+
+  /* 文字：框高 38 >= 18 x 1.9 ✓；显式背景色 + 居中（两条硬性约束） */
+  .lbl { position: absolute; left: 620px; top: 100px;
+         width: 360px; height: 38px;
+         font-size: 18px; color: #ffffff; background-color: #10141c;
+         text-align: center; }
+</style>
+]]
+
+function M.fitroot.build()
+  return ([[
+<div class="stage">
+  <div class="ruler-h"></div>
+  <div class="ruler-v"></div>
+  <div class="corner-tl"></div>
+  <div class="corner-br"></div>
+  <div class="mid"></div>
+  <div class="lbl">RULER 1600 x 900</div>
+</div>
+]] ) .. M.fitroot.CSS
+end
+
+--[[ ★ 读控件字段的工具。
+
+     ⚠️ 一律用 pcall 包住：真机上读不存在的字段会报错，
+        而探针的意义就是【读回事实】，不能因为一个字段读不到就整段挂掉。 ]]--
+local function tryField(ctrl, name)
+  if not ctrl then return nil, "无控件" end
+  local ok, v = pcall(function() return ctrl[name] end)
+  if not ok then return nil, "读取异常" end
+  if v == nil then return nil, "nil" end
+  return v, nil
+end
+
+local function fmtField(ctrl, name)
+  local v, err = tryField(ctrl, name)
+  if v == nil then return string.format("%-22s = (读不到: %s)", name, err or "nil") end
+  local t = type(v)
+  if t == "number" then
+    return string.format("%-22s = %.4f", name, v)
+  elseif t == "table" then
+    -- Color 之类的表：尽量打分量
+    local parts = {}
+    for _, k in ipairs({ "r", "g", "b", "a" }) do
+      if v[k] ~= nil then parts[#parts + 1] = k .. "=" .. tostring(v[k]) end
+    end
+    return string.format("%-22s = {%s}", name,
+        #parts > 0 and table.concat(parts, ",") or "table")
+  end
+  return string.format("%-22s = %s", name, tostring(v))
+end
+
+--[[ ★ after 钩子：在页面渲染完成后读回根控件事实。
+
+     ⚠️ 用 after 而不是 before：控件是渲染时才建出来的，
+        before 阶段 root 的字段还没被库写过（读到的是编辑器旧值）。 ]]--
+M.fitroot.after = function(ui)
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ① 根控件（Root）自己的字段 —— 库只管 sizeDelta，缩放是编辑器手工设的")
+  log("  ══════════════════════════════════════════════════════")
+
+  local root = ui.rootControl
+  if not root then
+    warn("ui.rootControl 为空，读不到根控件")
+  else
+    for _, name in ipairs({
+      "sizeDeltaX", "sizeDeltaY",
+      "anchoredPositionX", "anchoredPositionY",
+      "anchorMinX", "anchorMinY", "anchorMaxX", "anchorMaxY",
+      "pivotX", "pivotY",
+      -- ★★ 这两个是关键：库【改不了】localScale，只能编辑器里设
+      "localScaleX", "localScaleY",
+    }) do
+      log("     " .. fmtField(root, name))
+    end
+
+    log("")
+    log("     ★★ 判读：localScale 必须是 1.01（§6.3）。")
+    log("        若为 1.0  -> 四周会有一圈缝（已知问题）")
+    log("        若明显不是 1.0x -> 整体缩放被改变，本轮的'两个 k'很可能就是它")
+  end
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ② 库算出的适配参数（这份应当与截图量到的对齐）")
+  log("  ══════════════════════════════════════════════════════")
+
+  local r = ui.rendered
+  local f = r and r.fit
+  if not f then
+    warn("rendered.fit 为空 —— designSize / fit 没传到！")
+  else
+    local fitMod = require('webui_fit')
+    log("     " .. fitMod.describe(f))
+    log(string.format("     内容应占屏幕 x %.1f .. %.1f", f.offsetX, f.offsetX + f.scaledW))
+    log(string.format("     内容应占屏幕 y %.1f .. %.1f", f.offsetY, f.offsetY + f.scaledH))
+    log("")
+    log(string.format("     预期 kx = ky = %.5f（等比，两个必须相等）", f.k))
+  end
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ③ 留边条（backdrop）实际写进去的字段")
+  log("  ══════════════════════════════════════════════════════")
+
+  local bd = r and r._backdrop
+  if not bd or #bd == 0 then
+    log("     （没有留边条 —— 说明判定为无留边，或 fitBg 没传）")
+  else
+    local names = { "top", "bottom", "left", "right" }
+    for i, c in ipairs(bd) do
+      log(string.format("     ── 边条 %d (%s) ──", i, names[i] or "?"))
+      for _, name in ipairs({
+        "sizeDeltaX", "sizeDeltaY",
+        "anchoredPositionX", "anchoredPositionY",
+        "active", "bgColor",
+      }) do
+        log("        " .. fmtField(c, name))
+      end
+    end
+    log("")
+    log("     ★★ 判读：本机仿真算出手机 2532x1170 上应为")
+    log("        226 x 1170 @ dx = ∓1153（即覆盖 0..226 / 2306..2532）")
+    log("        若真机读到的是别的宽度 -> 就是'两侧没填充'的根因")
+  end
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ④ 页面元素的【设计坐标】布局结果（库侧的账）")
+  log("  ══════════════════════════════════════════════════════")
+
+  local wanted = {
+    ["ruler-h"]   = "水平尺（设计 1,1 1598x8）",
+    ["ruler-v"]   = "垂直尺（设计 1,1 8x898）",
+    ["corner-tl"] = "左上角块（设计 1,1 80x80）",
+    ["corner-br"] = "右下角块（设计 1519,819 80x80）",
+    ["mid"]       = "中央块（设计 780,430 40x40）",
+  }
+  local domMod = require('webui_dom')
+  domMod.walk(ui.doc, function(n)
+    if not (n:isElement() and n.attrs and n.attrs.class) then return end
+    local cls = n.attrs.class
+    if wanted[cls] and n.box then
+      log(string.format("     %-24s 设计 x %7.1f y %7.1f   %6.1f x %6.1f",
+          cls, n.box.x, n.box.y, n.box.w, n.box.h))
+    end
+  end)
+  log("")
+  log("     ★ 判读：这些是【设计坐标】，乘以 k 再加留边才是屏幕坐标。")
+  log("        例：水平尺 1598 设计 px -> 屏幕上应为 1598 x k 像素宽。")
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ⑤ ★★★ 怎么判读（截图 + 量像素）")
+  log("  ══════════════════════════════════════════════════════")
+  log("     红尺 = 水平 1598 设计 px")
+  log("     绿尺 = 垂直  898 设计 px")
+  log("     黄块 = 内容区左上 / 右下角")
+  log("     蓝块 = 内容区中心")
+  log("")
+  log("     ① 量红尺两端屏幕 x 差 -> kx = 差值 / 1598")
+  log("     ② 量绿尺两端屏幕 y 差 -> ky = 差值 /  898")
+  log("     ③ ★ kx 与 ky 【若不相等】= 被非等比拉伸（库明令禁止）")
+  log("        这一步直接判定'两个 k'那个异常的归属")
+  log("     ④ 黄块若不在内容区角上、或跑出屏幕 -> 内容尺寸/位置算错了")
+  log("     ⑤ 蓝块若不在屏幕正中 -> 居中有问题")
+  log("")
+  log("     ★★ 请把 ③ 的两个数与 ①②③ 的读回表【一起】贴出来。")
+  log("============================================================")
+end
+
+--=============================================================================
+-- 模块 fitfill ——  ★★★ "画布到底铺满了没有？"（R35）
+--=============================================================================
+--[[ 目的：**眼见为实**地判定画布是否被铺满，并区分两种"没铺满"。
+
+      ══════════════════════════════════════════════════════════════════
+      为什么要单独做一个模块
+      ══════════════════════════════════════════════════════════════════
+
+        R34 的结论是"库已经铺满画布，剩下的是引擎自己的 pillarbox"。
+        但那是【算出来的】。本模块把它变成【看得见】的：
+
+          画一整块纯色把【整个画布】盖住，然后数屏幕四边还剩多少
+          非该色的像素 —— 剩下的就是"铺不到"的部分。
+
+      ══════════════════════════════════════════════════════════════════
+      关键：怎么让一块色铺满【整个画布】
+      ══════════════════════════════════════════════════════════════════
+
+        画布尺寸是运行时才知道的（game.GetUICanvasSize()）。
+        CSS 里用 `100vw` / `100vh` —— 而本库的 vw/vh 视口
+        **就是设计尺寸**（§6.5）。
+
+        所以：**把 designSize 设成"等于当前画布"**，
+        则 `100vw x 100vh` 正好盖满画布，且库的留边归零
+        （offsetX=0, offsetY=0，连留边条都不会建）。
+
+        ★ 本模块就是在运行时读画布 -> 用它当 designSize -> 铺一块色。
+          于是"块色 = 画布"恒成立，屏幕四边剩下的必然是画布外的区域。
+
+      ══════════════════════════════════════════════════════════════════
+      判读
+      ══════════════════════════════════════════════════════════════════
+
+        截图后看：纯色块之外还有没有别的画面？
+          · 完全没有        -> 画布 == 屏幕可视区，已全屏铺满
+          · 左右各有竖条     -> 引擎 pillarbox（库无法覆盖）
+          · 上下各有横条     -> 引擎 letterbox（库无法覆盖）
+          · 只有一两条边有   -> 说明画布比例与屏幕比例不一致
+
+        ★ 同时会打印【数值预测】：按画布比例算出两侧应剩多少 px，
+          和你量到的对一下就知道是不是"引擎留的"。
+    ]]--
+
+M.fitfill = {}
+
+--[[ 页面：一整块纯色 + 四角标记 + 边框 + 中心十字。
+
+     ⚠️ 尺寸用 100vw / 100vh（= 设计尺寸，本模块令其等于画布），
+        这样块色恒等于画布，不需要知道具体数字。 ]]--
+M.fitfill.CSS = [[
+<style>
+  /* 铺满画布的底：100vw x 100vh，而 vw/vh 视口 = designSize = 画布 */
+  .fill { position: absolute; left: 0px; top: 0px;
+          width: 100vw; height: 100vh; background-color: #20c060; }
+
+  /* 四边细条：直接标出画布的四条边在哪（2px 粗，颜色醒目） */
+  .e-top    { position: absolute; left: 0px; top: 0px;
+              width: 100vw; height: 2px; background-color: #ff2020; }
+  .e-bottom { position: absolute; left: 0px; bottom: 0px;
+              width: 100vw; height: 2px; background-color: #ff2020; }
+  .e-left   { position: absolute; left: 0px; top: 0px;
+              width: 2px; height: 100vh; background-color: #2040ff; }
+  .e-right  { position: absolute; right: 0px; top: 0px;
+              width: 2px; height: 100vh; background-color: #2040ff; }
+
+  /* 中心十字：画布正中（应当也在屏幕正中） */
+  .cx { position: absolute; left: 50%; top: 50%;
+        width: 60px; height: 4px; background-color: #000000; }
+  .cy { position: absolute; left: 50%; top: 50%;
+        width: 4px; height: 60px; background-color: #000000; }
+
+  /* 文字：框高 44 >= 字号 20 x 1.9 = 38 ✓；显式背景 + 居中 */
+  .lbl { position: absolute; left: 50%; top: 20%;
+         width: 620px; height: 44px; margin-left: -310px;
+         font-size: 20px; color: #ffffff; background-color: #101820;
+         text-align: center; }
+
+  /* 角块：画布四角（看它们是否落在屏幕四角） */
+  .c-tl { position: absolute; left: 0px;  top: 0px;
+          width: 90px; height: 90px; background-color: #ffd23f; }
+  .c-tr { position: absolute; right: 0px; top: 0px;
+          width: 90px; height: 90px; background-color: #ffd23f; }
+  .c-bl { position: absolute; left: 0px;  bottom: 0px;
+          width: 90px; height: 90px; background-color: #ffd23f; }
+  .c-br { position: absolute; right: 0px; bottom: 0px;
+          width: 90px; height: 90px; background-color: #ffd23f; }
+</style>
+]]
+
+--[[ ★★ designSize 在运行时按画布确定（见 M.fitfill.uiOptsFor）。
+
+     ⚠️ 这里不能用常量 —— 画布尺寸是每台设备不同的，
+        写死就失去意义了。 ]]--
+function M.fitfill.build()
+  return ([[
+<div class="fill"></div>
+<div class="e-top"></div><div class="e-bottom"></div>
+<div class="e-left"></div><div class="e-right"></div>
+<div class="cx"></div><div class="cy"></div>
+<div class="c-tl"></div><div class="c-tr"></div>
+<div class="c-bl"></div><div class="c-br"></div>
+<div class="lbl">FILL 100vw x 100vh  (= canvas)</div>
+]] ) .. M.fitfill.CSS
+end
+
+--[[ ★★★ 关键：把 designSize 设成【当前画布尺寸】。
+
+     这样 100vw/100vh 正好盖满画布，且库的留边归零。
+     于是"绿色块 = 画布"，屏幕四边剩下来的必然是画布之外的区域。
+
+     ⚠️ 只有本模块这么做；其它模块不受影响。
+        返回 nil 表示读不到画布（此时退回 1600x900 并告警）。 ]]--
+function M.fitfill.uiOptsFor()
+  local util = require('webui_util')
+  local cw, ch = util.canvasSize(true)
+  if not cw or not ch or cw <= 0 or ch <= 0 then
+    warn("读不到画布尺寸，退回 1600x900（本模块结论将不可靠）")
+    return { designSize = { 1600, 900 }, fit = "letterbox", fitBg = "#000000" }
+  end
+  return {
+    designSize = { cw, ch },     -- ★ 等于画布 -> 100vw/100vh 铺满画布
+    fit        = "letterbox",
+    fitBg      = "#000000",
+  }
+end
+
+M.fitfill.after = function(ui)
+  local util    = require('webui_util')
+  local fitMod  = require('webui_fit')
+
+  local cw, ch = util.canvasSize(true)
+  local dw = M.fitfill.uiOptsFor().designSize[1]
+  local dh = M.fitfill.uiOptsFor().designSize[2]
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ① 环境事实")
+  log("  ══════════════════════════════════════════════════════")
+  log(string.format("     画布 GetUICanvasSize() = %.4f x %.4f  (比例 %.5f)",
+      cw, ch, cw / ch))
+  log(string.format("     本模块 designSize     = %g x %g   ★ 刻意等于画布", dw, dh))
+  log("")
+  log("     ★ 因为 designSize == 画布，所以：")
+  log("         · 100vw x 100vh 正好盖满【整个画布】")
+  log("         · 库的留边应当为 0（offsetX = offsetY = 0）")
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ② 库算出的适配参数（应当全 0）")
+  log("  ══════════════════════════════════════════════════════")
+  local r = ui.rendered
+  local f = r and r.fit
+  if not f then
+    warn("rendered.fit 为空 —— designSize / fit 没传到！")
+  else
+    log("     " .. fitMod.describe(f))
+    if math.abs(f.offsetX) < 0.5 and math.abs(f.offsetY) < 0.5 then
+      log("     ✅ 留边为 0 —— 内容铺满画布（这正是我们要验的）")
+    else
+      log(string.format("     ⚠️ 留边不为 0（%.1f, %.1f）—— 与预期不符，请检查",
+          f.offsetX, f.offsetY))
+    end
+  end
+
+  -- 留边条：designSize==画布 时不该建
+  local bd = r and r._backdrop
+  log("")
+  log(string.format("     留边条数量 = %d  %s",
+      bd and #bd or 0,
+      (not bd or #bd == 0) and "（应为 0 ✅）" or "（⚠️ 不该建出来）"))
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ③ 页面元素的实际尺寸（= 画布？）")
+  log("  ══════════════════════════════════════════════════════")
+
+  local domMod = require('webui_dom')
+  local want = { fill = "全屏底色块（100vw x 100vh）" }
+  domMod.walk(ui.doc, function(n)
+    if not (n:isElement() and n.attrs and n.attrs.class) then return end
+    local cls = n.attrs.class
+    if want[cls] and n.box then
+      log(string.format("     %-6s = %.1f x %.1f  (画布 %.1f x %.1f)",
+          cls, n.box.w, n.box.h, cw, ch))
+      local okw = math.abs(n.box.w - cw) < 1
+      local okh = math.abs(n.box.h - ch) < 1
+      log(string.format("           宽 %s / 高 %s",
+          okw and "✅ 等于画布" or "❌ 不等于画布",
+          okh and "✅ 等于画布" or "❌ 不等于画布"))
+    end
+  end)
+
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ④ ★★★ 数值预测：屏幕上应该剩多少（画布之外的部分）")
+  log("  ══════════════════════════════════════════════════════")
+  log("     这一节把'引擎把画布放进屏幕'的方式算出来。")
+  log("     屏幕尺寸探针读不到，所以【需要你告诉我屏幕分辨率】。")
+  log("")
+  log("     算法（假设屏幕 = Sw x Sh）：")
+  log("       引擎按高度铺满 -> 缩放 s = Sh / 画布高")
+  log("       画布在屏幕上的宽 = 画布宽 x s")
+  log("       若该宽 < Sw  -> 左右各剩 (Sw - 画布宽 x s) / 2")
+  log("       若该宽 > Sw  -> 内容被裁（不该发生）")
+  log("")
+  log("     ★ 把屏幕分辨率代进去，就知道两侧那圈是不是引擎留的。")
+  log("")
+  log("  ══════════════════════════════════════════════════════")
+  log("  ⑤ 判读（截图）")
+  log("  ══════════════════════════════════════════════════════")
+  log("     绿色块 = 整个画布（100vw x 100vh）")
+  log("     红条   = 画布上/下边    蓝条 = 画布左/右边")
+  log("     黄块   = 画布四角        黑十字 = 画布正中")
+  log("")
+  log("     ① 绿块之外【完全没有】其它画面 -> 画布 == 可视区，已全屏铺满")
+  log("     ② 绿块左右各有竖条（能看到游戏画面/纯色）")
+  log("          -> 引擎 pillarbox，【库无法覆盖】（那在画布之外）")
+  log("     ③ 绿块上下各有横条 -> 引擎 letterbox，同理无法覆盖")
+  log("     ④ 黄块是否正好贴在屏幕四角？")
+  log("          贴住 -> 画布边界 == 屏幕边界")
+  log("          没贴住 -> 差多少就是'铺不到'多少")
+  log("     ⑤ 黑十字是否在屏幕正中 -> 居中是否正常")
+  log("")
+  log("     ★★ 请把【截图】+【屏幕分辨率】+ ④ 的读数一起贴出来。")
+  log("============================================================")
+end
+
+--=============================================================================
 -- 主流程
 --=============================================================================
 
@@ -1832,7 +2340,8 @@ end
      ⚠️ 已移除：text / mask / glyph / clip / mount
         —— 归档在 docs/探针模块归档.md，需要时按那里重建。
   ]]--
-local MODULES = { key = M.key, perf = M.perf, align = M.align, fit = M.fit }
+local MODULES = { key = M.key, perf = M.perf, align = M.align, fit = M.fit,
+                  fitroot = M.fitroot, fitfill = M.fitfill }
 
 local root, ui, bound, retryCount = nil, nil, false, 0
 
@@ -1875,11 +2384,43 @@ local function boot()
   root = game.FindClientUIRoot(ROOT_NAME)
   if not root then return false end
 
-  ui = require('webui').new({
-    root = root,
-    prefabs = PREFABS,
-    handlers = {},
-  })
+  --[[ ★★ 让模块能指定自己的 ui 选项（R33 加）。
+
+       ⚠️ 为什么需要：`fitroot` 模块要验【留边路径】，
+          必须建 ui 时就传 designSize + fit + fitBg ——
+          否则渲染层根本不会算 k / 建留边条，读了也是白读。
+
+       没有 uiOpts 的模块（key/perf/align）行为完全不变。
+
+       ★★ 两种写法（R35 补）：
+            `mod.uiOpts`    静态表（fitroot 用）
+            `mod.uiOptsFor()` 运行时函数（fitfill 用 —— 它要把
+                             designSize 设成【当前画布】，只能运行时算） ]]--
+  local uiOpts = { root = root, prefabs = PREFABS, handlers = {} }
+  local mod = MODULES[ACTIVE]
+  local extra
+  if mod and type(mod.uiOptsFor) == "function" then
+    local okF, res = pcall(mod.uiOptsFor)
+    if okF and type(res) == "table" then
+      extra = res
+    else
+      warn("uiOptsFor() 失败: " .. tostring(res))
+    end
+  elseif mod and type(mod.uiOpts) == "table" then
+    extra = mod.uiOpts
+  end
+  if extra then
+    for k, v in pairs(extra) do uiOpts[k] = v end
+    log("  （本模块自带 ui 选项："
+        .. (uiOpts.designSize
+            and string.format("designSize=%gx%g fit=%s",
+                  uiOpts.designSize[1], uiOpts.designSize[2],
+                  tostring(uiOpts.fit))
+            or "见模块定义")
+        .. "）")
+  end
+
+  ui = require('webui').new(uiOpts)
 
   log("")
   log("============================================================")

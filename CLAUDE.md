@@ -11,7 +11,7 @@ lib/webui/   库本体（16 模块）—— 交付物，改动要谨慎。
                整个目录可直接拷进游戏工程，不需要构建改名。
 deploy/      示例与统一真机探针 probe.lua
 docs/        文档（引擎能力与限制.md = 引擎边界；小恐龙游戏实现.md = 游戏设计）
-tests/       47 个测试套件
+tests/       49 个测试套件
 tools/       安装 / 打包 / 验证 / 真机仿真 mock
 ```
 
@@ -61,6 +61,10 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 | **必须有名为 `Root` 的容器节点 + 脚本挂在其下** | 库靠 `FindClientUIRoot("Root")` 找挂载点；缺了/名字不对 → **界面空白且无日志** |
 | **★★ 隐藏但以后要点击的界面，不能用 `display:none`** | 子树被跳过 → 控件不建 → **事件根本不绑定**。"显示出来"后按钮点了毫无反应且无日志。要用 class 移出画布隐藏（`node:hide()` 同样是 `display:none`，且 `show()` 救不回来）。见 `docs/引擎能力与限制.md` §9.1 |
 | **`box-sizing` 是原生语义** | 默认 `content-box`：`width:200px; padding:20px` → **外框 240**。要旧的"宽度含 padding"语义必须显式写 `box-sizing: border-box`。曾经声明与行为相反（布局器根本没读这个属性） |
+| **★★ 键盘键与手柄键是两组独立枚举** | `KeyboardJumpKeyDown` 与 `ControllerJumpKeyDown` **互不相干**，只绑一个另一样设备**完全不能玩**且不报错（踩过：手柄按 A 不跳）。要绑 `jump`/`jumpUp` **和** `padJump`/`padJumpUp`。见 `docs/引擎能力与限制.md` §5.2.1 |
+| **★★ 手机端没有按键，只能用可点按钮** | 引擎只有键盘/手柄两组按键枚举，触摸发不出 Key 事件 → **手机能玩的唯一入口是屏幕上的 `onclick` 按钮**。该按钮要排在弹窗之后（DOM 顺序定图层），且暂停时必须忽略点击。见 §5.2.2 |
+| **★★★ 图层用 DOM 顺序，别用 `z-index`** | 同父内**后出现者在上** —— 排到最后即可。`SetSiblingIndex` 的索引是**绝对槽位**（`0..子控件数-1`），库的 z-index 实现只给"有 z-index 的节点"从 0 编号 → 会与未编号的兄弟抢位、被压到底层 → **"看不见但能点"**（触发条件：同父下 ≥2 个带 z-index 的兄弟）。★ 曾试图改库"对全部子控件重编号"：本地全绿 + 突变会红，**但真机白屏**，已回退。见 §5.4 |
+| **★★ 按键"部分绑定失败"必须报出来** | `bindKeys` 返回 `(okCount, failedList)`；只判 `n == 0` 挡不住部分失败（键盘绑上、手柄没绑 → `n = 2` 一声不吭）。**测试替身少一个枚举成员，就足以让"某设备完全不能用"在本地全绿** |
 | **`vw`/`vh` 的视口 = 逻辑设计尺寸** | 不是真实画布。因为布局全程在设计坐标系算，适配缩放由渲染层统一施加（见 `webui_fit.lua`）。用真实画布会被缩放两次 |
 
 完整清单与证据：`docs/引擎能力与限制.md`
@@ -77,7 +81,7 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 
 ## 测试
 
-47 个套件，路径自包含（任何目录可跑）。关键回归：
+49 个套件，路径自包含（任何目录可跑）。关键回归：
 
 - `test_layout` — 盒模型 / flex（含 column 宽度语义、margin 计算）
 - `test_clip` — 裁剪容器 / 换图 / 遮罩
@@ -95,15 +99,19 @@ lua tools/verify_external.lua "<external_lua_file 路径>"
 - `test_probe_align` — ★ align 探针自检（确认真机能拿到正确的读回表）
 - `test_align_enum` — ★★ **水平对齐枚举真名**（用 `tests/enum_kit.lua` 按真机形态造 Enum，扁平名为 nil）
 - `test_fit` — ★★ **多屏幕比例适配算法**（16:9 / 16:10 / 4:3 / 21:9 的 k 与留边数值验算 + 等比性 + 光标反变换 + `canvasSize` 缓存可刷新）
-- `test_fit_render` — ★★ **适配的渲染集成**（缩放真的写进控件字段、留边边条位置、16:9 向后兼容、换分辨率重算）
+- `test_fit_render` — ★★ **适配的渲染集成**（缩放真的写进控件字段、留边边条位置、16:9 向后兼容、换分辨率重算；第 9 节 = **布局视口基准必须是设计尺寸**，改回 `util.canvasSize()` 会红 4 条）
+- `test_fit_fill` — ★★★ **画布铺满的等价命题**（R35）：`designSize == 画布` 时 ①留边归零 ②**连留边条都不建** ③`100vw/100vh` = 画布；三种画布均成立，并配**反例对照**（1600 设计 @ 2184 画布 → 留边 292）防"永远归零"式假实现
 - `test_css_native` — ★★ **对齐原生 CSS 的语义**（vw/vh/vmin/vmax、calc() 含混合单位、margin:auto 居中、外边距折叠取较大者、box-sizing 两模式、flex align-items/stretch/align-self、无效值必须告警）
 - `test_grid` — ★★ **CSS Grid 布局**（轨道解析含 repeat()/fr/%，自动排列与换行，span 跨轨道，显式 `2 / 4` 定位，gap 简写两值，轨道内对齐，以及"grid 不能破坏 flex/block"的回归）
+- `test_input` — ★★ **按键绑定**（键名解析、事件不被吞、只绑一个挂载点，以及 §6b：**部分绑定失败必须报出失败的键名**）
+- `test_demo_dino` — ★★★ **手柄 / 手机端能玩**（第 9 节：手柄按 A 真的起跳、点手机按钮真的起跳、暂停时点击被丢弃；均经变异测试确认能失败）
+- `test_zindex_layer` — ★★★ **图层顺序**（守 **DOM 顺序**：按钮要盖住场景内容、跳跃按钮要盖住弹窗遮罩、顺序跨帧稳定、昼夜切换后仍正确；把退出按钮挪回旧位置会失败 2 条 —— 这是"看不见但能点"的回归。★ 刻意不断言库的 z-index 行为：那条路真机白屏、已回退）
 
 ## 真机探针
 
 ```bash
 # 改 deploy/probe.lua 顶部一行：
-local ACTIVE = "perf"   -- key / perf / align / fit
+local ACTIVE = "perf"   -- key / perf / align / fit / fitroot / fitfill
 ```
 
 - `key` = 键盘事件验证（`AddKeyEventListener` 能否用）
@@ -111,6 +119,18 @@ local ACTIVE = "perf"   -- key / perf / align / fit
 - `align` = 文字居中 / 坐标系（**水平 A~E + 垂直 F 组**对照，用于定位"文字不居中"）
 - `fit` = **多屏幕比例适配**（读回真实画布尺寸 + 算 k/留边 + 光标反变换自检；
   16:10 / 4:3 / 21:9 上判读内容区四边是否贴齐）
+- `fitroot` = ★★★ **根控件 / 留边条取证**（R34）。读回画布真实尺寸、
+  根控件 `sizeDelta`/`localScale`、留边条字段，并画两条**静态**尺子
+  （红=1598 设计px、绿=898 设计px）供截图量 `kx`/`ky`。
+  ★ 它**自带 `uiOpts`**（designSize + fit + fitBg），因为留边路径
+  只有传了 `designSize` 才会被走到 —— 普通模块不带，行为不变。
+  ★ 量尺必须用**静态**元素：早期用会动的云/恐龙推出过"两个 k"的误判。
+- `fitfill` = ★★★ **画布铺满判定**（R35）。把 `designSize` 在**运行时**
+  设成 `GetUICanvasSize()`，于是 `100vw x 100vh` 恒等于整个画布 ——
+  铺一块纯色上去，屏幕四边剩下的就必然是**画布之外**的区域。
+  用于回答"2184×900 到底铺满了没有"，并区分
+  引擎 pillarbox / letterbox / 画布比例不符。
+  ★ 用 `uiOptsFor()`（运行时函数）而非静态 `uiOpts`，因为画布尺寸每台设备不同。
 
 历史上还有 `text` / `mask` / `glyph` / `clip` / `mount` 五个模块，
 2026-10-07 精简时移除 —— 它们的**结论、设计意图与重建要点**归档在
