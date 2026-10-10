@@ -107,8 +107,13 @@ local CLICK_EV = Enum.CursorEventType.CursorClick
 local function clickHandlersById()
   --[[ ⚠️ 必须【按控件】收集，不能按监听器计数：
          每个按钮绑了 3 个事件（Click + Enter + Exit，因为 HTML 里
-         写了 onmouseenter/onmouseleave）。 ]]
-  local ids = { "quitBtn", "btnSettle", "btnResume" }
+         写了 onmouseenter/onmouseleave）。
+
+       ★ 顺序 = 这些元素在 DOM 里的出现顺序（渲染器按文档序建控件）：
+         退出按钮 -> 结算 -> 继续 -> 手机跳跃按钮。
+         ⚠️ 跳跃按钮放在 .modal 【之后】（DOM 顺序决定图层，
+            它要盖住弹窗遮罩），所以排在最后。 ]]
+  local ids = { "quitBtn", "btnSettle", "btnResume", "jumpBtn" }
   local map, idx = {}, 0
   for _, c in ipairs(E.controls) do
     local d = E.dataOf(c)
@@ -168,10 +173,12 @@ do
   print(string.format("     诊断: 控件 %d 个（button %d），监听 %d 个",
       E.createdCount(), nb, nc))
 end
-check("有 3 个新点击监听（退出/结算/继续）", nClick == 3, "实际 " .. nClick)
+check("有 4 个新点击监听（退出/结算/继续/跳跃）", nClick == 4, "实际 " .. nClick)
 check("退出按钮有回调", type(handlers.quitBtn) == "function")
 check("结算按钮有回调", type(handlers.btnSettle) == "function")
 check("继续按钮有回调", type(handlers.btnResume) == "function")
+-- ★★ 手机端唯一入口：这个按钮绑不上 = 手机玩家完全没法玩
+check("★ 手机跳跃按钮有回调", type(handlers.jumpBtn) == "function")
 
 --=============================================================================
 print("\n=== 2. 弹窗初始隐藏 ===")

@@ -429,17 +429,45 @@ function E.bindKey(control, key, fn, opts)
   return 1
 end
 
---[[ 批量绑定：keys = { jump = fn1, left = fn2, ... } ]]--
+--[[ 批量绑定：keys = { jump = fn1, left = fn2, ... }
+
+     ★★ 返回 okCount, failed —— failed 是【绑定失败的键名列表】。
+
+        ⚠️ 为什么不能只返回一个数字（本轮修）：
+           原先只返回成功数，调用方写 `if n == 0 then warn(...) end`
+           —— 那只挡得住"全都失败"，挡不住【部分失败】。
+
+           真实事故：demo 同时绑了键盘跳跃和手柄跳跃，
+           而测试替身的 Enum 里缺 ControllerJumpKey* ->
+           两个手柄键解析失败被跳过，键盘那两个正常，
+           于是 n = 2（非 0）-> 一声不吭，
+           测试还断言"绑定了 2 个按键"而通过 ——
+           「手柄按 A 没反应」正是这样在本地全绿的情况下漏出去的。
+
+        ★ 返回失败清单后，调用方可以逐个报名字，
+          "哪个键没绑上"一目了然。 ]]
 function E.bindKeys(control, keys, opts)
   local n = 0
-  if type(keys) ~= "table" then return 0 end
+  local failed = {}
+  if type(keys) ~= "table" then return 0, failed end
   -- ★ pairs 顺序未定义，但这里每项互相独立，顺序无关
-  for key, fn in pairs(keys) do
+  --   ⚠️ 排序只为让"失败清单"的顺序稳定（便于测试与日志比对）
+  local names = {}
+  for key in pairs(keys) do names[#names + 1] = key end
+  table.sort(names, function(a, b) return tostring(a) < tostring(b) end)
+
+  for _, key in ipairs(names) do
+    local fn = keys[key]
     if type(fn) == "function" then
-      n = n + E.bindKey(control, key, fn, opts)
+      local ok = E.bindKey(control, key, fn, opts)
+      n = n + ok
+      if ok == 0 then failed[#failed + 1] = tostring(key) end
+    else
+      -- 值不是函数：多半是写错了，也算失败
+      failed[#failed + 1] = tostring(key)
     end
   end
-  return n
+  return n, failed
 end
 
 --[[ 解绑全部由 E.bindKey 建立的按键监听（销毁时调用，防泄漏）。

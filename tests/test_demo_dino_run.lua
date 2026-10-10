@@ -210,17 +210,30 @@ end
         · 仙人掌    -> 高 >= 96px（最矮的小仙人掌 12 格），宽是 8 的倍数
         · 排除      -> 地面装饰高 16px、云 80x40、恐龙 125x136（宽不是 8 的倍数）
 
-      ★ 用特征而不是枚举，是因为"随机拼株"本质上不可枚举。 ]]--
+      ★ 用特征而不是枚举，是因为"随机拼株"本质上不可枚举。
+
+      ⚠️⚠️ 纯几何特征【会误伤】：手机端跳跃按钮是 120x120 ——
+          高 >= 96、宽是 8 的倍数（120 % 8 == 0）、宽 <= 320，
+          三条全中，于是被当成一个"障碍"，导致
+          "开局第 1 帧就有障碍"的假象（距离/分数还没涨）。
+
+      ★ 所以再加一道【名字】过滤：障碍槽的控件名是 div#o0 ~ div#o3
+        （渲染器写入 name = tag#id，见 webui_render.lua）。
+        · hot: 前缀是双层架构的透明热区，不是独立的可见元素
+        · 非 o<数字> 的控件（跳跃按钮、退出按钮等）一律不算障碍 ]]
 local function obsCtrls()
   local out = {}
   for _, c in ipairs(E.controls) do
     local d = E.dataOf(c)
     if d then
+      local nm = d.fields.name or ""
+      -- ★ 只认障碍槽本体（div#o0..）；热区与外层容器都不算
+      local isSlot = nm:match("^div#o%d$") ~= nil
       local w = d.fields.sizeDeltaX or 0
       local h = d.fields.sizeDeltaY or 0
       local isBird = math.abs(w - 160) < 0.01 and math.abs(h - 80) < 0.01
       local isCactus = (h >= 96) and (math.abs(w % 8) < 0.01) and (w <= 320)
-      if isBird or isCactus then out[#out+1] = d end
+      if isSlot and (isBird or isCactus) then out[#out+1] = d end
     end
   end
   return out

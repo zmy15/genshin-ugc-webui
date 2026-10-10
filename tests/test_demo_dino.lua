@@ -38,6 +38,18 @@ for _, n in ipairs({
   "KeyboardCraftspersonKey2Down","KeyboardCraftspersonKey2Up",
   "KeyboardCraftspersonKey3Down","KeyboardCraftspersonKey3Up",
   "KeyboardCraftspersonKey4Down","KeyboardCraftspersonKey4Up",
+  --[[ ★★ 手柄键【必须】出现在测试替身里（本轮修）。
+
+       ⚠️ 踩过的坑：这里原先只有 Keyboard*，而 demo 同时绑了
+          padJump / padJumpUp（Controller*）。于是那两个键
+          resolveKey 返回 nil -> 绑定被跳过（静默），
+          测试还断言"绑定了 2 个按键"而全绿 ——
+          真机上「手柄按 A 不跳」因此在本地【测不出来】。
+
+       ★ 这正是 docs 里 R23 的教训：测试替身要照真机形态造。
+         真机 Enum.KeyEventType 的 164 项里【确实】有这两项
+         （docs/引擎能力与限制.md §5.2 已验证）。 ]]
+  "ControllerJumpKeyDown","ControllerJumpKeyUp",
 }) do keyEnum[n] = "Enum.KeyEventType." .. n end
 
 game = E.game
@@ -58,14 +70,29 @@ E.setRoots({ root })
 script = { object = root, EnableUpdate=function() end }
 printerr = function(...) io.stderr:write("[printerr] ", ...) end
 
--- 同步 Tween：startLoop 的续期立即执行（我们自己控制帧数）
+--[[ ★★ 捕获逐帧续期回调（本轮修）。
+
+     ⚠️ 原先 AppendCallback() 【丢弃】了回调，于是本测试里
+        没有任何一帧真正跑过 —— 而第 9 节要验证"按键之后
+        恐龙真的动了"，必须能推进帧（tick -> 渲染写控件）。
+        这与 test_demo_dino_run.lua 的做法一致。 ]]--
+local pending = nil
 game.TweenSequence = function()
   local s = {}
-  function s:AppendCallback() return s end
+  function s:AppendCallback(cb) pending = cb; return s end
   function s:AppendInterval() return s end
   function s:Play() return s end
   function s:Kill() return s end
   return s
+end
+
+--[[ 推进 n 帧：取出待跑的回调执行一次，它会再续期下一帧。 ]]--
+local function stepFrames(n)
+  for _ = 1, n do
+    local cb = pending
+    pending = nil
+    if cb then cb() end
+  end
 end
 
 --=============================================================================
@@ -79,8 +106,36 @@ chunk()
 OnStart()
 
 print("\n=== 1. 挂载与初始状态 ===")
-check("root 上绑定了 2 个按键（jump/jumpUp）",
-    E.keyListenerCount(root) == 2, "count=" .. tostring(E.keyListenerCount(root)))
+--[[ ★★ 必须【逐个按键】验，不能只看总数（本轮修）。
+
+     ⚠️ 只断言 count == 4 仍会漏：若键盘那两个成功、手柄两个失败，
+        总数是 2 —— 靠数字能发现；但若数量恰好凑对（比如漏一个
+        又误绑一个）就看不出来了。所以这里同时断言【具体 ev】。 ]]
+check("root 上绑定了 4 个按键（键盘 jump/up + 手柄 padJump/up）",
+    E.keyListenerCount(root) == 4, "count=" .. tostring(E.keyListenerCount(root)))
+
+--[[ ★★★ 手柄键【真的绑上去了】—— 这是「手柄按 A 不跳」的回归断言。
+
+     关键：把每个监听器的 ev 读回来，确认 ControllerJumpKey* 在里面。
+     只数个数是不够的（个数对了但绑错键，手柄照样不能玩）。 ]]
+do
+  local d = E.dataOf(root)
+  local want = {
+    [Enum.KeyEventType.KeyboardJumpKeyDown]   = "键盘跳跃按下",
+    [Enum.KeyEventType.KeyboardJumpKeyUp]     = "键盘跳跃抬起",
+    [Enum.KeyEventType.ControllerJumpKeyDown] = "手柄跳跃按下(A)",
+    [Enum.KeyEventType.ControllerJumpKeyUp]   = "手柄跳跃抬起(A)",
+  }
+  local got, missing = {}, {}
+  for _, L in ipairs(d.keyListeners or {}) do got[L.ev] = true end
+  for ev, label in pairs(want) do
+    if not got[ev] then missing[#missing + 1] = label end
+  end
+  check("★★ 手柄跳跃键已绑定（ControllerJumpKeyDown/Up）",
+      #missing == 0,
+      #missing == 0 and "键盘+手柄 4 个键都在"
+          or ("缺: " .. table.concat(missing, ", ")))
+end
 
 -- 通过屏幕上的控件反查文字（demo 的局部变量拿不到，只能从引擎侧观察）
 local function allTexts()
@@ -550,6 +605,175 @@ check("速度会递增", s3.speed > G.BASE_SPEED,
     string.format("%.0f -> %.0f", G.BASE_SPEED, s3.speed))
 check("速度有上限", s3.speed <= G.MAX_SPEED,
     string.format("%.0f <= %d", s3.speed, G.MAX_SPEED))
+
+--=============================================================================
+print("\n=== 9. ★★★ 手柄 / 手机端也能玩（本轮新增的两种输入）===")
+--=============================================================================
+--[[ 背景：用户反馈「手柄和手机玩家不能游玩」。
+     原因不是键盘路径写错了，而是【只有键盘被接上】：
+       · 手柄键（ControllerJumpKey*）根本没绑
+       · 手机端没有任何可点控件（触摸屏发不出按键事件）
+
+     所以这一节【必须做行为验证】—— 只断言"绑了监听器"不够，
+     要证明"按下之后恐龙真的起跳了"。 ]]--
+
+--[[ 断言的观察手段：恐龙控件的 top（anchoredPosition 的 Y）。
+     ⚠️ 注意方向：引擎 Y 向上，所以【起跳 = Y 变大】（-182 -> -152）。
+        站着时 Y = -182（= 564 - 900/2 的居中换算结果）。
+
+     ⚠️⚠️ 必须【推进一帧再看】：按键回调只改 S.vy，
+       真正把新位置写进控件的是 onTick 里的渲染。
+        直接 fireKey 后立刻读 -> 读到的是上一帧的位置（不变）。 ]]--
+local function dinoY()
+  for _, c in ipairs(E.controls) do
+    local d = E.dataOf(c)
+    if d and d.fields.name == "div#dino" then
+      return d.fields.anchoredPositionY
+    end
+  end
+  return nil
+end
+
+--[[ ★★ 找【热点层】的点击回调。
+
+     ⚠️ 踩过的坑：热点层的 name 是【笼统的 "hot:div"】，
+        并不带 id（渲染器只写 "hot:" .. tag）。
+        所以不能按名字找 —— 必须靠【父子关系】：
+        名字为 div#jumpBtn 的那个 textbox，它的 button 子控件才是
+        跳跃按钮的热区（双层架构，见 webui_render.lua）。
+
+     ⚠️ 而且热区上有 4 个监听器（Down/Up/Click/Exit，因为 HTML 里
+        写了 onmousedown/onmouseup/onclick/onmouseleave），
+        所以必须挑 ev == CursorClick 的那个。 ]]--
+local parentOf = {}
+for _, p in ipairs(E.controls) do
+  local pd = E.dataOf(p)
+  for _, ch in ipairs(pd.children or {}) do parentOf[ch] = pd.fields.name end
+end
+
+local function findClickCbByNodeId(id)
+  local CLICK = Enum.CursorEventType.CursorClick
+  for _, c in ipairs(E.controls) do
+    local d = E.dataOf(c)
+    if d and d.kind == "button" and parentOf[c] == ("div#" .. id) then
+      for _, l in ipairs(d.listeners or {}) do
+        if l.ev == CLICK then return l.cb end
+      end
+    end
+  end
+  return nil
+end
+
+local function tap(cb)
+  cb({ GetUIPos=function() return 1,1 end,
+       GetPressUIPos=function() return 1,1 end,
+       GetUIPosDelta=function() return 0,0 end,
+       dragging=false, touchId=0 })
+end
+
+--[[ ★★★ 手柄按下 A -> 恐龙起跳。
+
+     ★ 先按一次让游戏 started（onJump 的语义是
+       "未开始 -> 开始 / 已死 -> 重开 / 落地 -> 起跳"）。 ]]--
+E.fireKey(root, "Enum.KeyEventType.ControllerJumpKeyDown", {})   -- 第 1 次：开始
+stepFrames(1)
+local yRest = dinoY()
+
+E.fireKey(root, "Enum.KeyEventType.ControllerJumpKeyDown", {})   -- 第 2 次：起跳
+stepFrames(1)                                                   -- ★ 必须推进一帧
+local yAfterPad = dinoY()
+
+check("★★★ 手柄按 A -> 恐龙离开地面（手柄能玩）",
+    yRest ~= nil and yAfterPad ~= nil and yAfterPad > yRest,
+    string.format("地面 Y=%.1f -> 跳起 Y=%.1f",
+        yRest or 0, yAfterPad or 0))
+
+--=============================================================================
+-- 手机端：点跳跃按钮 = 同一套状态机
+--=============================================================================
+local tapCb = findClickCbByNodeId("jumpBtn")
+check("★ 手机跳跃按钮存在且绑了点击", type(tapCb) == "function",
+    type(tapCb) == "function" and "已绑定（div#jumpBtn 的热区）"
+        or "没找到 div#jumpBtn 的点击回调")
+
+if type(tapCb) == "function" then
+  --[[ ★★ 手机路径的行为验证：点按钮也要能起跳。
+
+       ⚠️ 回归要点：按钮走的是 jumpBtnDown -> onJump，
+         与键盘/手柄【共用同一个状态机】。
+         若有人把按钮改成"自己写一套跳跃逻辑"，
+         这条断言会随之失配，从而暴露分叉。 ]]--
+  --[[ 等它落地。
+
+       ⚠️ 只跑一小段（不能跑几百帧）：这段时间里障碍会撞上来
+          -> S.over = true -> 之后的点击变成"重开"而不是"起跳"，
+          断言就会看起来像"点了没反应"。
+       ★ 从峰值落回地面只需 跳跃全程/2 ≈ 0.26s（G 表参数）；
+         这里保守取 40 帧（60fps ≈ 0.67s）足够落地，
+         又不至于跑到第一波障碍撞上来。 ]]--
+  stepFrames(40)
+  local yBeforeTap = dinoY()
+
+  tap(tapCb)
+  stepFrames(1)
+  local yAfterTap = dinoY()
+
+  check("★★★ 点手机跳跃按钮 -> 恐龙起跳（手机能玩）",
+      yBeforeTap ~= nil and yAfterTap ~= nil and yAfterTap > yBeforeTap,
+      string.format("点击前 Y=%.1f -> 点击后 Y=%.1f",
+          yBeforeTap or 0, yAfterTap or 0))
+
+  --[[ ★★ 结算窗口打开时，跳跃按钮必须【失效】。
+
+       理由：按钮在 DOM 里排在弹窗之后（为了盖住遮罩），
+       玩家点"继续"时手指可能落在按钮上；更关键的是
+       弹窗打开 = S.paused，此时还能跳就能绕过暂停。
+
+       ⚠️⚠️ 断言【不能】只看"暂停期间 Y 没变" —— 那样是空的：
+          暂停时 tick 本来就跳过物理，无论有没有守卫 Y 都不会变
+          （已用变异测试证实：删掉守卫这条断言照样通过）。
+
+       ★ 正确做法：暂停中点一下按钮，然后【恢复游戏】再看。
+         有守卫  -> 那次点击被丢弃，恢复后仍在地面（不跳）
+         没守卫  -> S.vy 已被写成起跳速度，恢复后立刻弹起来
+         —— 这样才真正区分"守卫生效"与"守卫是摆设"。 ]]--
+  local quitCb = findClickCbByNodeId("quitBtn")
+  local resumeCb = findClickCbByNodeId("btnResume")
+  if quitCb and resumeCb then
+    --[[ ★ 先让它落回地面并静置，取一个可信的"地面基准"。
+
+         ⚠️ 不能复用上面的 yBeforeTap —— 那时恐龙刚起跳、
+            还停在空中；拿它当地面基准会得出"恢复后还在空中"
+            的假失败。 ]]--
+    stepFrames(40)
+    local yGround = dinoY()
+
+    tap(quitCb)                       -- 打开结算窗口（S.paused = true）
+    stepFrames(5)
+
+    tap(tapCb)                        -- ★ 暂停中偷点跳跃按钮
+
+    tap(resumeCb)                     -- 关窗恢复
+    stepFrames(1)
+    local yResumed = dinoY()
+
+    check("★★ 暂停时点的跳跃被丢弃（恢复后不会突然弹起）",
+        yResumed ~= nil and yGround ~= nil
+        and math.abs(yResumed - yGround) < 0.01,
+        string.format("恢复后 Y=%.1f（地面 %.1f）",
+            yResumed or 0, yGround or 0))
+
+    --[[ ★ 对照：恢复之后【正常点一次】必须能跳 ——
+         否则上面那条断言可能只是因为"跳跃整个坏掉了"。 ]]--
+    tap(tapCb)
+    stepFrames(1)
+    local yAfterResumeTap = dinoY()
+    check("★★ 恢复后再点一次 -> 起跳（对照组，证明按钮仍有效）",
+        yAfterResumeTap ~= nil and yResumed ~= nil
+        and yAfterResumeTap > yResumed,
+        string.format("%.1f -> %.1f", yResumed or 0, yAfterResumeTap or 0))
+  end
+end
 
 print("")
 print(string.format(">>> 通过 %d / 失败 %d", pass, fail))

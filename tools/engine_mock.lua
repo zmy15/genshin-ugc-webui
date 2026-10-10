@@ -79,6 +79,18 @@ function EngineMock.new(prefabs)
 
   local function makeControl(kind, parent)
     created = created + 1
+    --[[ ★★ proxy 必须【前向声明】（本轮修）。
+
+         ⚠️ 踩过的坑：METHODS 表里的 SetSiblingIndex 要引用 proxy，
+            但 proxy 原先在 METHODS 之后才 `local` ——
+            按 Lua 的作用域规则，那时 proxy 还不是局部变量，
+            METHODS 里读到的【恒为 nil】：
+              -> 重排逻辑整段被 `if ... and selfCtrl then` 跳过，
+                 一声不吭，看起来"我实现了重排"其实什么都没做。
+            （与本文件里 isOrphan 那类坑同源：静默失效最难查。）
+
+         ★ 前向声明 + 后面赋值，是 Lua 里跨闭包共享句柄的标准写法。 ]]
+    local proxy
     local data = {
       kind = kind,
       fields = { active = true, visible = true },
@@ -145,7 +157,35 @@ function EngineMock.new(prefabs)
         data.fields.sizeDeltaX = w
         data.fields.sizeDeltaY = h
       end,
-      SetSiblingIndex = function() return true end,
+      --[[ ★★ SetSiblingIndex 必须【记下来】（本轮修）。
+
+           ⚠️ 原先是个 no-op（`return true`），于是"图层顺序写错"
+              这类 bug 在本地【完全测不出来】：
+              库调用它时既不报错也不留痕，测试全绿而真机图层错乱。
+
+           ★ 真机语义：同级内的显示顺序，值越大越靠上。
+             这里记录到 fields.siblingIndex，供测试断言。 ]]
+      SetSiblingIndex = function(_, i)
+        data.fields.siblingIndex = i
+        --[[ ★★ 必须【真的重排】父的子列表（本轮修）。
+             ⚠️ 原先只记字段，于是"图层顺序写错"本地测不出来。 ]]
+        local pd = parent and dataMap[parent]
+        local selfCtrl = proxy
+        if pd and pd.children and selfCtrl then
+          local from = nil
+          for k = 1, #pd.children do
+            if pd.children[k] == selfCtrl then from = k; break end
+          end
+          if from then
+            table.remove(pd.children, from)
+            local to = i + 1
+            if to < 1 then to = 1 end
+            if to > #pd.children + 1 then to = #pd.children + 1 end
+            table.insert(pd.children, to, selfCtrl)
+          end
+        end
+        return true
+      end,
       SetAnchorMin = function(_, x, y)
         data.fields.anchorMinX = x; data.fields.anchorMinY = y
       end,
@@ -232,7 +272,7 @@ function EngineMock.new(prefabs)
       end,
     }
 
-    local proxy = {}
+    proxy = {}
     setmetatable(proxy, {
       __index = function(_, k)
         if allowed[k] then return data.fields[k] end

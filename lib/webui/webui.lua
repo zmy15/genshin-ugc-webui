@@ -400,6 +400,12 @@ end
         · 键名可用语义别名（jump / left / right / key1~4 / padJump）
           或完整枚举名（KeyboardJumpKeyDown）
         · 回调一律返回 false，不会吞掉同容器内其他按键
+        · ★★ 键盘键与手柄键是【两组独立枚举】（§5.2.1）：
+          要支持手柄必须【另绑】padJump / padJumpUp，
+          只绑 jump/jumpUp 时手柄玩家完全不能玩且不报错
+        · ★★ 手机端没有任何按键（§5.2.2）：
+          触摸屏发不出 Key 事件，手机玩家只能用【可点的屏幕按钮】
+        · 部分绑定失败会在启动时 warn 出具体键名（app.keysFailed 也能读）
 
      ★ 关于 onTick(dt)：
         · dt 是【固定步长】(1/fps)，不是真实帧间隔 —— 做物理反而更好
@@ -532,8 +538,25 @@ function M.mount(opts)
     --     每个绑定它的控件各收一遍：若同时绑 root 和子控件，
     --     按一次跳跃会跳 3 次。
     if type(opts.keys) == "table" then
-      local n = event.bindKeys(root, opts.keys)
+      local n, failed = event.bindKeys(root, opts.keys)
       app.keyCount = n
+      app.keysFailed = failed
+      --[[ ★★ 失败清单必须逐个报出来（本轮修）。
+
+           ⚠️ 原先只在 n == 0 时 warn —— 那挡不住【部分失败】：
+              键盘键绑上了、手柄键没绑上时 n = 2（非 0），
+              一声不吭，而症状是"手柄玩家按 A 毫无反应"。
+              最坑的是这【不报错】，只能靠玩家反馈发现。
+
+           ★ 失败通常有两种原因，日志里都提示到了：
+             ① 键名写错 / 不在 Enum.KeyEventType 里
+             ② Enum 取不到该成员（真机枚举名与文档不符 —— 见 R23 教训） ]]
+      if failed and #failed > 0 then
+        util.warn(string.format(
+            "mount: %d/%d 个按键绑定失败 —— [%s]（键名拼写错误，"
+            .. "或该键在当前环境取不到；该设备将无法操作）",
+            #failed, #failed + n, table.concat(failed, ", ")))
+      end
       if n == 0 then
         util.warn("mount: 按键绑定 0 个（键名无法解析，或控件不支持）")
       end

@@ -181,6 +181,64 @@ check("bindKey(nil 控件) 返回 0", event.bindKey(nil, "jump", function() end)
 check("bindKey(非函数回调) 返回 0", event.bindKey(root, "jump", 123) == 0)
 
 --=============================================================================
+print("\n=== 6b. ★★ bindKeys 必须报出【部分失败】的键名 ===")
+--=============================================================================
+--[[ 背景（本轮修）：原先 bindKeys 只返回成功数，调用方写
+       `if n == 0 then warn(...) end` —— 挡不住【部分失败】。
+
+     真实事故：demo 同时绑键盘跳跃 + 手柄跳跃，而测试替身的
+     Enum 里缺 ControllerJumpKey* -> 那两个静默跳过、键盘正常，
+     于是 n = 2（非 0）一声不吭，本地全绿而真机「手柄按 A 不跳」。
+
+     ★ 所以现在 bindKeys 返回 (okCount, failedList)，
+       调用方能把"哪个键没绑上"逐个报出来。 ]]--
+event.unbindKeys()
+do
+  -- 造一个"只有键盘键"的环境：把手柄键从 Enum 里摘掉
+  local saved = Enum.KeyEventType.ControllerJumpKeyDown
+  Enum.KeyEventType.ControllerJumpKeyDown = nil
+
+  local ok, failed = event.bindKeys(root, {
+    jump    = function() end,      -- 能解析
+    padJump = function() end,      -- 解析不了（模拟真机上枚举名不对）
+  })
+
+  check("★★ 返回成功数 = 1（只绑上了键盘）", ok == 1, "ok=" .. tostring(ok))
+  check("★★ 返回失败清单 = { padJump }",
+      type(failed) == "table" and #failed == 1 and failed[1] == "padJump",
+      "failed=[" .. table.concat(failed or {}, ",") .. "]")
+
+  Enum.KeyEventType.ControllerJumpKeyDown = saved
+end
+
+--[[ ★ 全部成功时，失败清单必须是【空表】（而不是 nil 之外的东西）——
+     调用方会用 `#failed > 0` 判断，所以类型要稳定。 ]]--
+event.unbindKeys()
+do
+  local ok2, failed2 = event.bindKeys(root, {
+    jump    = function() end,
+    padJump = function() end,
+  })
+  check("全部成功 -> ok=2 且失败清单为空",
+      ok2 == 2 and type(failed2) == "table" and #failed2 == 0,
+      string.format("ok=%s failed=%d", tostring(ok2), #(failed2 or {})))
+end
+
+--[[ ★ 值不是函数（写错了）也算失败 —— 原先会被静默忽略。 ]]--
+event.unbindKeys()
+do
+  local ok3, failed3 = event.bindKeys(root, {
+    jump  = function() end,
+    left  = "这里本该是函数",       -- 写错成字符串
+  })
+  check("★ 值不是函数 -> 计入失败清单",
+      ok3 == 1 and #failed3 == 1 and failed3[1] == "left",
+      string.format("ok=%s failed=[%s]", tostring(ok3),
+          table.concat(failed3 or {}, ",")))
+end
+event.unbindKeys()
+
+--=============================================================================
 print("\n=== 7. onTick(dt)：游戏逻辑钩子 ===")
 --=============================================================================
 local webui = require('webui')

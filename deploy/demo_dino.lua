@@ -309,10 +309,6 @@ local HTML = ([[
 
     <div class="score" id="score">HI 00000  00000</div>
 
-    <!-- ★ 退出按钮（左上角）：点击弹出结算窗口 -->
-    <div class="quit-btn" id="quitBtn" onclick="openQuit"
-         onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">退出</div>
-
     <div class="ground" id="ground"></div>
 
     <!-- 地面装饰：3 个点缀（石子/草丛/小簇），随场景滚动 -->
@@ -334,7 +330,26 @@ local HTML = ([[
     %s
 
     <div class="over" id="over">G A M E   O V E R</div>
-    <div class="hint" id="hint">按 空格 / ↑ 开始</div>
+    <div class="hint" id="hint">按 空格 / ↑ / 手柄A / 右下角按钮 开始</div>
+
+    <!--=========================================================================
+        ★★ 退出按钮（左上角）：点击弹出结算窗口。
+
+        ⚠️⚠️ 位置在 DOM 里【很靠后】是刻意的（R32 修）：
+
+           · 引擎没有全局 z-index，同父内【后出现的盖住先出现的】。
+           · 它原本排在 .ground / 恐龙 / 云【之前】，
+             靠 CSS 的 z-index:10 才浮上来。
+           · 但库的 z-index 实现有缺陷（把节点编号成 0，
+             即父下最底层）→ 真机上它被地面/恐龙全部盖住，
+             表现成「看不见但能点」。
+           · 所以改成【靠 DOM 顺序】：排在场景内容之后，
+             不需要 z-index 就天然在最上层。
+
+        ★ 规则：本页任何"要盖住场景"的元素，都排在场景内容之后。
+        ==========================================================================-->
+    <div class="quit-btn" id="quitBtn" onclick="openQuit"
+         onmouseenter="quitHoverOn" onmouseleave="quitHoverOff">退出</div>
 
     <!--=========================================================================
         ★★ 结算窗口 —— 必须是 .scene 的【最后一个子元素】。
@@ -370,6 +385,32 @@ local HTML = ([[
         </div>
       </div>
     </div>
+
+    <!--=========================================================================
+        ★★ 手机端跳跃按钮（屏幕常驻，右下角）
+
+        ⚠️ 为什么必须有它：
+           引擎的跳跃键只有【键盘键】和【手柄键】两组枚举，
+           手机玩家【没有任何按键】—— 触摸屏只能发点击事件。
+           所以手机能玩的唯一入口就是这个可点的按钮。
+
+        ★ 它也是"开始 / 重开"按钮：onJump 里已经处理了
+          "未开始 -> 开始"、"已死 -> 重开"、"落地 -> 起跳" 三种语义，
+          所以这一个按钮覆盖了手机端的全部操作。
+
+        ⚠️⚠️ DOM 顺序：放在 .modal 【之后】。
+          引擎没有全局 z-index，同父内靠 DOM 顺序决定谁盖住谁
+           —— 排在后面才不会被结算窗口的遮罩压住。
+          （与上面弹窗"必须放最后"是同一条规则的两个应用：
+            弹窗要盖住场景，跳跃键要盖住弹窗的遮罩。）
+
+        ⚠️ 不用 display:none 隐藏、也不在运行时 hide()：
+           那样按钮控件根本不会建出来 -> 点击事件永远绑不上。
+           开局"未开始"时它正好当开始按钮，所以【始终显示】即可。
+        ==========================================================================-->
+    <div class="jump-btn" id="jumpBtn" onclick="jumpBtnDown"
+         onmousedown="jumpBtnDown" onmouseup="jumpBtnUp"
+         onmouseleave="jumpBtnUp">跳</div>
   </div>
 </div>
 ]]):format(
@@ -542,8 +583,22 @@ local CSS = [[
   background-color: #e8e8e8;
   font-size: 18px; color: #535353;
   text-align: center;
-  /* ★ z-index 只保证同父内靠前；这里主要靠它在 DOM 里排在场景内容之后 */
-  z-index: 10;
+  /* ---------------------------------------------------------------------
+     ⚠️⚠️ 这里【故意不写 z-index】（R32 真机回退）。
+
+     ★ 图层靠【DOM 顺序】就够了：本元素排在 .ground / 恐龙 / 云
+       等内容【之后】，天然就盖在它们上面（引擎同父内后出现者在上）。
+
+     ⚠️ 为什么把原来的 z-index:10 删掉：
+        库的 z-index 实现只给"有 z-index 的节点"从 0 开始写
+        SetSiblingIndex，而该索引是【父下的绝对槽位】——
+        于是本按钮被写到 0（最底层），被天空/分数/地面全部盖住，
+        真机表现是"看不见但能点"。
+        ★ 一旦某个父下有 >=2 个带 z-index 的兄弟就会触发，
+          所以这里连带把跳跃按钮的 z-index 也一并去掉。
+
+     ★ 结论：本 demo【不依赖 z-index】。要调整图层就调 DOM 顺序。
+     --------------------------------------------------------------------- */
 }
 .quit-btn:hover { background-color: #d0d0d0; }
 
@@ -635,6 +690,38 @@ local CSS = [[
 .modal-btn.ok:hover { background-color: #2f6ab8; }
 /* 注意：不能用 .modal-btn + .modal-btn 这类相邻选择器（不支持，整条规则作废） */
 #btnResume { left: 260px; }
+
+/* ==========================================================================
+   ★★ 手机端跳跃按钮
+
+   遵守三条文字框硬性约束：
+     ① 框高 120 >= 字号 32 x 1.9 = 60.8 ✓
+     ② 显式 background-color（不写会给默认深色底）
+     ③ text-align / vertical-align 都写，字才会真正居中
+        ★ 本库文字框普遍比字高得多（这里 120 vs 32），
+          垂直位置错了肉眼极明显 —— 所以 vertical-align 也显式写。
+
+   ★ 位置：右下角（右手拇指的自然落点），尺寸放大到 120x120 ——
+     触摸目标太小在手机上点不准。
+
+   ⚠️ 配色【刻意不跟随昼夜主题】：它是"设备按钮"，不是游戏场景的一部分。
+      跟主题变的话，夜里深色底 + 深色字的组合有看不清的风险。
+   ========================================================================== */
+.jump-btn {
+  position: absolute; left: 1440px; top: 740px;
+  width: 120px; height: 120px;
+  background-color: #3a7bd5;
+  font-size: 32px; color: #ffffff;
+  text-align: center;
+  vertical-align: middle;
+  /* 同样【不写 z-index】（R32 真机回退），理由见上方 .quit-btn。
+
+     图层靠 DOM 顺序：本元素排在 .modal 之后 ——
+     既能盖住结算窗口的遮罩，又不会触发库的 z-index 排序缺陷。 */
+}
+.jump-btn:hover  { background-color: #4a8be5; }
+/* 按下时变暗 —— 给触摸一点视觉反馈（手机上没有 hover） */
+.jump-btn:active { background-color: #2f6ab8; }
 ]]
 
 --=============================================================================
@@ -2035,6 +2122,32 @@ local function onJumpUp()
   end
 end
 
+--[[ ★★ 手机端跳跃按钮的处理函数。
+
+     ★ 与键盘/手柄【共用同一个状态机】：
+         onJump 里已经处理了"未开始 -> 开始"、"已死 -> 重开"、
+         "落地 -> 起跳"三种语义，所以这里【不复制】任何逻辑，
+         只做一层"透传"。
+
+     ⚠️ 三条输入路径（键盘 / 手柄 / 触摸）必须走同一份状态机。
+        若各自写一遍，改跳跃手感时漏改一个，
+        就会出现"手机能连跳、键盘不能"这类只在某个设备上复现的 bug。
+
+     ⚠️⚠️ 结算窗口打开时【必须忽略】跳跃。
+        因为按钮在 DOM 里排在弹窗之后（要盖住遮罩），
+        玩家点"继续"时手指可能落在按钮上；
+        更关键的是：弹窗打开 = S.paused，此时还能跳会绕过暂停，
+        玩家可以开着窗口按跳跃把游戏"垫"过去。 ]]--
+jumpBtnDown = function()
+  if S.paused then return end
+  onJump()
+end
+
+jumpBtnUp = function()
+  if S.paused then return end
+  onJumpUp()
+end
+
 --=============================================================================
 -- 挂载
 --=============================================================================
@@ -2089,10 +2202,23 @@ app = webui.mount{
     settle_game = { "int", "int" },
   },
 
-  -- ★★ 键盘（R20 真机验证）：只绑 root 一处，避免"按一次跳多次"
+  --[[ ★★ 跳跃键：绑【键盘】+【手柄】两组。
+
+       ⚠️ 踩过的坑：只绑了键盘（jump / jumpUp），
+          于是【手柄玩家按 A 毫无反应】—— 引擎把键盘键和手柄键
+          当成两组独立的枚举（KeyboardJumpKeyDown / ControllerJumpKeyDown），
+          绑了前者不会顺带收后者，而且不报错。
+
+       ★ 两组都指向同一个 onJump —— 语义都是"跳跃"，
+         玩家用哪个设备都能玩（R20 已确认手柄枚举真实存在）。
+
+       ★ 仍然只绑 root 一处：真机实测同一个事件会被每个绑定它的
+         控件各收一遍（§5.2.4），绑多处会"按一次跳多次"。 ]]
   keys = {
-    jump   = onJump,      -- KeyboardJumpKeyDown
-    jumpUp = onJumpUp,    -- KeyboardJumpKeyUp
+    jump      = onJump,      -- KeyboardJumpKeyDown
+    jumpUp    = onJumpUp,    -- KeyboardJumpKeyUp
+    padJump   = onJump,      -- ControllerJumpKeyDown（手柄 A）
+    padJumpUp = onJumpUp,    -- ControllerJumpKeyUp
   },
 
   onReady = function(ui, a)
@@ -2234,6 +2360,10 @@ app = webui.mount{
     -- ★ 窗口里的两个按钮
     doSettle = doSettle,   -- 结算：把时长 + 最高分发给服务端
     doResume = doResume,   -- 继续：关闭窗口，恢复游戏
+
+    -- ★★ 手机端跳跃按钮（与键盘/手柄共用同一状态机）
+    jumpBtnDown = jumpBtnDown,
+    jumpBtnUp   = jumpBtnUp,
 
     -- 按钮的 hover 由 CSS 的 :hover 负责，这里只留钩子占位
     quitHoverOn  = function() end,
