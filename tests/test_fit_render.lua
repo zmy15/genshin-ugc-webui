@@ -13,6 +13,7 @@ package.path = _root .. "/lib/webui/?.lua;"
 
 local EngineMock = require('engine_mock')
 local util       = require('webui_util')
+local dom        = require('webui_dom')
 
 -- ★ 必须包含 image：.stage 有 overflow:hidden -> chooseKind 会选 image
 local PREFABS = { container=1073741933, textbox=1073741934,
@@ -352,6 +353,142 @@ do
     end
     check("mount 透传了 fitBg（留边已建）",
           r ~= nil and r._backdrop ~= nil, "")
+  end
+end
+
+--=============================================================================
+print()
+print("=== 9. ★★ 布局视口基准 = 设计尺寸（不是真实画布）===")
+--=============================================================================
+
+--[[ ★★★ 回归（R33，手机端 2532x1170 上暴露）。
+
+      webui_layout.L.compute 的契约是"全程在设计坐标系里算"，
+      canvasW/H 参数的含义是【逻辑设计尺寸】—— 适配缩放由渲染层
+      （webui_render 的 applyFit）统一施加一次。
+
+      ⚠️ 但 flush() 一度传的是 util.canvasSize()（真实画布）。
+         后果：vw/vh 的视口基准变成真实画布。
+
+      为什么一路没被发现：16:9 屏幕上画布 == 设计尺寸（1600x900），
+      两种写法【结果完全相同】。只有在非 16:9 上才现形：
+
+        手机 2532x1170，设计 1600x900
+          10vw 应为 160px，错误实现算出 253.2px（放大 1.58 倍）
+          -> 用 vw/vh 写的尺寸被放大一次，固定 px 的没有
+          -> 同屏内比例互相矛盾
+
+      ★ 这条断言在修复前会失败（253.2 != 160），修复后通过。 ]]--
+do
+  local function vwProbe(cw, ch)
+    local E = EngineMock.new(PREFABS)
+    E.setCanvas(cw, ch)
+    _G.game  = E.game
+    _G.Color = { FromRGBA = function(r,g,b,a) return {r=r,g=g,b=b,a=a} end,
+                 FromRGB  = function(r,g,b) return {r=r,g=g,b=b} end }
+    _G.Enum  = {
+      EaseType = { Linear="Linear" },
+      CursorEventType = {
+        CursorClick="CursorClick", CursorDown="CursorDown", CursorUp="CursorUp",
+        CursorEnter="CursorEnter", CursorExit="CursorExit",
+        CursorBeginDrag="CursorBeginDrag", CursorDrag="CursorDrag",
+        CursorEndDrag="CursorEndDrag",
+      },
+      ImageSource = { StaticReference = "Enum.ImageSource.StaticReference" },
+      TextHorizontalAlignment = { Left="L", Middle="C", Right="R" },
+      TextVerticalAlignment   = { Top="T", Middle="M", Bottom="B" },
+    }
+    util.resetCanvasCache()
+    _MOCK = E
+
+    local webui = require('webui')
+    local root = E.makeControl("container", nil)
+    root.name = "Root"
+    _G.script = { object = root }
+
+    local ui = webui.new{
+      root = root, prefabs = PREFABS, handlers = {},
+      designSize = {1600, 900}, fit = "letterbox", fitBg = "#f7f7f7",
+    }
+    -- 用 vw/vh 才能把"视口基准"暴露出来
+    ui:setHTML([[
+      <div class="stage"><div class="scene">
+        <div class="probe">P</div>
+      </div></div>
+    ]])
+    ui:addCSS([[
+      .stage { width: 1600px; height: 900px; overflow: hidden; }
+      .scene { width: 1600px; height: 900px; background-color: #f7f7f7; }
+      .probe { position: absolute; left: 0px; top: 0px;
+               width: 10vw; height: 10vh; background-color: #888888; }
+    ]])
+    ui:flush()
+
+    local probe
+    dom.walk(ui.doc, function(n)
+      if n:isElement() and n.attrs and n.attrs.class == "probe" then probe = n end
+    end)
+    return probe and probe.box, ui.rendered.fit
+  end
+
+  -- 16:9：画布 == 设计尺寸，两种实现都对（这也是它长期潜伏的原因）
+  local box16, fit16 = vwProbe(1600, 900)
+  check("16:9 10vw=160px", box16 and near(box16.w, 160),
+        box16 and string.format("%.1f", box16.w) or "nil")
+
+  -- ★ 手机 2532x1170：修复前这里会得到 253.2
+  local boxP, fitP = vwProbe(2532, 1170)
+  check("手机 10vw 仍为 160px（不是 253.2）", boxP and near(boxP.w, 160),
+        boxP and string.format("%.1f", boxP.w) or "nil")
+  check("手机 10vh 仍为 90px", boxP and near(boxP.h, 90),
+        boxP and string.format("%.1f", boxP.h) or "nil")
+  check("手机 fit k=1.3（内容等比缩放交给渲染层）",
+        fitP and near(fitP.k, 1.3), fitP and string.format("%.4f", fitP.k) or "nil")
+
+  -- 16:10 与 21:9 同样守住
+  local box10 = vwProbe(2560, 1600)
+  check("16:10 10vw=160px", box10 and near(box10.w, 160),
+        box10 and string.format("%.1f", box10.w) or "nil")
+  local box21 = vwProbe(3440, 1440)
+  check("21:9 10vw=160px", box21 and near(box21.w, 160),
+        box21 and string.format("%.1f", box21.w) or "nil")
+
+  -- 不传 designSize：退回画布尺寸（与旧行为一致，不能更坏）
+  do
+    local E = EngineMock.new(PREFABS)
+    E.setCanvas(1600, 900)
+    _G.game  = E.game
+    _G.Color = { FromRGBA = function(r,g,b,a) return {r=r,g=g,b=b,a=a} end,
+                 FromRGB  = function(r,g,b) return {r=r,g=g,b=b} end }
+    _G.Enum  = {
+      EaseType = { Linear="Linear" },
+      CursorEventType = {
+        CursorClick="CursorClick", CursorDown="CursorDown", CursorUp="CursorUp",
+        CursorEnter="CursorEnter", CursorExit="CursorExit",
+        CursorBeginDrag="CursorBeginDrag", CursorDrag="CursorDrag",
+        CursorEndDrag="CursorEndDrag",
+      },
+      ImageSource = { StaticReference = "Enum.ImageSource.StaticReference" },
+      TextHorizontalAlignment = { Left="L", Middle="C", Right="R" },
+      TextVerticalAlignment   = { Top="T", Middle="M", Bottom="B" },
+    }
+    util.resetCanvasCache()
+    _MOCK = E
+    local webui = require('webui')
+    local root = E.makeControl("container", nil)
+    root.name = "Root"
+    _G.script = { object = root }
+    local ui = webui.new{ root = root, prefabs = PREFABS, handlers = {} }
+    ui:setHTML([[<div class="p">P</div>]])
+    ui:addCSS([[.p { width: 10vw; height: 10vh;
+                     background-color: #888888; }]])
+    ui:flush()
+    local p
+    dom.walk(ui.doc, function(n)
+      if n:isElement() and n.attrs and n.attrs.class == "p" then p = n end
+    end)
+    check("无 designSize 退回画布（10vw=160）", p and near(p.box.w, 160),
+          p and string.format("%.1f", p.box.w) or "nil")
   end
 end
 

@@ -165,9 +165,29 @@ function Instance:flush()
   -- 1. 计算样式（层叠 + 继承）
   style.apply(self.doc, self.stylesheets)
 
-  -- 2. 布局（算出每个节点的绝对位置）
-  local canvasW, canvasH = util.canvasSize()
-  layout.compute(self.doc, canvasW, canvasH)
+  --[[ 2. 布局（算出每个节点的绝对位置）
+
+      ⚠️⚠️ 这里必须传【逻辑设计尺寸】，绝不能传真实画布（R33 修）。
+
+      踩过的坑（手机端 2532x1170 上暴露）：
+        布局器的契约是"全程在设计坐标系里算"（见 webui_layout.lua
+        的 L.compute 注释），适配缩放由【渲染层】统一施加一次。
+        但这里传的是 util.canvasSize()（真实画布），于是：
+          · vw/vh 的视口基准变成真实画布 —— 10vw 在手机上算成
+            253.2px 而不是 160px（真机+本机仿真均已复现）
+          · 页面里任何依赖视口基准的尺寸都被放大了一次，
+            而固定 px 的尺寸没有 -> 同一屏内比例互相矛盾
+        16:9 屏幕上画布恰好等于设计尺寸，这个错误【完全看不出来】，
+        所以一路潜伏到非 16:9 的真机才暴露。
+
+      ★ 没有 designSize 时退回画布尺寸（与旧行为一致）。 ]]
+  local ds = self.designSize
+  local designW = type(ds) == "table" and util.toNumber(ds[1]) or nil
+  local designH = type(ds) == "table" and util.toNumber(ds[2]) or nil
+  if not designW or not designH or designW <= 0 or designH <= 0 then
+    designW, designH = util.canvasSize()
+  end
+  layout.compute(self.doc, designW, designH)
 
   -- 3. 渲染（控件池 + diff 写入）
   if not self.rendered then
