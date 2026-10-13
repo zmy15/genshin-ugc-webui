@@ -124,7 +124,7 @@ local DEFAULTS = {
 -- 值归一化
 --=============================================================================
 
---[[ 长度：返回 { n=数值, unit="px"|"%"|"em"|"vw"|"vh"|"vmin"|"vmax", auto=bool } 
+--[[ 长度：返回 { n=数值, unit="px"|"%"|"em"|"vw"|"vh"|"vmin"|"vmax", auto=bool }
 
      ★ 支持的单位（对齐原生 CSS）：
          px / % / em / rem / vw / vh / vmin / vmax / 无单位

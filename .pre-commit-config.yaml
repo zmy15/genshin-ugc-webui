@@ -20,7 +20,7 @@
 repos:
   # ---------- 基础卫生检查（pre-commit 官方钩子）----------
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
         args: ['--maxkb=1024']
